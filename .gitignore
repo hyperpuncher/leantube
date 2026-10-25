@@ -1,0 +1,9 @@
+build/
+.cache/
+.env
+.env.*
+!.env.example
+*.ipk
+load.json
+core
+core.*

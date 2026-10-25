@@ -1,0 +1,15 @@
+{
+	"id": "org.hyperpuncher.odin.tv.prototype",
+	"version": "0.0.4",
+	"vendor": "hyperpuncher",
+	"type": "native",
+	"main": "leantube",
+	"title": "LeanTube (prototype)",
+	"icon": "icon.png",
+	"resolution": "1920x1080",
+	"transparent": true,
+	"nativeLifeCycleInterfaceVersion": 2,
+	"supportQuickStart": false,
+	"handlesRelaunch": true,
+	"requiredMemory": 128
+}

@@ -1,0 +1,28 @@
+diff --git a/src/build_settings.cpp b/src/build_settings.cpp
+index d97d8d4..53000f1 100644
+--- a/src/build_settings.cpp
++++ b/src/build_settings.cpp
+@@ -787,7 +787,7 @@ gb_global TargetMetrics target_linux_arm32 = {
+ 	TargetOs_linux,
+ 	TargetArch_arm32,
+ 	4, 4, 8, 8,
+-	str_lit("arm-unknown-linux-gnueabihf"),
++	str_lit("arm-unknown-linux-gnueabi"),
+ };
+ gb_global TargetMetrics target_linux_riscv64 = {
+ 	TargetOs_linux,
+diff --git a/src/llvm_abi.cpp b/src/llvm_abi.cpp
+index fd60d54..eede9a3 100644
+--- a/src/llvm_abi.cpp
++++ b/src/llvm_abi.cpp
+@@ -2169,6 +2169,10 @@ namespace lbAbiArm32 {
+ 	// an opaque integer by now and AAPCS32 DOES count a union of floats as homogeneous
+ 	gb_internal bool is_hfa(LLVMContextRef c, LLVMTypeRef type, Type *source_type,
+ 	                        ProcCallingConvention calling_convention, LLVMTypeRef *coerce_) {
++		// This isolated compiler targets the webOS ARM32 base calling ABI.
++		if (build_context.metrics.os == TargetOs_linux) {
++			return false;
++		}
+ 		if (is_calling_convention_odin(calling_convention)) {
+ 			// Both sides are Odin, so the existing lowering is self-consistent; leave it alone.
+ 			return false;
