@@ -5,7 +5,7 @@ cc="$WEBOS_SDK/bin/arm-webos-linux-gnueabi-gcc"
 pkg="$WEBOS_SDK/bin/pkg-config"
 for required in "$WEBOS_ODIN" "$cc" "$pkg" "$WEBOS_PLATFORM/runtime/libSDL3.so.0"; do
 	if [[ ! -f "$required" ]]; then
-		printf 'missing toolchain input: %s\nsee docs/toolchain.md\n' "$required" >&2
+		printf 'missing toolchain input: %s\nconfigure the cache paths in .env; see .env.example\n' "$required" >&2
 		exit 1
 	fi
 done
@@ -16,7 +16,7 @@ for directory in build/obj build/app; do
 done
 mkdir -p build/obj build/app
 "$WEBOS_ODIN" build src -target:linux_arm32 -microarch:cortex-a9 \
-	-build-mode:obj -out:build/obj/leantube.o -debug -o:minimal
+	-build-mode:obj -out:build/obj/leantube.o -debug -o:minimal -define:APP_VERSION="$app_version"
 cpu=(-mcpu=cortex-a9 -mfpu=neon -mfloat-abi=softfp)
 read -r -a cflags <<< "$("$pkg" --cflags luna-service2 glib-2.0 wayland-client)"
 read -r -a libs <<< "$("$pkg" --libs luna-service2 glib-2.0 wayland-client)"

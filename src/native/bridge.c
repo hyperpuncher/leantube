@@ -22,6 +22,7 @@ static struct wl_shell_surface *role_surface;
 static struct wl_display *display;
 static LSHandle *bus;
 static GMainLoop *loop;
+static LSMessageToken media_subscription;
 static bool closing;
 static bool visible = true;
 static long acb_id = -1;
@@ -154,11 +155,14 @@ bool tv_bus_start(const char *app_id) {
 bool tv_send(const char *uri, const char *payload, reply_callback callback, void *data) {
 	LSError error;
 	LSErrorInit(&error);
-	if (!LSCall(bus, uri, payload, (LSFilterFunc)callback, data, NULL, &error)) {
+	LSMessageToken token = 0;
+	if (!LSCall(bus, uri, payload, (LSFilterFunc)callback, data, &token, &error)) {
 		fprintf(stderr, "native service call failed: %s\n", uri);
 		LSErrorFree(&error);
 		return false;
 	}
+	if (!strcmp(uri, "luna://com.webos.media/subscribe"))
+		media_subscription = token;
 	return true;
 }
 
@@ -214,9 +218,15 @@ void tv_raise(void) {
 	}
 }
 
-void tv_shutdown(void) {
+void tv_release_media(void) {
+	if (bus && media_subscription) {
+		LSError error;
+		LSErrorInit(&error);
+		LSCallCancel(bus, media_subscription, &error);
+		LSErrorFree(&error);
+		media_subscription = 0;
+	}
 	g_clear_pointer(&pending_video_data, g_free);
-	g_atomic_int_set(&display_ready, 0);
 	if (acb_id >= 0) {
 		long task = 0;
 		AcbAPI_setState(acb_id, APPSTATE_BACKGROUND, PLAYSTATE_UNLOADED, &task);
@@ -224,6 +234,11 @@ void tv_shutdown(void) {
 		AcbAPI_destroy(acb_id);
 		acb_id = -1;
 	}
+	g_atomic_int_set(&display_ready, 0);
+}
+
+void tv_shutdown(void) {
+	tv_release_media();
 	if (bus) {
 		LSError error;
 		LSErrorInit(&error);

@@ -1,4 +1,4 @@
-package main
+package model
 
 import "core:encoding/json"
 import "core:testing"

@@ -5,7 +5,8 @@
 - use native Wayland, Odin, Clay, and SDL3
 - keep B9 SDK and compiler inputs in the ignored toolchain cache, not in git
 - the B9 app ABI is ARM32 soft-float, even though the kernel reports aarch64
-- do not use the stock ARM32 Odin compiler for the TV build; see docs/toolchain.md
+- use the cached compiler with `patches/odin-arm32-softfp.patch`, not stock ARM32 Odin
+- keep the B9's original `libwayland-egl.so.0` under the app-private name `libwayland-egl.so.1`; the newer adapter is incompatible
 - preserve the separate prototype app ID and both installed YouTube apps
 - do not change TV firmware, system libraries, startup services, or remote bindings
 - announce any standby/wake test before interrupting the TV

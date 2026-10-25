@@ -11,10 +11,13 @@ check:
 	odin check tests/layout -vet
 	bash -n scripts/*.sh tests/install.sh
 	shellcheck -x scripts/*.sh tests/install.sh
+	bun fmt --check scripts/catalog.ts tests/catalog.test.ts
 
 # Test metadata and installer completion handling without a TV.
 test: test-layout
-	odin test src/metadata.odin -file -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
+	odin test src/model -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
+	odin test src/input.odin -file -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
+	bun test tests/catalog.test.ts
 	bash tests/install.sh
 
 # Check the real C/Odin Clay boundary without opening a window.
@@ -28,6 +31,7 @@ fmt:
 	odinfmt src -w
 	odinfmt tests -w
 	clang-format -i src/native/bridge.c src/native/clay.c
+	bun fmt scripts/catalog.ts tests/catalog.test.ts
 
 # Build the B9 ARM32 executable and stage its private libraries.
 build:
@@ -45,15 +49,18 @@ tools:
 package: build tools
 	.cache/tools/node_modules/.bin/ares-package build/app -o build
 
-# Resolve a fresh public YouTube stream. Never echo its signed URL.
-resolve video="aqz-KE-bpKQ":
-	@bash scripts/resolve.sh {{quote(video)}}
+# Prepare one page of results and private requests without touching the TV.
+prepare query="Blender open movies":
+	@bun scripts/catalog.ts {{quote(query)}}
+
+# Prepare and open a grid. The host resolves all streams before launch.
+browse query="Blender open movies": (prepare query) run
 
 # These commands target the separate prototype app, not either YouTube app.
 install: package
 	bash scripts/install.sh
 
-run video="aqz-KE-bpKQ": (resolve video)
+run:
 	bash scripts/tv.sh run
 
 stop:

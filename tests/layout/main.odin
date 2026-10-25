@@ -59,4 +59,26 @@ main :: proc() {
 		panel.boundingBox.height == 80,
 	)
 	fmt.println("bottom panel layout passed")
+	// Image data is opaque to Clay. Verify that the C/Odin boundary preserves
+	// the renderer's pointer and the dimensions used for a thumbnail.
+	marker: u8
+	clay.BeginLayout()
+	if clay.UI(clay.ID("thumbnail"))(
+	{
+		layout = {sizing = {width = clay.SizingFixed(256), height = clay.SizingFixed(144)}},
+		image = {imageData = rawptr(&marker)},
+	},
+	) {}
+	commands := clay.EndLayout(0)
+	found := false
+	for i in 0 ..< commands.length {
+		command := clay.RenderCommandArray_Get(&commands, i)
+		if command.commandType == .Image {
+			assert(command.renderData.image.imageData == rawptr(&marker))
+			assert(command.boundingBox.width == 256 && command.boundingBox.height == 144)
+			found = true
+		}
+	}
+	assert(found, "thumbnail image command missing")
+	fmt.println("thumbnail image layout passed")
 }

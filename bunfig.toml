@@ -1,0 +1,11 @@
+telemetry = false
+
+[console]
+depth = 5
+
+[fmt]
+printWidth = 90
+tabWidth = 4
+useTabs = true
+sortImports = true
+sortPackageJson = true
