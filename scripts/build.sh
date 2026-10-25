@@ -32,7 +32,7 @@ read -r -a libs <<< "$("$pkg" --libs luna-service2 glib-2.0 wayland-client)"
 	-Wl,-rpath-link,"$WEBOS_PLATFORM/device-link" -l:libSDL3.so.0 -lAcbAPI \
 	"${libs[@]}" -lm -lpthread -ldl -lrt -latomic \
 	-Wl,--disable-new-dtags,-rpath,'$ORIGIN/lib' -o "build/app/$app_main"
-cp app/appinfo.json app/icon.png build/app/
+cp app/appinfo.json app/icon.png app/large-icon.png build/app/
 mkdir -p build/app/lib
 cp -a "$WEBOS_PLATFORM/runtime/." build/app/lib/
 printf 'built %s for B9 ARM32 soft-float\n' "build/app/$app_main"
