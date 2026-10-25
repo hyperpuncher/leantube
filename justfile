@@ -9,12 +9,13 @@ default:
 check:
 	odin check src -vet
 	odin check tests/layout -vet
+	odin check tests/http -vet
 	bash -n scripts/*.sh tests/install.sh
 	shellcheck -x scripts/*.sh tests/install.sh
-	bun fmt --check scripts/catalog.ts tests/catalog.test.ts
+	bun fmt --check scripts/catalog.ts tests/catalog.test.ts tests/http/run.ts
 
 # Test metadata and installer completion handling without a TV.
-test: test-layout
+test: test-layout test-http
 	odin test src/model -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
 	odin test src/input.odin -file -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
 	bun test tests/catalog.test.ts
@@ -27,11 +28,19 @@ test-layout:
 	ar rcs build/host-layout/libclay.a build/host-layout/clay.o
 	odin run tests/layout -out:build/host-layout/layout-check -extra-linker-flags:"-Lbuild/host-layout"
 
+# Check TLS safety and request recovery against a real local HTTPS server.
+test-http:
+	bun tests/http/run.ts
+
+# Check native YouTube and SponsorBlock HTTPS on the B9 without opening an app.
+test-tv-http:
+	bash scripts/test-tv-http.sh
+
 fmt:
 	odinfmt src -w
 	odinfmt tests -w
 	clang-format -i src/native/bridge.c src/native/clay.c
-	bun fmt scripts/catalog.ts tests/catalog.test.ts
+	bun fmt scripts/catalog.ts tests/catalog.test.ts tests/http/run.ts
 
 # Build the B9 ARM32 executable and stage its private libraries.
 build:
