@@ -11,9 +11,10 @@ main :: proc() {
 	client, error := http.open()
 	assert(error == nil, "HTTPS setup failed")
 	defer http.close(&client)
-	catalog, search_error := yt.search(&client, "Linus Tech Tips")
+	catalog, search_error, visitor := yt.search(&client, "Linus Tech Tips")
 	assert(search_error == .None, "channel video search failed")
 	defer model.catalog_destroy(&catalog)
+	defer delete(visitor)
 	checked, groups: int
 	for video in catalog.videos {
 		if video.channel != "Linus Tech Tips" {continue}

@@ -265,6 +265,7 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	before_player := scroll.scrollPosition^[1]
 	key(sdl.K_RETURN)
 	assert(!browsing && loaded && paused)
+	check_sponsor_timeline(renderer, surface)
 	snapshot(renderer, surface, "player-paused")
 	panel := clay.GetElementData(clay.ID("controls")).boundingBox
 	play_button := clay.GetElementData(clay.ID("pause")).boundingBox

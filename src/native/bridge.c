@@ -1,3 +1,4 @@
+#include "keyboard.h"
 #include "webos-shell-client-protocol.h"
 #include <appswitching-control-block/AcbAPI.h>
 #include <fcntl.h>
@@ -39,8 +40,13 @@ static void media_display_event(long id, long task, long event, long app_state, 
 	}
 }
 
-bool tv_attach_media(const char *app_id, const char *media_id, const char *video_data) {
+void tv_update_media(const char *video_data) {
+	g_free(pending_video_data);
 	pending_video_data = g_strdup(video_data);
+}
+
+bool tv_attach_media(const char *app_id, const char *media_id, const char *video_data) {
+	tv_update_media(video_data);
 	acb_id = AcbAPI_create();
 	fprintf(stderr, "display control created id=%ld\n", acb_id);
 	if (acb_id < 0 || !AcbAPI_initialize(acb_id, PLAYER_TYPE_VIDEO, app_id, media_display_event)) {
@@ -61,6 +67,7 @@ static void registry_add(void *data, struct wl_registry *reg, uint32_t name, con
 						 uint32_t version) {
 	(void)data;
 	(void)version;
+	tv_keyboard_registry(reg, name, interface);
 	if (!strcmp(interface, "wl_shell")) {
 		role_shell = wl_registry_bind(reg, name, &wl_shell_interface, 1);
 	}
@@ -194,6 +201,7 @@ bool tv_attach_window(const char *app_id, struct wl_display *window_display,
 		fprintf(stderr, "LG window role is unavailable\n");
 		return false;
 	}
+	tv_keyboard_attach(display, surface);
 	role_surface = wl_shell_get_shell_surface(role_shell, surface);
 	if (!role_surface)
 		return false;
@@ -238,6 +246,7 @@ void tv_release_media(void) {
 }
 
 void tv_shutdown(void) {
+	tv_keyboard_shutdown();
 	tv_release_media();
 	if (bus) {
 		LSError error;

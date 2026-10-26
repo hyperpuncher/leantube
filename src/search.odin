@@ -14,7 +14,7 @@ edit_search :: proc(window: ^sdl.Window) {
 	append(&search_text, catalog.query)
 	search_editing = true
 	search_replace = true
-	if window != nil && !sdl.StartTextInput(window) {
+	if !start_text_input(window) {
 		search_editing = false
 		notice = "text input is unavailable"
 	}
@@ -22,7 +22,7 @@ edit_search :: proc(window: ^sdl.Window) {
 }
 finish_search_input :: proc(window: ^sdl.Window) {
 	search_editing = false
-	if window != nil {_ = sdl.StopTextInput(window)}
+	stop_text_input(window)
 	dirty = true
 }
 append_search_text :: proc(text: string) {
@@ -33,6 +33,24 @@ append_search_text :: proc(text: string) {
 	append(&search_text, text)
 	dirty = true
 }
+// LG text-model deletion uses byte offsets relative to the cursor at the end.
+erase_search_text :: proc(index: i32, length: u32) {
+	if !search_editing {return}
+	if search_replace || length == max(u32) {
+		clear(&search_text)
+		search_replace = false
+	} else {
+		start := len(search_text) + int(index)
+		if start < 0 || start > len(search_text) || length > u32(len(search_text) - start) {return}
+		end := start + int(length)
+		if start < len(search_text) && search_text[start] & 0xc0 == 0x80 {return}
+		if end < len(search_text) && search_text[end] & 0xc0 == 0x80 {return}
+		copy(search_text[start:], search_text[end:])
+		resize(&search_text, len(search_text) - int(length))
+	}
+	dirty = true
+}
+
 search_key :: proc(code: sdl.Keycode, window: ^sdl.Window) -> bool {
 	if !search_editing {
 		if code == sdl.K_TAB ||
@@ -52,12 +70,9 @@ search_key :: proc(code: sdl.Keycode, window: ^sdl.Window) -> bool {
 			start_search(string(search_text[:]))
 		}
 	case sdl.K_BACKSPACE:
-		if search_replace {clear(&search_text); search_replace = false} else {
-			last := 0
-			for _, index in string(search_text[:]) {last = index}
-			resize(&search_text, last)
-		}
-		dirty = true
+		last := 0
+		for _, index in string(search_text[:]) {last = index}
+		erase_search_text(i32(last - len(search_text)), u32(len(search_text) - last))
 	}
 	return true
 }

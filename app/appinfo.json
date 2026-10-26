@@ -1,6 +1,6 @@
 {
 	"id": "org.hyperpuncher.odin.tv.prototype",
-	"version": "0.0.9",
+	"version": "0.0.14",
 	"vendor": "hyperpuncher",
 	"type": "native",
 	"main": "leantube",

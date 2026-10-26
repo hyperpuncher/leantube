@@ -3,7 +3,7 @@ set -euo pipefail
 source scripts/env.sh
 cc="$WEBOS_SDK/bin/arm-webos-linux-gnueabi-gcc"
 pkg="$WEBOS_SDK/bin/pkg-config"
-for required in "$WEBOS_ODIN" "$cc" "$pkg" "$WEBOS_PLATFORM/runtime/libSDL3.so.0" "$WEBOS_PLATFORM/runtime/libSDL3_ttf.so.0" "$WEBOS_PLATFORM/runtime/libSDL3_image.so.0"; do
+for required in "$WEBOS_ODIN" "$cc" "$pkg" "$WEBOS_SDK/bin/wayland-scanner" "$WEBOS_PLATFORM/runtime/libSDL3.so.0" "$WEBOS_PLATFORM/runtime/libSDL3_ttf.so.0" "$WEBOS_PLATFORM/runtime/libSDL3_image.so.0"; do
 	if [[ ! -f "$required" ]]; then
 		printf 'missing toolchain input: %s\nconfigure the cache paths in .env; see .env.example\n' "$required" >&2
 		exit 1
@@ -17,11 +17,17 @@ done
 mkdir -p build/obj build/app
 "$WEBOS_ODIN" build src -target:linux_arm32 -microarch:cortex-a9 \
 	-build-mode:obj -out:build/obj/leantube.o -debug -o:minimal -define:APP_VERSION="$app_version"
+"$WEBOS_SDK/bin/wayland-scanner" client-header vendor/webos-text/text.xml build/obj/text-client-protocol.h
+"$WEBOS_SDK/bin/wayland-scanner" private-code vendor/webos-text/text.xml build/obj/text-protocol.c
 cpu=(-mcpu=cortex-a9 -mfpu=neon -mfloat-abi=softfp)
 read -r -a cflags <<< "$("$pkg" --cflags luna-service2 glib-2.0 wayland-client)"
 read -r -a libs <<< "$("$pkg" --libs luna-service2 glib-2.0 wayland-client)"
 "$cc" -c src/native/bridge.c -o build/obj/bridge.o -std=c11 -Og -g \
 	"${cpu[@]}" -Isrc/native "${cflags[@]}"
+"$cc" -c src/native/keyboard.c -o build/obj/keyboard.o -std=c11 -Og -g \
+	"${cpu[@]}" -Ibuild/obj "${cflags[@]}"
+"$cc" -c build/obj/text-protocol.c -o build/obj/text-protocol.o \
+	"${cpu[@]}" "${cflags[@]}"
 "$cc" -c src/native/webos-shell-protocol.c -o build/obj/protocol.o \
 	"${cpu[@]}" "${cflags[@]}"
 "$cc" -c src/native/clay.c -o build/obj/clay.o -std=c11 -O2 \

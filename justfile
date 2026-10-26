@@ -13,8 +13,8 @@ check:
 	odin check tests/http -vet
 	odin check tests/youtube -vet
 	odin check tests/sponsorblock -vet
-	bash -n scripts/*.sh tests/install.sh
-	shellcheck -x scripts/*.sh tests/install.sh
+	bash -n scripts/*.sh tests/install.sh tests/capture.sh
+	shellcheck -x scripts/*.sh tests/install.sh tests/capture.sh
 	bun fmt --check package.json tsconfig.json scripts/ui.ts tests/http/run.ts
 	bun check
 
@@ -26,6 +26,7 @@ test: test-layout test-http test-ui
 	odin test src/sponsorblock -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
 	odin test src -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
 	bash tests/install.sh
+	bash tests/capture.sh
 
 # Test layout with the upstream host library, without opening a window.
 test-layout:
@@ -51,7 +52,7 @@ test-tv-http:
 fmt:
 	odinfmt src -w
 	odinfmt tests -w
-	clang-format -i src/native/bridge.c src/native/clay.c
+	clang-format -i src/native/bridge.c src/native/clay.c src/native/keyboard.c src/native/keyboard.h
 	bun fmt package.json tsconfig.json scripts/ui.ts tests/http/run.ts
 
 # Explicit TV library setup. Downloads source, but does not contact the TV.
@@ -93,8 +94,8 @@ logs:
 status:
 	bash scripts/tv.sh status
 
-# Request an explicit capture size; no fixed 1080p limit.
-capture width height:
+# Use the tested B9 capture surface size; allow explicit diagnostic overrides.
+capture width="1920" height="1080":
 	bash scripts/tv.sh capture {{quote(width)}} {{quote(height)}}
 
 clean:

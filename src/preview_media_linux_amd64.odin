@@ -6,6 +6,12 @@ import sdl "vendor:sdl3"
 
 DEV_SMOKE :: #config(DEV_SMOKE, false)
 
+start_text_input :: proc(window: ^sdl.Window) -> bool {return(
+		window == nil ||
+		sdl.StartTextInput(window) \
+	)}
+stop_text_input :: proc(window: ^sdl.Window) {if window != nil {_ = sdl.StopTextInput(window)}}
+
 // The host has no LG media service. These are UI-only responses; no stream
 // request is read and no audio or video playback is started.
 command :: proc(endpoint: cstring, _: string = "", _: Request_Kind = .Control) -> bool {

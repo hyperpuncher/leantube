@@ -5,6 +5,7 @@ import "./http"
 import "./model"
 import sb "./sponsorblock"
 import yt "./youtube"
+import "core:fmt"
 import "core:strings"
 import "core:sync/chan"
 import "core:thread"
@@ -43,6 +44,7 @@ page, playback: u32
 search_loading: bool
 resolving: bool
 stream_height: int
+stream_hls: bool
 sponsor_segments: [dynamic]sb.Segment
 
 free_network_result :: proc(result: ^Network_Result) {
@@ -69,6 +71,8 @@ network_main :: proc(_: ^thread.Thread) {
 	ids: [model.MAX_VIDEOS][11]u8
 	count, next: int
 	cover_page: u32
+	visitor_data: string
+	defer delete(visitor_data)
 	for !chan.is_closed(network_requests) {
 		request, ready := chan.try_recv(network_requests)
 		if !ready && next < count {
@@ -87,7 +91,9 @@ network_main :: proc(_: ^thread.Thread) {
 		defer delete(request.text)
 		switch request.kind {
 		case .Search:
-			catalog, error := yt.search(&network_client, request.text)
+			catalog, error, visitor := yt.search(&network_client, request.text)
+			delete(visitor_data)
+			visitor_data = visitor
 			cover_page = request.page
 			count, next = len(catalog.videos), 0
 			for video, i in catalog.videos {copy(ids[i][:], transmute([]u8)video.id)}
@@ -95,7 +101,12 @@ network_main :: proc(_: ^thread.Thread) {
 				{kind = .Catalog, page = request.page, error = error, catalog = catalog},
 			) {return}
 		case .Resolve:
-			stream, error := yt.resolve(&network_client, request.text)
+			stream, error := yt.resolve(
+				&network_client,
+				request.text,
+				visitor_data,
+				network_stopping,
+			)
 			if !post_network_result(
 				{
 					kind = .Stream,
@@ -199,6 +210,7 @@ resolve_selected :: proc() {
 	browsing = false
 	loaded = false
 	stream_height = 0
+	stream_hls = false
 	notice = ""
 	dirty = true
 	delete(sponsor_segments); sponsor_segments = nil
@@ -246,13 +258,14 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				notice =
 					result.error == .No_Direct_Stream ? "YouTube did not provide a supported direct stream" : "video resolution failed; try again"
 			} else {
-				stream_height = result.stream.height
+				stream_hls = result.stream.hls
 				load_video(result.stream.url)
 			}
 		case .Segments:
 			if browsing || return_to_grid || result.playback != playback {continue}
 			delete(sponsor_segments)
 			sponsor_segments = result.segments
+			fmt.println("sponsor segments loaded:", len(sponsor_segments))
 			result.segments = nil
 		}
 		dirty = true

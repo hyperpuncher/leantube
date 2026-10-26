@@ -1,6 +1,7 @@
 package main
 
 import clay "../vendor/clay"
+import sb "./sponsorblock"
 import sdl "vendor:sdl3"
 
 Control_Button :: struct {
@@ -67,6 +68,58 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 	}
 }
 
+timeline_span :: proc(id: clay.ElementId, start_ms, end_ms: f64, color: clay.Color, layer: i16) {
+	width := max(0, view_width - scaled(96))
+	if clay.UI(id)(
+	{
+		layout = {
+			sizing = {
+				width = clay.SizingFixed(f32((end_ms - start_ms) / duration_ms) * width),
+				height = clay.SizingFixed(scaled(6)),
+			},
+		},
+		backgroundColor = color,
+		floating = {
+			attachTo = .Parent,
+			offset = {f32(start_ms / duration_ms) * width, 0},
+			zIndex = layer,
+			pointerCaptureMode = .Passthrough,
+		},
+	},
+	) {}
+}
+
+timeline_bar :: proc() {
+	if clay.UI(clay.ID("timeline"))(
+	{
+		layout = {sizing = {width = clay.SizingGrow({}), height = clay.SizingFixed(scaled(6))}},
+		backgroundColor = COLOR_TRACK,
+	},
+	) {
+		if duration_ms > 0 {
+			for segment, i in sponsor_segments {
+				if sb.can_skip(segment, duration_ms) {
+					timeline_span(
+						clay.ID("sponsor-marker", u32(i)),
+						segment.start_ms,
+						segment.end_ms,
+						COLOR_SPONSOR,
+						1,
+					)
+				}
+			}
+			// Progress stays above markers, including when paused inside a segment.
+			timeline_span(
+				clay.ID("timeline-progress"),
+				0,
+				clamp(timeline.position_ms, 0, duration_ms),
+				COLOR_ACCENT,
+				2,
+			)
+		}
+	}
+}
+
 player_layout :: proc(stamp, speed: string) {
 	if clay.UI(clay.ID("root"))(
 	{
@@ -96,31 +149,7 @@ player_layout :: proc(stamp, speed: string) {
 				clip = {horizontal = true, vertical = true},
 			},
 			) {label(loaded ? catalog.videos[selected].title : "Loading video…")}
-			if clay.UI()(
-			{
-				layout = {
-					sizing = {width = clay.SizingGrow({}), height = clay.SizingFixed(scaled(6))},
-				},
-				backgroundColor = COLOR_TRACK,
-			},
-			) {
-				if duration_ms > 0 {
-					if clay.UI()(
-					{
-						layout = {
-							sizing = {
-								width = clay.SizingFixed(
-									f32(clamp(timeline.position_ms / duration_ms, 0, 1)) *
-									(view_width - scaled(96)),
-								),
-								height = clay.SizingFixed(scaled(6)),
-							},
-						},
-						backgroundColor = COLOR_ACCENT,
-					},
-					) {}
-				}
-			}
+			timeline_bar()
 			if clay.UI()(
 			{
 				layout = {

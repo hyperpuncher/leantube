@@ -1,3 +1,6 @@
+The LG text-model keyboard adapter is based on SDL-webOS by Mariotaku.
+It is modified for LeanTube. See SDL-webOS.txt for its license.
+
 LeanTube uses SDL_ttf for text rendering.
 This software is based in part on the work of the FreeType Team.
 Portions of this software are copyright 2025 The FreeType Project

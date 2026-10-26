@@ -23,21 +23,42 @@ enter a query. enter submits; back cancels text entry.
 
 `just dev` opens the local Wayland UI with real search and cover downloads.
 local playback is UI-only. it does not contact the TV.
-`just test-youtube` checks live search, a cover, and direct stream access locally.
+`just test-youtube` checks live search, a cover, direct MP4 access, and 4k HLS
+manifests locally.
 `just test-sponsorblock` checks real Linus Tech Tips sponsor data and skip targets,
 without playback or skip-count reports.
 `just run` opens the installed app on the TV.
-`just capture 3840 2160` requests a capture at the specified size.
+`just capture` uses the tested B9 capture size, 1920×1080. optional width and height
+arguments override it. the TV capture API requires dimensions and rejects 4k;
+this is separate from video playback resolution.
 
-playback currently selects a direct H.264/AAC MP4. the verified test stream is
-360p. 4k with synchronized audio is not complete. streams that require SABR or
-login produce an error. TV text entry and the new playback path still require
-device checks.
+playback now prefers a visionOS HLS master, using the anonymous session returned
+by search. the session stays in worker memory and is not logged or saved.
+if that API does not provide HLS, resolution falls back to a direct H.264/AAC MP4.
+the app requests 3840×2160 through the TV media stack at startup. lower resolutions
+can be selected when the source or connection cannot provide 4k. the quality label
+uses the reported video height, not the largest playlist entry.
+
+B9 checks confirmed remote keyboard search, real covers, automatic 3840×2160
+playback for Linus Tech Tips, and changing captured frames. the quality request
+removed the earlier low-resolution stall. Spring played and sought successfully
+at a reported 2048×858. pause, Back, repeated keyboard activation, and complete
+process/media cleanup passed. the LG keyboard adapter uses SDL-webOS text-model
+code and SDK-generated bindings. audible audio, audio/video synchronization, HDR, 4k60, and
+long playback sessions still need checks.
+
+media-service playback failures remain errors; there is no hidden retry loop.
+SABR-only or login-only replies produce an error. the B9 capture service rejected
+3840×2160 as out of range; 1920×1080 capture worked. this does not establish a
+limit on video decoding or UI rendering.
 
 sponsor skipping uses [SponsorBlock](https://sponsor.ajay.app/) data under
 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).
-only sponsor segments are skipped. lookup sends a four-character hash prefix,
-not the exact video ID. TV skip behavior still requires device checks.
+only sponsor segments are skipped. dark gray timeline ranges mark sections
+that remain eligible for skipping; the red progress fill stays above them.
+lookup sends a four-character hash prefix,
+not the exact video ID. the B9 test confirmed a skip from 88.204 to 109.099 seconds
+on Linus Tech Tips, with before/after frame captures.
 
 local development supports Linux x86-64 and uses the installed SDL3,
 SDL3_ttf, SDL3_image, curl, and OpenSSL libraries.

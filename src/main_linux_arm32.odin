@@ -21,6 +21,7 @@ foreign bridge {
 	tv_poll :: proc() ---
 	tv_attach_window :: proc(app_id: cstring, display, surface: rawptr) -> bool ---
 	tv_attach_media :: proc(app_id, media_id, video_data: cstring) -> bool ---
+	tv_update_media :: proc(video_data: cstring) ---
 	tv_clay_abi :: proc(command_size, config_size, error_size: u32) -> bool ---
 	tv_release_media :: proc() ---
 	tv_raise :: proc() ---
@@ -32,6 +33,7 @@ registered: bool
 unloaded: bool
 media_id: string
 video_metadata: []u8
+video_frame_rate: f64
 load_replied: bool
 
 send :: proc(endpoint: cstring, payload: string, kind: Request_Kind) -> bool {
@@ -98,9 +100,12 @@ reply :: proc "c" (bus, message, data: rawptr) -> bool {
 		if info, found := root["videoInfo"].(json.Object); found {
 			width, w_ok := model.number(info["width"])
 			height, h_ok := model.number(info["height"])
+			if h_ok && height > 0 {stream_height = int(height); dirty = true}
 			fps, f_ok := model.number(info["frameRate"])
+			if f_ok && fps > 0 {video_frame_rate = fps}
+			if w_ok && h_ok && f_ok {fmt.printf("video %.0fx%.0f fps=%g\n", width, height, fps)}
 			scan, s_ok := info["scanType"].(json.String)
-			if w_ok && h_ok && f_ok && s_ok && scan == "progressive" {
+			if w_ok && h_ok && video_frame_rate > 0 && s_ok && scan == "progressive" {
 				metadata := struct {
 					ctx:     string `json:"context"`,
 					content: string,
@@ -113,12 +118,23 @@ reply :: proc "c" (bus, message, data: rawptr) -> bool {
 				} {
 					ctx     = media_id,
 					content = "movie",
-					video   = {fps, "VIDEO_PROGRESSIVE", i64(width), i64(height), "network"},
+					video   = {
+						video_frame_rate,
+						"VIDEO_PROGRESSIVE",
+						i64(width),
+						i64(height),
+						"network",
+					},
 				}
 				delete(video_metadata)
 				encoded, err := json.marshal(metadata)
 				if err == nil {
 					video_metadata = encoded
+					if loaded {
+						update := strings.clone_to_cstring(string(encoded))
+						tv_update_media(update)
+						delete(update)
+					}
 				}
 			} else {fmt.eprintln("unsupported video metadata")}
 		}
@@ -139,6 +155,12 @@ reply :: proc "c" (bus, message, data: rawptr) -> bool {
 			delete(id)
 			foreground()
 			command("luna://com.webos.media/play")
+			if stream_hls {
+				command(
+					"luna://com.webos.media/setStreamQuality",
+					`,"width":3840,"height":2160,"bitRate":20000000,"init":false`,
+				)
+			}
 		}
 		ms, valid := model.number(root["currentTime"])
 		if time, found := root["currentTime"].(json.Object);
@@ -166,7 +188,8 @@ stop_playback :: proc() {
 	tv_release_media()
 	delete(media_id); media_id = ""
 	delete(video_metadata); video_metadata = nil
-	loaded = false; paused = false; resolving = false
+	video_frame_rate = 0
+	loaded = false; paused = false; resolving = false; stream_hls = false
 	delete(sponsor_segments); sponsor_segments = nil
 	timeline = {
 		seek_target_ms = -1,
@@ -226,6 +249,7 @@ main :: proc() {
 	renderer: ^sdl.Renderer
 	clay_memory: []u8
 	defer {
+		if search_editing {finish_search_input(window)}
 		stop_playback()
 		stop_network()
 		delete(search_text)

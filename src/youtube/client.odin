@@ -18,12 +18,20 @@ Error :: enum {
 Stream :: struct {
 	url:    string,
 	height: int,
+	hls:    bool,
 }
 
 // Client profiles follow yt-dlp's YouTube extractor. No account cookies or
 // attestation tokens are used. Unsupported playback must fail visibly.
 ANDROID_VERSION :: "21.26.364"
 ANDROID_AGENT :: "com.google.android.youtube/" + ANDROID_VERSION + " (Linux; U; Android 11) gzip"
+VISIONOS_VERSION :: "1.02"
+VISIONOS_AGENT :: "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
+Profile :: enum {
+	Web,
+	Android,
+	VisionOS,
+}
 
 field :: proc(value: json.Value, name: string) -> json.Value {
 	object, ok := value.(json.Object)
@@ -99,26 +107,42 @@ collect_videos :: proc(value: json.Value, catalog: ^model.Catalog) {
 	}
 }
 
-parse_search :: proc(data, query: string) -> (catalog: model.Catalog, error: Error) {
+// The caller owns visitor_data. Keep it on the network worker, not in UI metadata.
+parse_search :: proc(
+	data, query: string,
+) -> (
+	catalog: model.Catalog,
+	error: Error,
+	visitor_data: string,
+) {
 	value, err := json.parse(data)
-	if err != .None {return {}, .Invalid_Response}
+	if err != .None {return {}, .Invalid_Response, ""}
 	defer json.destroy_value(value)
 	primary := field(
 		field(field(value, "contents"), "twoColumnSearchResultsRenderer"),
 		"primaryContents",
 	)
-	if primary == nil {return {}, .Invalid_Response}
+	if primary == nil {return {}, .Invalid_Response, ""}
+	if visitor, ok := field(field(value, "responseContext"), "visitorData").(json.String); ok {
+		visitor_data = strings.clone(string(visitor))
+	}
 	catalog.query = strings.clone(query)
 	collect_videos(primary, &catalog)
 	return
 }
 
-parse_player :: proc(data: string) -> (stream: Stream, error: Error) {
+parse_player :: proc(data: string, hls: bool = false) -> (stream: Stream, error: Error) {
 	value, err := json.parse(data)
 	if err != .None {return {}, .Invalid_Response}
 	defer json.destroy_value(value)
 	status, _ := field(field(value, "playabilityStatus"), "status").(json.String)
 	if status != "OK" {return {}, .Unavailable}
+	if hls {
+		url, _ := field(field(value, "streamingData"), "hlsManifestUrl").(json.String)
+		if !strings.has_prefix(string(url), "https://") {return {}, .No_Direct_Stream}
+		// A master playlist does not tell us the resolution chosen by the decoder.
+		return {url = strings.clone(string(url)), hls = true}, .None
+	}
 	formats, _ := field(field(value, "streamingData"), "formats").(json.Array)
 	for format in formats {
 		url, ok := field(format, "url").(json.String)
@@ -131,7 +155,10 @@ parse_player :: proc(data: string) -> (stream: Stream, error: Error) {
 		   !strings.contains(string(mime), "mp4a") {continue}
 		if height > f64(stream.height) {
 			delete(stream.url)
-			stream = {strings.clone(string(url)), int(height)}
+			stream = {
+				url    = strings.clone(string(url)),
+				height = int(height),
+			}
 		}
 	}
 	if stream.url == "" {return {}, .No_Direct_Stream}
@@ -139,15 +166,17 @@ parse_player :: proc(data: string) -> (stream: Stream, error: Error) {
 }
 
 Client_Context :: struct {
-	clientName, clientVersion, hl, gl: string,
-	androidSdkVersion:                 int `json:",omitempty"`,
-	userAgent, osName, osVersion:      string `json:",omitempty"`,
+	clientName, clientVersion, hl, gl:              string,
+	androidSdkVersion:                              int `json:",omitempty"`,
+	userAgent, osName, osVersion:                   string `json:",omitempty"`,
+	deviceMake, deviceModel, visitorData, timeZone: string `json:",omitempty"`,
+	utcOffsetMinutes:                               int,
 }
 api_post :: proc(
 	client: ^http.Client,
 	endpoint: string,
 	payload: []u8,
-	android: bool = false,
+	profile: Profile = .Web,
 ) -> (
 	http.Response,
 	Error,
@@ -155,7 +184,24 @@ api_post :: proc(
 	url := fmt.aprintf("https://www.youtube.com/youtubei/v1/%s?prettyPrint=false", endpoint)
 	defer delete(url)
 	headers := []string{"Content-Type: application/json", "Origin: https://www.youtube.com"}
-	if android {headers = {"Content-Type: application/json", "Origin: https://www.youtube.com", "X-YouTube-Client-Name: 3", "X-YouTube-Client-Version: " + ANDROID_VERSION, "User-Agent: " + ANDROID_AGENT}}
+	#partial switch profile {
+	case .Android:
+		headers = {
+			"Content-Type: application/json",
+			"Origin: https://www.youtube.com",
+			"X-YouTube-Client-Name: 3",
+			"X-YouTube-Client-Version: " + ANDROID_VERSION,
+			"User-Agent: " + ANDROID_AGENT,
+		}
+	case .VisionOS:
+		headers = {
+			"Content-Type: application/json",
+			"Origin: https://www.youtube.com",
+			"X-YouTube-Client-Name: 101",
+			"X-YouTube-Client-Version: " + VISIONOS_VERSION,
+			"User-Agent: " + VISIONOS_AGENT,
+		}
+	}
 	response, err := http.request(
 		client,
 		url,
@@ -168,8 +214,8 @@ api_post :: proc(
 	if response.status != 200 {delete(response.body); return {}, .HTTP}
 	return response, .None
 }
-search :: proc(client: ^http.Client, query: string) -> (model.Catalog, Error) {
-	if strings.trim_space(query) == "" || len(query) > 512 {return {}, .Invalid_Response}
+search :: proc(client: ^http.Client, query: string) -> (model.Catalog, Error, string) {
+	if strings.trim_space(query) == "" || len(query) > 512 {return {}, .Invalid_Response, ""}
 	request := struct {
 		ctx:           struct {
 			client: Client_Context,
@@ -188,42 +234,96 @@ search :: proc(client: ^http.Client, query: string) -> (model.Catalog, Error) {
 		params = "EgIQAfABAQ==",
 	}
 	body, err := json.marshal(request)
-	if err != nil {return {}, .Invalid_Response}
+	if err != nil {return {}, .Invalid_Response, ""}
 	defer delete(body)
 	response, error := api_post(client, "search", body)
-	if error != .None {return {}, error}
+	if error != .None {return {}, error, ""}
 	defer delete(response.body)
 	return parse_search(string(response.body[:]), query)
 }
-resolve :: proc(client: ^http.Client, id: string) -> (Stream, Error) {
+Player_Request :: #type proc(
+	client: ^http.Client,
+	id: string,
+	profile: Profile,
+	visitor_data: string,
+) -> (
+	Stream,
+	Error,
+)
+
+resolve :: proc(
+	client: ^http.Client,
+	id: string,
+	visitor_data: string = "",
+	stop_when: proc() -> bool = nil,
+	request: Player_Request = player_request,
+) -> (
+	Stream,
+	Error,
+) {
 	if !video_id_valid(id) {return {}, .Invalid_Response}
+	if stop_when != nil && stop_when() {return {}, .Unavailable}
+	if visitor_data != "" {
+		stream, error := request(client, id, .VisionOS, visitor_data)
+		if error == .None {return stream, error}
+		if stop_when != nil && stop_when() {return {}, .Unavailable}
+	}
+	return request(client, id, .Android, "")
+}
+
+player_request :: proc(
+	client: ^http.Client,
+	id: string,
+	profile: Profile,
+	visitor_data: string = "",
+) -> (
+	Stream,
+	Error,
+) {
+	profile_context := Client_Context {
+		clientName        = "ANDROID",
+		clientVersion     = ANDROID_VERSION,
+		hl                = "en",
+		gl                = "US",
+		androidSdkVersion = 30,
+		userAgent         = ANDROID_AGENT,
+		osName            = "Android",
+		osVersion         = "11",
+	}
+	if profile == .VisionOS {
+		profile_context = {
+			clientName    = "VISIONOS",
+			clientVersion = VISIONOS_VERSION,
+			hl            = "en",
+			gl            = "US",
+			deviceMake    = "Apple",
+			deviceModel   = "RealityDevice17,1",
+			userAgent     = VISIONOS_AGENT,
+			osName        = "visionOS",
+			osVersion     = "26.5.23O471",
+			timeZone      = "UTC",
+			visitorData   = visitor_data,
+		}
+	}
 	request := struct {
-		ctx:     struct {
+		ctx:                         struct {
 			client: Client_Context,
 		} `json:"context"`,
-		videoId: string,
+		videoId:                     string,
+		contentCheckOk, racyCheckOk: bool,
 	} {
-		ctx = {
-			client = {
-				clientName = "ANDROID",
-				clientVersion = ANDROID_VERSION,
-				hl = "en",
-				gl = "US",
-				androidSdkVersion = 30,
-				userAgent = ANDROID_AGENT,
-				osName = "Android",
-				osVersion = "11",
-			},
-		},
+		ctx = {client = profile_context},
 		videoId = id,
+		contentCheckOk = true,
+		racyCheckOk = true,
 	}
 	body, err := json.marshal(request)
 	if err != nil {return {}, .Invalid_Response}
 	defer delete(body)
-	response, error := api_post(client, "player", body, true)
+	response, error := api_post(client, "player", body, profile)
 	if error != .None {return {}, error}
 	defer delete(response.body)
-	return parse_player(string(response.body[:]))
+	return parse_player(string(response.body[:]), profile == .VisionOS)
 }
 
 fetch_thumbnail :: proc(client: ^http.Client, url: string) -> (http.Response, http.Error) {

@@ -5,8 +5,8 @@ import "core:testing"
 
 @(test)
 search_owns_metadata_and_skips_live_duplicate_and_invalid_entries :: proc(t: ^testing.T) {
-	catalog, error := parse_search(
-		`{"contents":{"twoColumnSearchResultsRenderer":{"primaryContents":{"items":[
+	catalog, error, visitor := parse_search(
+		`{"responseContext":{"visitorData":"test-session"},"contents":{"twoColumnSearchResultsRenderer":{"primaryContents":{"items":[
 		{"videoRenderer":{"videoId":"aqz-KE-bpKQ","title":{"runs":[{"text":"café "},{"text":"movie"}]},"ownerText":{"runs":[{"text":"Blender"}]},"lengthText":{"simpleText":"1:02:03"}}},
 		{"videoRenderer":{"videoId":"aqz-KE-bpKQ","title":{"simpleText":"duplicate"},"lengthText":{"simpleText":"1:00"}}},
 		{"videoRenderer":{"videoId":"C5WDBA2i9nE","title":{"simpleText":"live"}}},
@@ -15,6 +15,8 @@ search_owns_metadata_and_skips_live_duplicate_and_invalid_entries :: proc(t: ^te
 		"cinéma",
 	)
 	defer model.catalog_destroy(&catalog)
+	defer delete(visitor)
+	testing.expect_value(t, visitor, "test-session")
 	if !testing.expect_value(t, error, .None) {return}
 	if !testing.expect_value(t, len(catalog.videos), 1) {return}
 	testing.expect_value(t, catalog.query, "cinéma")
@@ -26,16 +28,18 @@ search_owns_metadata_and_skips_live_duplicate_and_invalid_entries :: proc(t: ^te
 
 @(test)
 empty_results_are_distinct_from_invalid_responses :: proc(t: ^testing.T) {
-	catalog, error := parse_search(
+	catalog, error, visitor := parse_search(
 		`{"contents":{"twoColumnSearchResultsRenderer":{"primaryContents":{}}}}`,
 		"nothing",
 	)
 	defer model.catalog_destroy(&catalog)
+	defer delete(visitor)
 	testing.expect_value(t, error, .None)
 	testing.expect_value(t, len(catalog.videos), 0)
 	for data in ([]string{`{`, `{}`, `{"error":{"code":403}}`}) {
-		failed, err := parse_search(data, "query")
+		failed, err, token := parse_search(data, "query")
 		model.catalog_destroy(&failed)
+		delete(token)
 		testing.expect_value(t, err, .Invalid_Response)
 	}
 }

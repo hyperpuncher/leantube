@@ -74,6 +74,18 @@ fetch :: proc(client: ^http.Client, id: string) -> (segments: [dynamic]Segment) 
 	return
 }
 
+// Shared by the skip action and its timeline markers.
+can_skip :: proc(segment: Segment, duration_ms: f64) -> bool {
+	return(
+		!segment.skipped &&
+		segment.start_ms >= 0 &&
+		segment.end_ms > segment.start_ms &&
+		segment.end_ms <= duration_ms &&
+		(segment.video_duration_ms <= 0 ||
+				math.abs(segment.video_duration_ms - duration_ms) <= 1000) \
+	)
+}
+
 // Skip an overlapping group once per playback. This avoids repeating a seek
 // on stale media notifications and lets a user intentionally rewind to it.
 skip_target :: proc(segments: []Segment, position_ms, duration_ms: f64) -> f64 {
@@ -81,9 +93,7 @@ skip_target :: proc(segments: []Segment, position_ms, duration_ms: f64) -> f64 {
 	for {
 		before := target
 		for segment in segments {
-			if segment.skipped || segment.end_ms > duration_ms {continue}
-			if segment.video_duration_ms > 0 &&
-			   math.abs(segment.video_duration_ms - duration_ms) > 1000 {continue}
+			if !can_skip(segment, duration_ms) {continue}
 			if segment.start_ms <= target &&
 			   segment.end_ms > position_ms {target = max(target, segment.end_ms)}
 		}
