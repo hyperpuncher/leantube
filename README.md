@@ -23,8 +23,8 @@ enter a query. enter submits; back cancels text entry.
 
 `just dev` opens the local Wayland UI with real search and cover downloads.
 local playback is UI-only. it does not contact the TV.
-`just test-youtube` checks live search, a cover, direct MP4 access, and 4k HLS
-manifests locally.
+`just test-youtube` checks live search, a cover, direct MP4 access, and the
+private 4k HLS master with its original AAC audio locally.
 `just test-sponsorblock` checks real Linus Tech Tips sponsor data and skip targets,
 without playback or skip-count reports.
 `just run` opens the installed app on the TV.
@@ -34,20 +34,18 @@ this is separate from video playback resolution.
 
 playback now prefers a visionOS HLS master, using the anonymous session returned
 by search. the session stays in worker memory and is not logged or saved.
+YouTube often returns a large master with no audio renditions. the app rewrites
+a private master with one highest variant and adds the original AAC track from
+the player byte ranges. the private files are mode 0600 and deleted on stop.
 if that API does not provide HLS, resolution falls back to a direct H.264/AAC MP4.
-the app requests the video’s advertised maximum resolution and bitrate through
-the TV media stack at startup, with no fixed quality cap. lower resolutions can be
-selected when the source or connection cannot provide 4k. the quality label uses
-the reported video height, not the largest playlist entry.
+there is no fixed quality cap. the quality label uses the standard short-side
+tier, so 3840×1920 is `2160p`, not a raw height.
 
 B9 checks confirmed remote keyboard search, real covers, 4k playback for Linus
-Tech Tips, and changing captured frames. Spring played and sought at 2048×858.
-pause, Back, repeated keyboard activation, and complete process/media cleanup
-passed. startup took about 5 s with one audio track and about 15 s with six, so
-media pipeline startup still needs work. the player selects the original audio
-track when the service reports it. the LG keyboard adapter uses SDL-webOS
-text-model code and SDK-generated bindings. audible audio, audio/video
-synchronization, HDR, 4k60, and long playback sessions still need checks.
+Tech Tips, audible AAC audio, seeking with synchronized audio, pause, Back, and
+complete process/media cleanup. startup is about 2 to 3 seconds. the LG keyboard
+adapter uses SDL-webOS text-model code and SDK-generated bindings. HDR, 4k60,
+and long playback sessions still need checks.
 
 media-service playback failures remain errors; there is no hidden retry loop.
 SABR-only or login-only replies produce an error. the B9 capture service rejected

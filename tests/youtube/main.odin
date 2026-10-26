@@ -4,6 +4,7 @@ import "../../src/http"
 import "../../src/model"
 import yt "../../src/youtube"
 import "core:fmt"
+import "core:os"
 import "core:strings"
 
 // Explicit live check. Print metadata and status only, never signed URLs.
@@ -11,7 +12,7 @@ main :: proc() {
 	client, error := http.open()
 	assert(error == nil, "HTTPS setup failed")
 	defer http.close(&client)
-	catalog, search_error, visitor := yt.search(&client, "Blender open movies")
+	catalog, search_error, visitor := yt.search(&client, "Linus Tech Tips")
 	assert(search_error == .None, "native search failed")
 	defer model.catalog_destroy(&catalog)
 	defer delete(visitor)
@@ -28,39 +29,41 @@ main :: proc() {
 	assert(cdn_error == nil && response.status == 206, "resolved CDN stream could not be read")
 	defer delete(response.body)
 	fmt.println("native combined stream verified; height:", stream.height)
+	defer yt.remove_local_hls()
 	for id in ([]string{"C5WDBA2i9nE", "DN953UW8iJ8"}) {
 		hls, hls_error := yt.resolve(&client, id, visitor)
 		defer delete(hls.url)
-		assert(hls_error == .None && hls.hls, "native HLS resolution failed")
-		defer delete(hls.audio_language)
+		defer delete(hls.audio_url)
+		assert(hls_error == .None, "native HLS resolution failed")
 		assert(hls.height == 0, "a master playlist must not claim the displayed resolution")
-		master, fetch_error := http.request(&client, hls.url)
-		defer delete(master.body)
-		assert(fetch_error == nil && master.status == 200, "HLS master could not be read")
-		text := string(master.body[:])
+		assert(strings.has_prefix(hls.url, "file://"), "HLS master was not localized")
+		assert(hls.audio_url != "", "original AAC audio was not found")
+		master, master_error := os.read_entire_file_from_path(yt.LOCAL_HLS_PATH, context.allocator)
+		defer delete(master)
+		assert(master_error == nil, "local HLS master could not be read")
+		text := string(master[:])
 		assert(
 			strings.has_prefix(text, "#EXTM3U") && strings.contains(text, "RESOLUTION=3840x2160"),
 			"expected a 4k HLS master",
 		)
+		assert(strings.contains(text, "vp09") && strings.contains(text, "mp4a.40.2"))
+		audio, audio_error := os.read_entire_file_from_path(
+			yt.LOCAL_AUDIO_HLS_PATH,
+			context.allocator,
+		)
+		defer delete(audio)
+		assert(audio_error == nil, "local HLS audio playlist could not be read")
+		audio_text := string(audio[:])
 		assert(
-			strings.contains(text, "vp09") && strings.contains(text, "mp4a.40.2"),
-			"expected VP9 and AAC variants",
+			strings.contains(audio_text, "#EXT-X-MAP") &&
+			strings.contains(audio_text, "#EXT-X-BYTERANGE"),
+			"audio playlist has no byte-range segments",
 		)
 		fmt.println(
-			"native HLS master verified; 4k VP9/AAC advertised; original audio:",
-			hls.audio_language,
-			"maximum:",
-			hls.max_width,
-			"x",
-			hls.max_height,
-			"at",
-			hls.max_bitrate,
-			"bps; video:",
+			"native HLS master verified; original AAC track; video:",
 			id,
+			"audio bytes:",
+			hls.audio_content_size,
 		)
-		if id == "C5WDBA2i9nE" {
-			assert(hls.audio_language == "en", "default audio language was not detected")
-		}
-		assert(hls.max_height >= 2160, "source 4k maximum was not detected")
 	}
 }

@@ -2,6 +2,7 @@ package main
 
 import clay "../vendor/clay"
 import "./model"
+import yt "./youtube"
 import "base:runtime"
 import "core:encoding/json"
 import "core:fmt"
@@ -35,7 +36,6 @@ media_id: string
 video_metadata: []u8
 video_frame_rate: f64
 video_seen: bool
-audio_selected: bool
 load_replied: bool
 
 send :: proc(endpoint: cstring, payload: string, kind: Request_Kind) -> bool {
@@ -95,18 +95,6 @@ reply :: proc "c" (bus, message, data: rawptr) -> bool {
 			fmt.println("media session:", media_id)
 			command("luna://com.webos.media/subscribe", "", .Subscribe)
 			foreground()
-			// Queue the initial quality before playback so the pipeline does not
-			// start low and re-buffer after a later quality switch.
-			if playback_source.hls && playback_source.max_bitrate > 0 {
-				extra := fmt.aprintf(
-					`,"width":%d,"height":%d,"bitRate":%d,"init":true`,
-					playback_source.max_width,
-					playback_source.max_height,
-					playback_source.max_bitrate,
-				)
-				defer delete(extra)
-				command("luna://com.webos.media/setStreamQuality", extra)
-			}
 			command("luna://com.webos.media/play")
 		}
 	}
@@ -114,15 +102,24 @@ reply :: proc "c" (bus, message, data: rawptr) -> bool {
 		if info, found := root["videoInfo"].(json.Object); found {
 			width, w_ok := model.number(info["width"])
 			height, h_ok := model.number(info["height"])
-			if h_ok && height > 0 {stream_height = int(height); dirty = true}
+			if w_ok && h_ok && width > 0 && height > 0 {
+				if stream_width != int(width) || stream_height != int(height) {
+					stream_width = int(width)
+					stream_height = int(height)
+					dirty = true
+					fmt.printf(
+						"video %dx%d after %d ms\n",
+						int(width),
+						int(height),
+						sdl.GetTicks() - playback_requested_at,
+					)
+				}
+			}
 			fps, f_ok := model.number(info["frameRate"])
 			if f_ok && fps > 0 {video_frame_rate = fps}
-			if w_ok && h_ok && f_ok {
-				if !video_seen {
-					video_seen = true
-					fmt.printf("first video after %d ms\n", sdl.GetTicks() - playback_requested_at)
-				}
-				fmt.printf("video %.0fx%.0f fps=%g\n", width, height, fps)
+			if w_ok && h_ok && f_ok && !video_seen {
+				video_seen = true
+				fmt.printf("first video after %d ms\n", sdl.GetTicks() - playback_requested_at)
 			}
 			scan, s_ok := info["scanType"].(json.String)
 			if w_ok && h_ok && video_frame_rate > 0 && s_ok && scan == "progressive" {
@@ -163,18 +160,6 @@ reply :: proc "c" (bus, message, data: rawptr) -> bool {
 		if source, found := root["sourceInfo"].(json.Object); found {
 			duration_ms = model.source_duration(source)
 			fmt.printf("source duration_ms=%.0f\n", duration_ms)
-			if language := playback_source.audio_language; language != "" && !audio_selected {
-				audio_selected = true
-				switch index := model.audio_track_index(source, language); {
-				case index >= 0:
-					extra := fmt.aprintf(`,"type":"audio","index":%d`, index)
-					defer delete(extra)
-					fmt.println("selecting original audio track:", index)
-					command("luna://com.webos.media/selectTrack", extra)
-				case:
-					fmt.println("original audio track not found; keeping the service default")
-				}
-			}
 			dirty = true
 		}
 		if _, found := root["loadCompleted"]; found {
@@ -212,13 +197,12 @@ stop_playback :: proc() {
 		if !unloaded {running = false}
 	}
 	tv_release_media()
+	yt.remove_local_hls()
 	delete(media_id); media_id = ""
 	delete(video_metadata); video_metadata = nil
 	video_frame_rate = 0
-	video_seen = false; audio_selected = false
+	video_seen = false
 	loaded = false; paused = false; resolving = false
-	delete(playback_source.audio_language)
-	playback_source = {}
 	delete(sponsor_segments); sponsor_segments = nil
 	timeline = {
 		seek_target_ms = -1,

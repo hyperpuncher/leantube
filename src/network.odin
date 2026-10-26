@@ -43,15 +43,7 @@ network_event: sdl.EventType
 page, playback: u32
 search_loading: bool
 resolving: bool
-Playback_Source :: struct {
-	hls:            bool,
-	audio_language: string,
-	max_width:      int,
-	max_height:     int,
-	max_bitrate:    int,
-}
-stream_height: int
-playback_source: Playback_Source
+stream_width, stream_height: int
 playback_requested_at: u64
 sponsor_segments: [dynamic]sb.Segment
 
@@ -59,7 +51,7 @@ free_network_result :: proc(result: ^Network_Result) {
 	model.catalog_destroy(&result.catalog)
 	delete(result.bytes)
 	delete(result.stream.url)
-	delete(result.stream.audio_language)
+	delete(result.stream.audio_url)
 	delete(result.segments)
 	result^ = {}
 }
@@ -193,7 +185,7 @@ clear_catalog :: proc() {
 	}
 	model.catalog_destroy(&catalog)
 }
-start_search :: proc(query: string = "Blender open movies") {
+start_search :: proc(query: string = "Linus Tech Tips") {
 	clean_query := strings.trim_space(query)
 	if clean_query == "" || len(clean_query) > 512 {return}
 	// Clone before clearing the old page; query may point into its text.
@@ -215,13 +207,12 @@ start_search :: proc(query: string = "Blender open movies") {
 resolve_selected :: proc() {
 	if selected < 0 || selected >= len(catalog.videos) {return}
 	playback += 1
+	yt.remove_local_hls()
 	playback_requested_at = sdl.GetTicks()
 	resolving = true
 	browsing = false
 	loaded = false
-	stream_height = 0
-	delete(playback_source.audio_language)
-	playback_source = {}
+	stream_width, stream_height = 0, 0
 	notice = ""
 	dirty = true
 	delete(sponsor_segments); sponsor_segments = nil
@@ -269,14 +260,6 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				notice =
 					result.error == .No_Direct_Stream ? "YouTube did not provide a supported direct stream" : "video resolution failed; try again"
 			} else {
-				playback_source = {
-					hls            = result.stream.hls,
-					audio_language = result.stream.audio_language,
-					max_width      = result.stream.max_width,
-					max_height     = result.stream.max_height,
-					max_bitrate    = result.stream.max_bitrate,
-				}
-				result.stream.audio_language = ""
 				load_video(result.stream.url)
 			}
 		case .Segments:

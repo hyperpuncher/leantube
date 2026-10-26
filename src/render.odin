@@ -66,8 +66,8 @@ render :: proc(renderer: ^sdl.Renderer, wheel: f32 = 0, dt: f32 = 1.0 / 60) -> b
 		stamp = fmt.aprintf("%s / %s", elapsed, total)
 		delete(elapsed)
 		delete(total)
-		speed =
-			stream_height > 0 ? fmt.aprintf("%gx · %dp", rate, stream_height) : fmt.aprintf("%gx", rate)
+		quality := model.quality_label(stream_width, stream_height)
+		speed = quality != "" ? fmt.aprintf("%gx · %s", rate, quality) : fmt.aprintf("%gx", rate)
 		player_layout(stamp, speed)
 	}
 	commands := clay.EndLayout(0)

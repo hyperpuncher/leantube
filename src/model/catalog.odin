@@ -14,6 +14,37 @@ Catalog :: struct {
 	videos: [dynamic]Video,
 }
 
+QUALITY_TIERS := [?]struct {
+	short_side: int,
+	label:      string,
+} {
+	{144, "144p"},
+	{240, "240p"},
+	{360, "360p"},
+	{480, "480p"},
+	{720, "720p"},
+	{1080, "1080p"},
+	{1440, "1440p"},
+	{2160, "2160p"},
+}
+
+// The short side identifies the quality tier. Wide films such as 1920x804
+// are 1080p uploads, not 804p.
+quality_tier_index :: proc(width, height: int) -> int {
+	if width <= 0 || height <= 0 {return -1}
+	short_side := min(width, height)
+	for tier, index in QUALITY_TIERS {
+		if short_side <= tier.short_side {return index}
+	}
+	return len(QUALITY_TIERS) - 1
+}
+
+quality_label :: proc(width, height: int) -> string {
+	index := quality_tier_index(width, height)
+	return index >= 0 ? QUALITY_TIERS[index].label : ""
+}
+
+
 time_label :: proc(ms: f64, zero: string = "00:00") -> string {
 	if ms <= 0 {return strings.clone(zero)}
 	seconds := i64(ms / 1000)

@@ -17,6 +17,16 @@ time_labels_handle_hours_and_unknown_duration :: proc(t: ^testing.T) {
 }
 
 @(test)
+quality_labels_use_the_standard_tier_not_the_raw_frame_size :: proc(t: ^testing.T) {
+	for c in ([]struct {
+			width, height: int,
+			label:         string,
+		}{{1920, 804, "1080p"}, {2048, 858, "1080p"}, {3840, 1600, "2160p"}, {1280, 720, "720p"}, {854, 480, "480p"}, {1440, 1080, "1080p"}, {2560, 1080, "1080p"}, {1080, 1920, "1080p"}, {0, 0, ""}}) {
+		testing.expect_value(t, quality_label(c.width, c.height), c.label)
+	}
+}
+
+@(test)
 grid_navigation_preserves_rows_and_handles_missing_cards :: proc(t: ^testing.T) {
 	testing.expect_value(t, grid_move(0, 6, -1, 0), 0)
 	testing.expect_value(t, grid_move(2, 6, 1, 0), 2)

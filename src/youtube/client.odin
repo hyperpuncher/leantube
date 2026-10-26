@@ -16,13 +16,13 @@ Error :: enum {
 	No_Direct_Stream,
 }
 Stream :: struct {
-	url:            string,
-	height:         int,
-	hls:            bool,
-	audio_language: string,
-	max_width:      int,
-	max_height:     int,
-	max_bitrate:    int,
+	url:                string,
+	height:             int,
+	audio_url:          string,
+	audio_init_end:     int,
+	audio_index_end:    int,
+	audio_content_size: int,
+	audio_duration_ms:  f64,
 }
 
 // Client profiles follow yt-dlp's YouTube extractor. No account cookies or
@@ -135,19 +135,63 @@ parse_search :: proc(
 	return
 }
 
-// YouTube marks the original audio track with audioIsDefault. Its id is a
-// language tag such as "en.4". HLS renditions do not carry this default flag.
-original_audio_language :: proc(formats: json.Array) -> string {
+Audio_Format :: struct {
+	url:          string,
+	init_end:     int,
+	index_end:    int,
+	content_size: int,
+	duration_ms:  f64,
+	bitrate:      int,
+}
+
+numeric :: proc(value: json.Value) -> (f64, bool) {
+	if number, ok := model.number(value); ok {return number, true}
+	if text, ok := value.(json.String); ok {
+		if number, parsed := strconv.parse_f64(string(text)); parsed {return number, true}
+	}
+	return 0, false
+}
+
+// Prefer the default AAC-LC rendition. When the response has no audioTrack
+// metadata, the original rendition is the one without xtags; dubbed tracks
+// carry xtags. Its byte ranges let HLS serve the AAC track as a rendition.
+original_audio :: proc(formats: json.Array) -> (audio: Audio_Format) {
 	for format in formats {
+		mime, mime_ok := field(format, "mimeType").(json.String)
+		if !mime_ok ||
+		   !strings.has_prefix(string(mime), "audio/mp4;") ||
+		   !strings.contains(string(mime), "mp4a.40.2") {continue}
 		track := field(format, "audioTrack")
 		default, marked := field(track, "audioIsDefault").(json.Boolean)
-		id, tagged := field(track, "id").(json.String)
-		if !marked || !bool(default) || !tagged {continue}
-		language := string(id)
-		if dot := strings.index_byte(language, '.'); dot > 0 {language = language[:dot]}
-		return strings.clone(language)
+		if marked && !bool(default) {continue}
+		if !marked {
+			if xtags, dubbed := field(format, "xtags").(json.String); dubbed && len(xtags) > 0 {
+				continue
+			}
+		}
+		url, linked := field(format, "url").(json.String)
+		init_range := field(format, "initRange")
+		index_range := field(format, "indexRange")
+		init_end, has_init := numeric(field(init_range, "end"))
+		index_end, has_index := numeric(field(index_range, "end"))
+		content_size, has_size := numeric(field(format, "contentLength"))
+		duration, has_duration := numeric(field(format, "approxDurationMs"))
+		bitrate, has_bitrate := numeric(field(format, "bitrate"))
+		if !linked || !has_init || !has_index || !has_size || !has_duration || !has_bitrate {
+			continue
+		}
+		if audio.url != "" && int(bitrate) <= audio.bitrate {continue}
+		delete(audio.url)
+		audio = {
+			url          = strings.clone(string(url)),
+			init_end     = int(init_end),
+			index_end    = int(index_end),
+			content_size = int(content_size),
+			duration_ms  = duration,
+			bitrate      = int(bitrate),
+		}
 	}
-	return ""
+	return
 }
 
 parse_player :: proc(data: string, hls: bool = false) -> (stream: Stream, error: Error) {
@@ -160,24 +204,14 @@ parse_player :: proc(data: string, hls: bool = false) -> (stream: Stream, error:
 		url, _ := field(field(value, "streamingData"), "hlsManifestUrl").(json.String)
 		if !strings.has_prefix(string(url), "https://") {return {}, .No_Direct_Stream}
 		formats, _ := field(field(value, "streamingData"), "adaptiveFormats").(json.Array)
+		audio := original_audio(formats)
 		stream = {
-			url            = strings.clone(string(url)),
-			hls            = true,
-			audio_language = original_audio_language(formats),
-		}
-		// Request the source maximum, not a fixed ceiling. Height decides first
-		// so a wide 4k video is not mislabelled by its shorter dimension.
-		for format in formats {
-			width, has_width := model.number(field(format, "width"))
-			height, has_height := model.number(field(format, "height"))
-			bitrate, has_bitrate := model.number(field(format, "bitrate"))
-			if !has_width || !has_height || !has_bitrate || width <= 0 || height <= 0 {continue}
-			if int(height) > stream.max_height ||
-			   (int(height) == stream.max_height && int(bitrate) > stream.max_bitrate) {
-				stream.max_width = int(width)
-				stream.max_height = int(height)
-				stream.max_bitrate = int(bitrate)
-			}
+			url                = strings.clone(string(url)),
+			audio_url          = audio.url,
+			audio_init_end     = audio.init_end,
+			audio_index_end    = audio.index_end,
+			audio_content_size = audio.content_size,
+			audio_duration_ms  = audio.duration_ms,
 		}
 		return stream, .None
 	}
@@ -354,7 +388,9 @@ player_request :: proc(
 	response, error := api_post(client, "player", body, profile)
 	if error != .None {return {}, error}
 	defer delete(response.body)
-	return parse_player(string(response.body[:]), profile == .VisionOS)
+	stream, parse_error := parse_player(string(response.body[:]), profile == .VisionOS)
+	if parse_error == .None && profile == .VisionOS {_ = localize_hls(client, &stream)}
+	return stream, parse_error
 }
 
 fetch_thumbnail :: proc(client: ^http.Client, url: string) -> (http.Response, http.Error) {
