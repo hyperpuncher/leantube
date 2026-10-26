@@ -3,7 +3,7 @@ set -euo pipefail
 source scripts/env.sh
 cc="$WEBOS_SDK/bin/arm-webos-linux-gnueabi-gcc"
 pkg="$WEBOS_SDK/bin/pkg-config"
-for required in "$WEBOS_ODIN" "$cc" "$pkg" "$WEBOS_PLATFORM/runtime/libSDL3.so.0"; do
+for required in "$WEBOS_ODIN" "$cc" "$pkg" "$WEBOS_PLATFORM/runtime/libSDL3.so.0" "$WEBOS_PLATFORM/runtime/libSDL3_ttf.so.0" "$WEBOS_PLATFORM/runtime/libSDL3_image.so.0"; do
 	if [[ ! -f "$required" ]]; then
 		printf 'missing toolchain input: %s\nconfigure the cache paths in .env; see .env.example\n' "$required" >&2
 		exit 1
@@ -29,10 +29,10 @@ read -r -a libs <<< "$("$pkg" --libs luna-service2 glib-2.0 wayland-client)"
 # The ELF loader expands $ORIGIN on the TV, not this shell.
 # shellcheck disable=SC2016
 "$cc" build/obj/*.o -L"$WEBOS_PLATFORM/runtime" -L"$WEBOS_PLATFORM/device-link" \
-	-Wl,-rpath-link,"$WEBOS_PLATFORM/device-link" -l:libSDL3.so.0 -lAcbAPI \
+	-Wl,-rpath-link,"$WEBOS_PLATFORM/device-link" -l:libSDL3.so.0 -l:libSDL3_ttf.so.0 -l:libSDL3_image.so.0 -lAcbAPI \
 	"${libs[@]}" -lm -lpthread -ldl -lrt -latomic \
 	-Wl,--disable-new-dtags,-rpath,'$ORIGIN/lib' -o "build/app/$app_main"
-cp app/appinfo.json app/icon.png app/large-icon.png build/app/
+cp -a app/. build/app/
 mkdir -p build/app/lib
 cp -a "$WEBOS_PLATFORM/runtime/." build/app/lib/
 printf 'built %s for B9 ARM32 soft-float\n' "build/app/$app_main"

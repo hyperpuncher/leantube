@@ -3,12 +3,10 @@ package main
 import clay "../vendor/clay"
 import "./model"
 import "base:runtime"
+import "core:c"
 import "core:fmt"
-import "core:strings"
 import sdl "vendor:sdl3"
-
-VIEW_WIDTH :: 960
-VIEW_HEIGHT :: 540
+import ttf "vendor:sdl3/ttf"
 
 clay_error :: proc "c" (error: clay.ErrorData) {
 	context = runtime.default_context()
@@ -20,23 +18,45 @@ measure_text :: proc "c" (
 	config: ^clay.TextElementConfig,
 	data: rawptr,
 ) -> clay.Dimensions {
-	return {f32(text.length) * f32(config.fontSize), f32(config.fontSize)}
+	font := fonts[Text_Style(config.fontId)]
+	if text.length == 0 {return {0, f32(ttf.GetFontHeight(font))}}
+	width, height: c.int
+	if !ttf.GetStringSize(
+		font,
+		text.chars,
+		c.size_t(text.length),
+		&width,
+		&height,
+	) {running = false; return {}}
+	return {f32(width), f32(height)}
 }
-label :: proc(text: string, size: u16 = 16, color: clay.Color = {240, 242, 246, 255}) {
-	clay.Text(text, {fontSize = size, textColor = color, wrapMode = .None})
+label :: proc(
+	text: string,
+	style: Text_Style = .Body,
+	color: clay.Color = COLOR_TEXT,
+	wrap: clay.TextWrapMode = .None,
+) {
+	clay.Text(
+		text,
+		{fontId = u16(style), fontSize = text_sizes[style], textColor = color, wrapMode = wrap},
+	)
 }
 
 set_color :: proc(renderer: ^sdl.Renderer, color: clay.Color) -> bool {
 	return sdl.SetRenderDrawColor(renderer, u8(color[0]), u8(color[1]), u8(color[2]), u8(color[3]))
 }
 
-render :: proc(renderer: ^sdl.Renderer) -> bool {
+render :: proc(renderer: ^sdl.Renderer, wheel: f32 = 0, dt: f32 = 1.0 / 60) -> bool {
+	if !refresh_view(renderer) {return false}
 	color: clay.Color
-	if browsing {color = {12, 16, 24, 255}}
+	if browsing {color = COLOR_BACKGROUND}
 	if !set_color(renderer, color) || !sdl.RenderClear(renderer) {return false}
 	// Clay borrows these strings until the render commands have been drawn.
 	stamp, speed: string
 	defer {delete(stamp); delete(speed)}
+	// Each scroll update must have a layout. Idle updates without layouts
+	// make Clay discard the container and its saved scroll position.
+	if browsing {clay.UpdateScrollContainers(false, {0, wheel}, dt)}
 	clay.BeginLayout()
 	if browsing {
 		grid_layout()
@@ -46,10 +66,19 @@ render :: proc(renderer: ^sdl.Renderer) -> bool {
 		stamp = fmt.aprintf("%s / %s", elapsed, total)
 		delete(elapsed)
 		delete(total)
-		speed = fmt.aprintf("%.2fx", rate)
+		speed = fmt.aprintf("%gx", rate)
 		player_layout(stamp, speed)
 	}
-	return render_commands(renderer, clay.EndLayout(0))
+	commands := clay.EndLayout(0)
+	if browsing && library_focus_pending {
+		library_focus_pending = false
+		if reveal_selected_video() {
+			clay.BeginLayout()
+			grid_layout()
+			commands = clay.EndLayout(0)
+		}
+	}
+	return render_commands(renderer, commands)
 }
 
 render_commands :: proc(
@@ -57,32 +86,71 @@ render_commands :: proc(
 	input: clay.ClayArray(clay.RenderCommand),
 ) -> bool {
 	commands := input
+	clips := make([dynamic]sdl.Rect)
+	defer {delete(clips); _ = sdl.SetRenderClipRect(renderer, nil)}
+	append(&clips, sdl.Rect{0, 0, i32(view_width), i32(view_height)})
 	for i in 0 ..< commands.length {
 		command := clay.RenderCommandArray_Get(&commands, i)
 		box := command.boundingBox
 		rect := sdl.FRect{box.x, box.y, box.width, box.height}
 		#partial switch command.commandType {
 		case .Rectangle:
-			color := command.renderData.rectangle.backgroundColor
-			if !set_color(renderer, color) {return false}
-			if !sdl.RenderFillRect(renderer, &rect) {return false}
+			data := command.renderData.rectangle
+			if data.cornerRadius != (clay.CornerRadius{}) {
+				if !rounded_shape(
+					renderer,
+					rect,
+					data.cornerRadius,
+					data.backgroundColor,
+				) {return false}
+			} else {
+				if !set_color(renderer, data.backgroundColor) ||
+				   !sdl.RenderFillRect(renderer, &rect) {return false}
+			}
 		case .Image:
-			texture := cast(^sdl.Texture)command.renderData.image.imageData
-			if !sdl.RenderTexture(renderer, texture, nil, &rect) {return false}
+			data := command.renderData.image
+			texture := cast(^sdl.Texture)data.imageData
+			if texture == nil {
+				if !rounded_shape(renderer, rect, data.cornerRadius, COLOR_SURFACE) {return false}
+				continue
+			}
+			if data.cornerRadius != (clay.CornerRadius{}) {
+				if !rounded_shape(
+					renderer,
+					rect,
+					data.cornerRadius,
+					{255, 255, 255, 255},
+					texture,
+				) {return false}
+			} else if !sdl.RenderTexture(renderer, texture, nil, &rect) {return false}
 		case .Text:
 			text := command.renderData.text
+			if text.stringContents.length == 0 {continue}
 			color := text.textColor
-			value := strings.clone_to_cstring(
-				string(text.stringContents.chars[:text.stringContents.length]),
+			value := ttf.CreateText(
+				text_engine,
+				fonts[Text_Style(text.fontId)],
+				text.stringContents.chars,
+				c.size_t(text.stringContents.length),
 			)
-			scale := f32(text.fontSize) / 8
+			if value == nil {return false}
 			ok :=
-				set_color(renderer, color) &&
-				sdl.SetRenderScale(renderer, scale, scale) &&
-				sdl.RenderDebugText(renderer, box.x / scale, box.y / scale, value)
-			delete(value)
-			_ = sdl.SetRenderScale(renderer, 1, 1)
+				ttf.SetTextColor(value, u8(color[0]), u8(color[1]), u8(color[2]), u8(color[3])) &&
+				ttf.DrawRendererText(value, box.x, box.y)
+			ttf.DestroyText(value)
 			if !ok {return false}
+		case .ScissorStart:
+			parent := clips[len(clips) - 1]
+			next := sdl.Rect{i32(box.x), i32(box.y), i32(box.width), i32(box.height)}
+			if !command.renderData.clip.horizontal {next.x = parent.x; next.w = parent.w}
+			if !command.renderData.clip.vertical {next.y = parent.y; next.h = parent.h}
+			clipped: sdl.Rect
+			if !sdl.GetRectIntersection(parent, next, &clipped) {clipped = {}}
+			append(&clips, clipped)
+			if !sdl.SetRenderClipRect(renderer, &clipped) {return false}
+		case .ScissorEnd:
+			resize(&clips, len(clips) - 1)
+			if !sdl.SetRenderClipRect(renderer, &clips[len(clips) - 1]) {return false}
 		}
 	}
 	return sdl.RenderPresent(renderer)

@@ -2,6 +2,8 @@ import { existsSync, mkdtempSync } from "node:fs";
 
 import { $ } from "bun";
 
+export const CATALOG_LIMIT = 24;
+
 export type VideoInfo = {
 	id?: string;
 	title?: string;
@@ -37,7 +39,32 @@ export function videoData(info: VideoInfo, appId: string) {
 export function searchSource(query: string) {
 	return /^[\w-]{11}$/.test(query)
 		? `https://www.youtube.com/watch?v=${query}`
-		: `ytsearch6:${query}`;
+		: `ytsearch${CATALOG_LIMIT}:${query}`;
+}
+
+export function thumbnailUrl(id: string) {
+	if (!/^[\w-]{11}$/.test(id)) throw new Error("invalid video ID");
+	return `https://i.ytimg.com/vi_webp/${id}/maxresdefault.webp`;
+}
+
+export async function downloadThumbnail(
+	id: string,
+	path: string,
+	fetchImage: (url: string, options: RequestInit) => Promise<Response> = fetch,
+) {
+	const response = await fetchImage(thumbnailUrl(id), {
+		signal: AbortSignal.timeout(15000),
+	});
+	if (!response.ok) return false;
+	const bytes = new Uint8Array(await response.arrayBuffer());
+	if (
+		bytes.length < 12 ||
+		new TextDecoder().decode(bytes.subarray(0, 4)) !== "RIFF" ||
+		new TextDecoder().decode(bytes.subarray(8, 12)) !== "WEBP"
+	)
+		return false;
+	await Bun.write(path, bytes);
+	return true;
 }
 
 async function prepare(query: string) {
@@ -47,30 +74,20 @@ async function prepare(query: string) {
 	try {
 		// Quiet output is essential: extractor errors can contain signed URLs.
 		const { stdout } =
-			await $`yt-dlp --quiet --no-warnings --ignore-errors --skip-download --dump-json --playlist-end 6 --format 18 -- ${source}`
+			await $`yt-dlp --quiet --no-warnings --ignore-errors --skip-download --dump-json --playlist-end ${CATALOG_LIMIT} --format 18 -- ${source}`
 				.quiet()
 				.nothrow();
 		const videos = [];
 		for (const line of stdout.toString().trim().split("\n").filter(Boolean)) {
 			const info: VideoInfo = JSON.parse(line);
 			const data = videoData(info, appId);
-			if (!data || videos.length === 6) continue;
+			if (!data || videos.length === CATALOG_LIMIT) continue;
 			const index = videos.length;
 			await Bun.write(`${stage}/${index}.json`, JSON.stringify(data.request));
-			if (info.thumbnail) {
-				try {
-					const image = await fetch(info.thumbnail, {
-						signal: AbortSignal.timeout(15000),
-					});
-					if (image.ok) {
-						const bytes = await image.arrayBuffer();
-						await $`ffmpeg -hide_banner -loglevel error -y -i pipe:0 -vf scale=256:144:force_original_aspect_ratio=increase,crop=256:144 -frames:v 1 -pix_fmt bgr24 ${stage}/${index}.bmp < ${bytes}`
-							.quiet()
-							.nothrow();
-					}
-				} catch {
-					/* A missing thumbnail does not prevent playback. */
-				}
+			try {
+				await downloadThumbnail(data.metadata.id, `${stage}/${index}.webp`);
+			} catch {
+				/* A missing max-resolution cover uses the UI placeholder. */
 			}
 			videos.push(data.metadata);
 		}

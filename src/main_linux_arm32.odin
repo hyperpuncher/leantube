@@ -12,15 +12,6 @@ import sdl "vendor:sdl3"
 
 APP_ID :: "org.hyperpuncher.odin.tv.prototype"
 APP_VERSION :: #config(APP_VERSION, "dev")
-Request_Kind :: enum uintptr {
-	Register,
-	Load,
-	Subscribe,
-	Foreground,
-	Control,
-	Seek,
-	Unload,
-}
 Callback :: #type proc "c" (_: rawptr, _: rawptr, _: rawptr) -> bool
 foreign import bridge "system:tv_bridge"
 foreign bridge {
@@ -38,26 +29,10 @@ foreign bridge {
 	tv_shutdown :: proc() ---
 }
 registered: bool
-running := true
-paused: bool
-loaded: bool
 unloaded: bool
 media_id: string
 video_metadata: []u8
-timeline := model.Timeline {
-	seek_target_ms = -1,
-}
-duration_ms: f64
-rate: f64 = 1
-dirty := true
-browsing := true
-return_to_grid: bool
 load_replied: bool
-selected: int
-catalog: model.Catalog
-textures: [model.MAX_VIDEOS]^sdl.Texture
-app_directory: string
-notice := "arrows: choose   OK: play   Back: close"
 
 send :: proc(endpoint: cstring, payload: string, kind: Request_Kind) -> bool {
 	body := strings.clone_to_cstring(payload)
@@ -195,7 +170,7 @@ stop_playback :: proc() {
 	timeline = {
 		seek_target_ms = -1,
 	}
-	browsing = true; return_to_grid = false; dirty = true
+	browsing = true; return_to_grid = false; dirty = true; library_focus_pending = true
 }
 
 start_video :: proc() {
@@ -206,6 +181,7 @@ start_video :: proc() {
 	if error !=
 	   nil {notice = "stream request missing; prepare this page again"; dirty = true; return}
 	defer delete(load)
+	notice = ""
 	browsing = false; paused = false; loaded = false; load_replied = false
 	timeline = {
 		seek_target_ms = -1,
@@ -227,48 +203,6 @@ start_video :: proc() {
 	if !load_replied {fmt.eprintln("media load response timed out"); running = false}
 }
 
-key :: proc(code: sdl.Keycode) {
-	if browsing {
-		switch code {
-		case sdl.K_ESCAPE, sdl.K_AC_BACK:
-			running = false
-		case sdl.K_RETURN, sdl.K_SPACE, sdl.K_KP_ENTER:
-			start_video()
-		case sdl.K_LEFT:
-			selected = model.grid_move(selected, len(catalog.videos), -1, 0)
-		case sdl.K_RIGHT:
-			selected = model.grid_move(selected, len(catalog.videos), 1, 0)
-		case sdl.K_UP:
-			selected = model.grid_move(selected, len(catalog.videos), 0, -1)
-		case sdl.K_DOWN:
-			selected = model.grid_move(selected, len(catalog.videos), 0, 1)
-		}
-	} else {
-		switch code {
-		case sdl.K_ESCAPE, sdl.K_AC_BACK:
-			return_to_grid = true
-		case sdl.K_RETURN, sdl.K_SPACE, sdl.K_KP_ENTER:
-			if paused {command("luna://com.webos.media/play")} else {command("luna://com.webos.media/pause")}
-		case sdl.K_LEFT, sdl.K_RIGHT:
-			offset: f64 = code == sdl.K_RIGHT ? 10000 : -10000
-			target := model.seek_target(timeline, offset, duration_ms)
-			extra := fmt.aprintf(",\"position\":%d", i64(target))
-			if command(
-				"luna://com.webos.media/seek",
-				extra,
-				.Seek,
-			) {timeline.seek_target_ms = target}
-			delete(extra)
-		case sdl.K_UP, sdl.K_DOWN:
-			delta: f64 = code == sdl.K_DOWN ? -0.25 : 0.25
-			rate = clamp(rate + delta, 0.5, 2)
-			extra := fmt.aprintf(",\"playRate\":%.2f,\"audioOutput\":true", rate)
-			command("luna://com.webos.media/setPlayRate", extra)
-			delete(extra)
-		}
-	}
-	dirty = true
-}
 main :: proc() {
 	_ = sdl.SetHint(sdl.HINT_VIDEO_DRIVER, "wayland")
 	_ = sdl.SetAppMetadata("LeanTube", APP_VERSION, APP_ID)
@@ -280,6 +214,8 @@ main :: proc() {
 		stop_playback()
 		for texture in textures {if texture != nil {sdl.DestroyTexture(texture)}}
 		model.catalog_destroy(&catalog)
+		close_icons()
+		close_text()
 		if renderer != nil {sdl.DestroyRenderer(renderer)}
 		tv_shutdown()
 		if window != nil {sdl.DestroyWindow(window)}
@@ -311,55 +247,40 @@ main :: proc() {
 		u32(size_of(clay.ElementDeclaration)),
 		u32(size_of(clay.ErrorData)),
 	) {fmt.eprintln("Clay ABI mismatch"); return}
-	clay.SetMaxElementCount(128)
-	clay.SetMaxMeasureTextCacheWordCount(512)
+	clay.SetMaxElementCount(512)
+	clay.SetMaxMeasureTextCacheWordCount(2048)
 	clay_memory = make([]u8, int(clay.MinMemorySize()))
 	clay.Initialize(
 		clay.CreateArenaWithCapacityAndMemory(uint(len(clay_memory)), raw_data(clay_memory)),
-		{VIEW_WIDTH, VIEW_HEIGHT},
+		{},
 		{handler = clay_error},
 	)
 	clay.SetMeasureTextFunction(measure_text, nil)
-	if !sdl.SetRenderLogicalPresentation(renderer, VIEW_WIDTH, VIEW_HEIGHT, .LETTERBOX) ||
-	   !sdl.SetRenderDrawBlendMode(renderer, sdl.BLENDMODE_BLEND) {return}
+	if !sdl.SetRenderDrawBlendMode(renderer, sdl.BLENDMODE_BLEND) {return}
 	path, path_error := os.get_executable_path(context.allocator)
 	if path_error != nil {return}
 	defer delete(path)
 	app_directory = filepath.dir(path)
-	if !load_catalog(renderer) {return}
+	if !open_text(renderer) {fmt.eprintln("UI assets failed:", sdl.GetError()); return}
+	catalog_directory := fmt.aprintf("%s/catalog", app_directory)
+	defer delete(catalog_directory)
+	if !load_catalog(renderer, catalog_directory) {return}
 	if !render(renderer) {fmt.eprintln("frame failed:", sdl.GetError()); return}
 	fmt.println("video grid presented")
-	start = sdl.GetTicks()
-	for running && !tv_closing() && sdl.GetTicks() - start < 180000 {
+	previous_frame := sdl.GetTicks()
+	for running && !tv_closing() {
 		tv_poll()
 		if return_to_grid {stop_playback()}
+		wheel: f32
 		event: sdl.Event
 		if sdl.WaitEventTimeout(&event, 20) {
-			#partial switch event.type {
-			case .QUIT:
-				running = false
-			case .KEY_DOWN:
-				key(input_key(event.key.raw, event.key.key))
-			case .MOUSE_MOTION:
-				controls_pointer(
-					renderer,
-					event.motion.x,
-					event.motion.y,
-					.LEFT in event.motion.state,
-					false,
-				)
-			case .MOUSE_BUTTON_DOWN:
-				if event.button.button == sdl.BUTTON_LEFT {
-					controls_pointer(renderer, event.button.x, event.button.y, true, true)
-				}
-			case .MOUSE_BUTTON_UP:
-				if event.button.button == sdl.BUTTON_LEFT {
-					controls_pointer(renderer, event.button.x, event.button.y, false, false)
-				}
-			}
+			wheel = handle_event(renderer, event)
 		}
+		now := sdl.GetTicks()
+		frame_dt := f32(min(now - previous_frame, 50)) / 1000
+		previous_frame = now
 		if !tv_visible() {running = false}
-		if dirty {if !render(renderer) {break}; dirty = false}
+		if dirty {if !render(renderer, wheel, frame_dt) {break}; dirty = false}
 	}
 	fmt.println("player stopping")
 }

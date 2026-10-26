@@ -5,9 +5,12 @@ import "./model"
 import "core:fmt"
 import "core:os"
 import sdl "vendor:sdl3"
+import ttf "vendor:sdl3/ttf"
 
-load_catalog :: proc(renderer: ^sdl.Renderer) -> bool {
-	path := fmt.aprintf("%s/catalog/catalog.json", app_directory)
+library_focus_pending := true
+
+load_catalog :: proc(renderer: ^sdl.Renderer, directory: string) -> bool {
+	path := fmt.aprintf("%s/catalog.json", directory)
 	defer delete(path)
 	data, error := os.read_entire_file(path, context.allocator)
 	if error != nil {fmt.eprintln("catalog missing; use just browse on the host"); return false}
@@ -16,16 +19,10 @@ load_catalog :: proc(renderer: ^sdl.Renderer) -> bool {
 	if !ok {fmt.eprintln("invalid video catalog"); return false}
 	catalog = parsed
 	for _, i in catalog.videos {
-		name := fmt.caprintf("%s/catalog/%d.bmp", app_directory, i)
-		surface := sdl.LoadBMP(name)
+		name := fmt.caprintf("%s/%d.webp", directory, i)
+		textures[i] = load_texture(renderer, name)
 		delete(name)
-		if surface == nil {
-			fmt.eprintln("thumbnail load failed:", i, sdl.GetError())
-			continue
-		}
-		textures[i] = sdl.CreateTextureFromSurface(renderer, surface)
-		sdl.DestroySurface(surface)
-		if textures[i] == nil {fmt.eprintln("thumbnail texture failed:", sdl.GetError())}
+		if textures[i] == nil {fmt.eprintln("thumbnail load failed:", i, sdl.GetError())}
 	}
 	return true
 }
@@ -34,69 +31,140 @@ grid_layout :: proc() {
 	if clay.UI(clay.ID("grid-root"))(
 	{
 		layout = {
-			sizing = {
-				width = clay.SizingFixed(VIEW_WIDTH),
-				height = clay.SizingFixed(VIEW_HEIGHT),
-			},
+			sizing = {width = clay.SizingGrow({}), height = clay.SizingGrow({})},
 			layoutDirection = .TopToBottom,
-			padding = clay.PaddingAll(24),
-			childGap = 12,
-			childAlignment = {x = .Center},
+			padding = padding(64, 64, 32, 0),
+			childGap = spacing(16),
 		},
-		backgroundColor = {12, 16, 24, 255},
+		backgroundColor = COLOR_BACKGROUND,
 	},
 	) {
 		if clay.UI()(
-		{layout = {sizing = {width = clay.SizingGrow({})}, childAlignment = {y = .Center}}},
+		{
+			layout = {
+				sizing = {
+					width = clay.SizingGrow({}),
+					height = clay.SizingFixed(f32(ttf.GetFontHeight(fonts[.Heading]))),
+				},
+				padding = padding(8, 8, 0, 0),
+				childAlignment = {y = .Center},
+			},
+			clip = {horizontal = true, vertical = true},
+		},
 		) {
-			label("LeanTube", 20)
-			if clay.UI()({layout = {sizing = {width = clay.SizingGrow({})}}}) {}
-			label("YouTube / prepared on host", 10, {150, 163, 185, 255})
+			label(catalog.query == "" ? "Recommended" : catalog.query, .Heading)
+			if notice != "" {
+				if clay.UI()({layout = {sizing = {width = clay.SizingGrow({})}}}) {}
+				label(notice, .Caption, COLOR_MUTED)
+			}
 		}
-		label(catalog.query, 12, {165, 178, 198, 255})
-		if clay.UI()({layout = {layoutDirection = .TopToBottom, childGap = 16}}) {
-			for row in 0 ..< (len(catalog.videos) + model.GRID_COLUMNS - 1) / model.GRID_COLUMNS {
+		if clay.UI(clay.ID("library-scroll"))(
+		{
+			layout = {
+				sizing = {width = clay.SizingGrow({}), height = clay.SizingGrow({})},
+				layoutDirection = .TopToBottom,
+				childGap = spacing(32),
+			},
+			clip = {vertical = true, childOffset = clay.GetScrollOffset()},
+		},
+		) {
+			for row in 0 ..< (len(catalog.videos) + grid_columns - 1) / grid_columns {
 				if clay.UI()(
-				{layout = {sizing = {width = clay.SizingFixed(896)}, childGap = 16}},
+				{layout = {sizing = {width = clay.SizingGrow({})}, childGap = spacing(32)}},
 				) {
-					for column in 0 ..< model.GRID_COLUMNS {
-						index := row * model.GRID_COLUMNS + column
-						if index >= len(catalog.videos) {break}
-						video_card(index)
+					for column in 0 ..< grid_columns {
+						index := row * grid_columns + column
+						if index < len(catalog.videos) {
+							video_card(index)
+						} else {
+							if clay.UI()({layout = {sizing = {width = clay.SizingGrow({})}}}) {}
+						}
 					}
 				}
 			}
 		}
-		label(notice, 10, {165, 178, 198, 255})
 	}
 }
 
 video_card :: proc(index: int) {
 	video := catalog.videos[index]
-	color: clay.Color = {28, 35, 49, 255}
-	if index == selected {color = {154, 35, 47, 255}}
+	focus := index == selected ? COLOR_ACCENT : COLOR_BACKGROUND
 	if clay.UI(clay.ID("video", u32(index)))(
 	{
 		layout = {
-			sizing = {width = clay.SizingFixed(288), height = clay.SizingFixed(192)},
+			sizing = {width = clay.SizingGrow({})},
 			layoutDirection = .TopToBottom,
-			padding = {16, 16, 8, 8},
-			childGap = 4,
+			padding = padding(4, 4, 0, 0),
+			childGap = spacing(4),
 		},
-		backgroundColor = color,
 	},
 	) {
 		if clay.UI()(
 		{
-			layout = {sizing = {width = clay.SizingFixed(256), height = clay.SizingFixed(144)}},
-			image = {imageData = rawptr(textures[index])},
+			layout = {
+				sizing = {width = clay.SizingGrow({})},
+				padding = clay.PaddingAll(spacing(4)),
+			},
+			backgroundColor = focus,
+			cornerRadius = clay.CornerRadiusAll(scaled(16)),
 		},
-		) {}
-		label(video.title_label, 12)
-		if clay.UI()({layout = {sizing = {width = clay.SizingGrow({})}}}) {
-			label(video.channel_label, 10, {180, 190, 207, 255})
-			if clay.UI()({layout = {sizing = {width = clay.SizingGrow({})}}}) {}
-			label(video.duration_label, 10, {180, 190, 207, 255})
+		) {
+			if clay.UI()(
+			{
+				layout = {sizing = {width = clay.SizingGrow({})}},
+				image = {imageData = rawptr(textures[index])},
+				aspectRatio = {16.0 / 9.0},
+				cornerRadius = clay.CornerRadiusAll(scaled(12)),
+			},
+			) {
+				if clay.UI(clay.ID("duration", u32(index)))(
+				{
+					floating = {
+						attachTo = .Parent,
+						attachment = {element = .RightBottom, parent = .RightBottom},
+						offset = {-scaled(8), -scaled(8)},
+						clipTo = .AttachedParent,
+						pointerCaptureMode = .Passthrough,
+					},
+					layout = {padding = padding(8, 8, 4, 4)},
+					backgroundColor = COLOR_BADGE,
+					cornerRadius = clay.CornerRadiusAll(scaled(4)),
+				},
+				) {label(video.duration_label, .Mono_Small)}
+			}
+		}
+		if clay.UI()(
+		{
+			layout = {
+				sizing = {width = clay.SizingGrow({})},
+				layoutDirection = .TopToBottom,
+				childGap = spacing(2),
+				padding = padding(4, 4, 0, 0),
+			},
+		},
+		) {
+			if clay.UI()(
+			{
+				layout = {
+					sizing = {
+						width = clay.SizingGrow({}),
+						height = clay.SizingFit({max = f32(ttf.GetFontHeight(fonts[.Small])) * 2}),
+					},
+				},
+				clip = {vertical = true},
+			},
+			) {label(video.title, .Small, wrap = .Words)}
+			if clay.UI()(
+			{
+				layout = {
+					sizing = {
+						width = clay.SizingGrow({}),
+						height = clay.SizingFixed(f32(ttf.GetFontHeight(fonts[.Caption]))),
+					},
+				},
+				clip = {horizontal = true, vertical = true},
+			},
+			) {label(video.channel, .Caption, COLOR_MUTED)}
 		}
 	}
 }

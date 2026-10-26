@@ -1,8 +1,12 @@
 # leantube agent notes
 
+- read the relevant upstream documentation, bindings, and examples in full before implementation, even when the API seems familiar
+- use provided libraries and normal upstream usage before adding custom build or application code
 - use `just` for project tasks
 - run `just fmt`, `just check`, and `just test` after changes
 - use native Wayland, Odin, Clay, and SDL3
+- use Odin target-specific file names for Linux x86-64 development and B9 ARM32 code
+- use neutral UI colors; use the logo color only for accents
 - keep B9 SDK and compiler inputs in the ignored toolchain cache, not in git
 - the B9 app ABI is ARM32 soft-float, even though the kernel reports aarch64
 - use the cached compiler with `patches/odin-arm32-softfp.patch`, not stock ARM32 Odin

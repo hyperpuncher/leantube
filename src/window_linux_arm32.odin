@@ -16,7 +16,10 @@ create_window :: proc() -> ^sdl.Window {
 	)
 	_ = sdl.SetBooleanProperty(properties, sdl.PROP_WINDOW_CREATE_OPENGL_BOOLEAN, true)
 	_ = sdl.SetBooleanProperty(properties, sdl.PROP_WINDOW_CREATE_TRANSPARENT_BOOLEAN, true)
-	_ = sdl.SetNumberProperty(properties, sdl.PROP_WINDOW_CREATE_WIDTH_NUMBER, 1920)
-	_ = sdl.SetNumberProperty(properties, sdl.PROP_WINDOW_CREATE_HEIGHT_NUMBER, 1080)
+	_ = sdl.SetBooleanProperty(properties, sdl.PROP_WINDOW_CREATE_HIGH_PIXEL_DENSITY_BOOLEAN, true)
+	bounds: sdl.Rect
+	if !sdl.GetDisplayBounds(sdl.GetPrimaryDisplay(), &bounds) {return nil}
+	_ = sdl.SetNumberProperty(properties, sdl.PROP_WINDOW_CREATE_WIDTH_NUMBER, i64(bounds.w))
+	_ = sdl.SetNumberProperty(properties, sdl.PROP_WINDOW_CREATE_HEIGHT_NUMBER, i64(bounds.h))
 	return sdl.CreateWindowWithProperties(properties)
 }

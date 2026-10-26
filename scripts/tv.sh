@@ -8,7 +8,7 @@ case "${1:-}" in
 	run)
 		: "${TV_APP_UID:?set the native app UID in .env}"
 		[[ "$TV_APP_UID" =~ ^[0-9]+$ ]] || { printf 'invalid TV_APP_UID\n' >&2; exit 1; }
-		jq -e '.videos | length > 0 and length <= 6' build/catalog/catalog.json >/dev/null
+		jq -e '.videos | length > 0 and length <= 24' build/catalog/catalog.json >/dev/null
 		info=$(ssh "$TV_HOST" "luna-send -n 1 -w 5000 luna://com.webos.applicationManager/getAppInfo '$payload' </dev/null")
 		jq -e --arg main "$app_main" --arg version "$app_version" '.returnValue == true and .appInfo.main == $main and .appInfo.version == $version' <<< "$info" >/dev/null || {
 			printf 'install this project package first with just install\n' >&2; exit 1;
@@ -36,12 +36,17 @@ case "${1:-}" in
 			jq --arg id "$app_id" '[.[] | select(.appId == $id) | {id,mediaState,is_foreground,resource}]'
 		;;
 	capture)
+		[[ "${2:-}" =~ ^[1-9][0-9]*$ && "${3:-}" =~ ^[1-9][0-9]*$ ]] || {
+			printf 'capture requires positive width and height\n' >&2; exit 1;
+		}
+		capture_payload=$(jq -nc --argjson width "$2" --argjson height "$3" \
+			'{path:"/tmp/leantube-capture.png",method:"DISPLAY",format:"PNG",width:$width,height:$height}')
 		ssh "$TV_HOST" 'luna-send -n 1 -w 5000 luna://com.webos.applicationManager/getForegroundAppInfo "{}" </dev/null' |
 			jq -e --arg id "$app_id" '.appId == $id' >/dev/null
-		ssh "$TV_HOST" 'luna-send -n 1 -w 5000 luna://com.webos.service.tv.capture/executeOneShot "{\"path\":\"/tmp/leantube-capture.png\",\"method\":\"DISPLAY\",\"format\":\"PNG\",\"width\":1920,\"height\":1080}" </dev/null' |
+		ssh "$TV_HOST" "luna-send -n 1 -w 5000 luna://com.webos.service.tv.capture/executeOneShot '$capture_payload' </dev/null" |
 			jq -e '.returnValue == true' >/dev/null
 		mkdir -p build
 		scp -O "$TV_HOST:/tmp/leantube-capture.png" build/capture.png
 		;;
-	*) printf 'usage: scripts/tv.sh run|stop|logs|status|capture\n' >&2; exit 1 ;;
+	*) printf 'usage: scripts/tv.sh run|stop|logs|status|capture WIDTH HEIGHT\n' >&2; exit 1 ;;
 esac

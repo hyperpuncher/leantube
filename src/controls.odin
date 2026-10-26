@@ -4,33 +4,40 @@ import clay "../vendor/clay"
 import sdl "vendor:sdl3"
 
 Control_Button :: struct {
-	id, label: string,
-	key:       sdl.Keycode,
+	id:   string,
+	icon: Icon,
+	key:  sdl.Keycode,
 }
 control_buttons := [?]Control_Button {
-	{"seek-back", "< -10s", sdl.K_LEFT},
-	{"pause", "pause OK", sdl.K_RETURN},
-	{"seek-forward", "+10s >", sdl.K_RIGHT},
-	{"slower", "- rate", sdl.K_DOWN},
-	{"faster", "+ rate", sdl.K_UP},
-	{"close", "back", sdl.K_ESCAPE},
+	{"seek-back", .Seek_Back, sdl.K_LEFT},
+	{"pause", .Pause, sdl.K_RETURN},
+	{"seek-forward", .Seek_Forward, sdl.K_RIGHT},
+	{"slower", .Slower, sdl.K_DOWN},
+	{"faster", .Faster, sdl.K_UP},
 }
 
 control_button :: proc(button: Control_Button) {
-	color: clay.Color = {44, 49, 60, 255}
-	if button.key == sdl.K_RETURN {color = {165, 35, 42, 255}}
-	if clay.PointerOver(clay.ID(button.id)) {color = {95, 105, 125, 255}}
+	color: clay.Color
+	if button.key == sdl.K_RETURN {color = COLOR_SURFACE}
+	if clay.PointerOver(clay.ID(button.id)) {color = COLOR_HOVER}
 	if clay.UI(clay.ID(button.id))(
 	{
-		layout = {padding = {12, 12, 10, 10}, childAlignment = {y = .Center}},
+		layout = {
+			sizing = {width = clay.SizingFixed(scaled(72)), height = clay.SizingFixed(scaled(72))},
+			padding = clay.PaddingAll(spacing(12)),
+			childGap = spacing(8),
+			childAlignment = {x = .Center, y = .Center},
+		},
 		backgroundColor = color,
+		cornerRadius = clay.CornerRadiusAll(scaled(36)),
 	},
 	) {
-		text := button.label
-		if button.key == sdl.K_RETURN {text = paused ? "play OK" : "pause OK"}
-		label(text, 12)
+		glyph := button.icon
+		if button.key == sdl.K_RETURN && paused {glyph = .Play}
+		icon(glyph)
 	}
 }
+
 controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: bool) {
 	point: clay.Vector2
 	if !sdl.RenderCoordinatesFromWindow(renderer, x, y, &point[0], &point[1]) {return}
@@ -52,15 +59,12 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 		}
 	}
 }
+
 player_layout :: proc(stamp, speed: string) {
-	state := !loaded ? "loading" : (paused ? "paused" : "playing")
 	if clay.UI(clay.ID("root"))(
 	{
 		layout = {
-			sizing = {
-				width = clay.SizingFixed(VIEW_WIDTH),
-				height = clay.SizingFixed(VIEW_HEIGHT),
-			},
+			sizing = {width = clay.SizingGrow({}), height = clay.SizingGrow({})},
 			layoutDirection = .TopToBottom,
 		},
 	},
@@ -71,30 +75,26 @@ player_layout :: proc(stamp, speed: string) {
 			layout = {
 				sizing = {width = clay.SizingGrow({})},
 				layoutDirection = .TopToBottom,
-				padding = clay.PaddingAll(16),
-				childGap = 12,
+				padding = padding(48, 48, 24, 24),
+				childGap = spacing(20),
 			},
-			backgroundColor = {16, 20, 28, 230},
+			backgroundColor = COLOR_PANEL,
 		},
 		) {
 			if clay.UI()(
 			{
 				layout = {
-					sizing = {width = clay.SizingGrow({})},
-					childGap = 16,
-					childAlignment = {y = .Center},
+					sizing = {width = clay.SizingGrow({}), height = clay.SizingFixed(scaled(44))},
 				},
+				clip = {horizontal = true, vertical = true},
 			},
-			) {
-				label(catalog.videos[selected].player_label)
-				if clay.UI()({layout = {sizing = {width = clay.SizingGrow({})}}}) {}
-				label(state, 12, {165, 175, 190, 255})
-				label(stamp)
-			}
+			) {label(loaded ? catalog.videos[selected].title : "Loading video…")}
 			if clay.UI()(
 			{
-				layout = {sizing = {width = clay.SizingGrow({}), height = clay.SizingFixed(4)}},
-				backgroundColor = {65, 70, 80, 255},
+				layout = {
+					sizing = {width = clay.SizingGrow({}), height = clay.SizingFixed(scaled(6))},
+				},
+				backgroundColor = COLOR_TRACK,
 			},
 			) {
 				if duration_ms > 0 {
@@ -104,12 +104,12 @@ player_layout :: proc(stamp, speed: string) {
 							sizing = {
 								width = clay.SizingFixed(
 									f32(clamp(timeline.position_ms / duration_ms, 0, 1)) *
-									f32(VIEW_WIDTH - 32),
+									(view_width - scaled(96)),
 								),
-								height = clay.SizingFixed(4),
+								height = clay.SizingFixed(scaled(6)),
 							},
 						},
-						backgroundColor = {230, 55, 65, 255},
+						backgroundColor = COLOR_ACCENT,
 					},
 					) {}
 				}
@@ -118,15 +118,16 @@ player_layout :: proc(stamp, speed: string) {
 			{
 				layout = {
 					sizing = {width = clay.SizingGrow({})},
-					childGap = 8,
+					childGap = spacing(16),
 					childAlignment = {y = .Center},
 				},
 			},
 			) {
 				for button, i in control_buttons {
 					if i == 3 {
+						label(stamp, .Mono_Small)
 						if clay.UI()({layout = {sizing = {width = clay.SizingGrow({})}}}) {}
-						label(speed)
+						label(speed, .Mono_Small)
 					}
 					control_button(button)
 				}

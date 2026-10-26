@@ -5,18 +5,19 @@ set dotenv-load
 default:
 	@just --list
 
-# Type-check with the installed host compiler.
+# Type-check the local preview, UI tests, and shared code.
 check:
 	odin check src -vet
+	odin check src -vet -define:UI_TEST=true
 	odin check tests/layout -vet
 	odin check tests/http -vet
 	bash -n scripts/*.sh tests/install.sh
 	shellcheck -x scripts/*.sh tests/install.sh
-	bun fmt --check package.json tsconfig.json scripts/catalog.ts tests/catalog.test.ts tests/http/run.ts
+	bun fmt --check package.json tsconfig.json scripts/catalog.ts scripts/ui.ts tests/catalog.test.ts tests/http/run.ts
 	bun check
 
 # Test metadata and installer completion handling without a TV.
-test: test-layout test-http
+test: test-layout test-http test-ui
 	odin test src/model -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
 	odin test src/input.odin -file -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
 	bun test tests/catalog.test.ts
@@ -31,6 +32,14 @@ test-layout:
 test-http:
 	bun tests/http/run.ts
 
+# Render the real UI offscreen and save local regression screenshots.
+test-ui:
+	bun scripts/ui.ts
+
+# Open a local Wayland UI preview. No TV commands or media playback.
+dev *args:
+	@bun scripts/ui.ts --dev {{args}}
+
 # Check native YouTube and SponsorBlock HTTPS on the B9 without opening an app.
 test-tv-http:
 	bash scripts/test-tv-http.sh
@@ -39,9 +48,13 @@ fmt:
 	odinfmt src -w
 	odinfmt tests -w
 	clang-format -i src/native/bridge.c src/native/clay.c
-	bun fmt package.json tsconfig.json scripts/catalog.ts tests/catalog.test.ts tests/http/run.ts
+	bun fmt package.json tsconfig.json scripts/catalog.ts scripts/ui.ts tests/catalog.test.ts tests/http/run.ts
 
-# Build the B9 ARM32 executable and stage its private libraries.
+# Explicit TV library setup. Downloads source, but does not contact the TV.
+setup-tv-images:
+	bash scripts/setup-tv-images.sh
+
+# Build the B9 ARM32 executable with the cached toolchain and libraries.
 build:
 	bash scripts/build.sh
 
@@ -75,8 +88,9 @@ logs:
 status:
 	bash scripts/tv.sh status
 
-capture:
-	bash scripts/tv.sh capture
+# Request an explicit capture size; no fixed 1080p limit.
+capture width height:
+	bash scripts/tv.sh capture {{quote(width)}} {{quote(height)}}
 
 clean:
 	if [[ -d build ]]; then trash -- build; fi
