@@ -6,17 +6,11 @@ source scripts/env.sh
 payload=$(jq -nc --arg id "$app_id" '{id:$id}')
 case "${1:-}" in
 	run)
-		: "${TV_APP_UID:?set the native app UID in .env}"
-		[[ "$TV_APP_UID" =~ ^[0-9]+$ ]] || { printf 'invalid TV_APP_UID\n' >&2; exit 1; }
-		jq -e '.videos | length > 0 and length <= 24' build/catalog/catalog.json >/dev/null
 		info=$(ssh "$TV_HOST" "luna-send -n 1 -w 5000 luna://com.webos.applicationManager/getAppInfo '$payload' </dev/null")
 		jq -e --arg main "$app_main" --arg version "$app_version" '.returnValue == true and .appInfo.main == $main and .appInfo.version == $version' <<< "$info" >/dev/null || {
 			printf 'install this project package first with just install\n' >&2; exit 1;
 		}
-		# Do not replace a catalog while its app still owns the old data.
 		bash scripts/tv.sh stop
-		scp -O -r build/catalog "$TV_HOST:$app_dir/"
-		ssh "$TV_HOST" "chown -R '$TV_APP_UID:5000' '$app_dir/catalog'; chmod 700 '$app_dir/catalog'; chmod 600 '$app_dir/catalog/'*"
 		ssh "$TV_HOST" "luna-send -n 1 -w 5000 luna://com.webos.applicationManager/launch '$payload' </dev/null" |
 			jq -e 'if .returnValue then . else error(.errorText) end'
 		;;

@@ -166,7 +166,8 @@ stop_playback :: proc() {
 	tv_release_media()
 	delete(media_id); media_id = ""
 	delete(video_metadata); video_metadata = nil
-	loaded = false; paused = false
+	loaded = false; paused = false; resolving = false
+	delete(sponsor_segments); sponsor_segments = nil
 	timeline = {
 		seek_target_ms = -1,
 	}
@@ -175,11 +176,25 @@ stop_playback :: proc() {
 
 start_video :: proc() {
 	if selected < 0 || selected >= len(catalog.videos) {return}
-	path := fmt.aprintf("%s/catalog/%d.json", app_directory, selected)
-	defer delete(path)
-	load, error := os.read_entire_file(path, context.allocator)
-	if error !=
-	   nil {notice = "stream request missing; prepare this page again"; dirty = true; return}
+	resolve_selected()
+}
+
+load_video :: proc(url: string) {
+	request := struct {
+		uri:     string,
+		kind:    string `json:"type"`,
+		payload: struct {
+			option: struct {
+				appId: string,
+			},
+		},
+	} {
+		uri = url,
+		kind = "media",
+		payload = {option = {APP_ID}},
+	}
+	load, error := json.marshal(request)
+	if error != nil {browsing = true; notice = "video request failed"; dirty = true; return}
 	defer delete(load)
 	notice = ""
 	browsing = false; paused = false; loaded = false; load_replied = false
@@ -212,8 +227,9 @@ main :: proc() {
 	clay_memory: []u8
 	defer {
 		stop_playback()
-		for texture in textures {if texture != nil {sdl.DestroyTexture(texture)}}
-		model.catalog_destroy(&catalog)
+		stop_network()
+		delete(search_text)
+		clear_catalog()
 		close_icons()
 		close_text()
 		if renderer != nil {sdl.DestroyRenderer(renderer)}
@@ -262,9 +278,11 @@ main :: proc() {
 	defer delete(path)
 	app_directory = filepath.dir(path)
 	if !open_text(renderer) {fmt.eprintln("UI assets failed:", sdl.GetError()); return}
-	catalog_directory := fmt.aprintf("%s/catalog", app_directory)
-	defer delete(catalog_directory)
-	if !load_catalog(renderer, catalog_directory) {return}
+	if start_network() {
+		start_search()
+	} else {
+		notice = "network is unavailable"
+	}
 	if !render(renderer) {fmt.eprintln("frame failed:", sdl.GetError()); return}
 	fmt.println("video grid presented")
 	previous_frame := sdl.GetTicks()
@@ -276,6 +294,8 @@ main :: proc() {
 		if sdl.WaitEventTimeout(&event, 20) {
 			wheel = handle_event(renderer, event)
 		}
+		poll_network(renderer)
+		auto_skip_sponsor()
 		now := sdl.GetTicks()
 		frame_dt := f32(min(now - previous_frame, 50)) / 1000
 		previous_frame = now

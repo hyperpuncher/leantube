@@ -11,3 +11,6 @@ SDL_image loads WebP and JPEG covers and rasterizes SVG icons. It includes
 libwebp, NanoSVG, and stb_image. Their license and patent notices are in this
 directory. stb_image is used under its public-domain license.
 The Lucide icons use the license in icons/LICENSE.
+
+LeanTube uses SponsorBlock data from https://sponsor.ajay.app/ under
+CC BY-NC-SA 4.0: https://creativecommons.org/licenses/by-nc-sa/4.0/.

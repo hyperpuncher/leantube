@@ -11,16 +11,20 @@ check:
 	odin check src -vet -define:UI_TEST=true
 	odin check tests/layout -vet
 	odin check tests/http -vet
+	odin check tests/youtube -vet
+	odin check tests/sponsorblock -vet
 	bash -n scripts/*.sh tests/install.sh
 	shellcheck -x scripts/*.sh tests/install.sh
-	bun fmt --check package.json tsconfig.json scripts/catalog.ts scripts/ui.ts tests/catalog.test.ts tests/http/run.ts
+	bun fmt --check package.json tsconfig.json scripts/ui.ts tests/http/run.ts
 	bun check
 
 # Test metadata and installer completion handling without a TV.
 test: test-layout test-http test-ui
 	odin test src/model -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
 	odin test src/input.odin -file -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
-	bun test tests/catalog.test.ts
+	odin test src/youtube -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
+	odin test src/sponsorblock -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
+	odin test src -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
 	bash tests/install.sh
 
 # Test layout with the upstream host library, without opening a window.
@@ -48,7 +52,7 @@ fmt:
 	odinfmt src -w
 	odinfmt tests -w
 	clang-format -i src/native/bridge.c src/native/clay.c
-	bun fmt package.json tsconfig.json scripts/catalog.ts scripts/ui.ts tests/catalog.test.ts tests/http/run.ts
+	bun fmt package.json tsconfig.json scripts/ui.ts tests/http/run.ts
 
 # Explicit TV library setup. Downloads source, but does not contact the TV.
 setup-tv-images:
@@ -65,12 +69,13 @@ test-tv-layout: build
 package: build
 	bun run ares-package build/app -o build
 
-# Prepare one page of results and private requests without touching the TV.
-prepare query="Blender open movies":
-	@bun scripts/catalog.ts {{quote(query)}}
+# Check live search, cover download, resolution, and CDN access locally.
+test-youtube:
+	odin run tests/youtube -out:build/youtube-check
 
-# Prepare and open a grid. The host resolves all streams before launch.
-browse query="Blender open movies": (prepare query) run
+# Check real Linus Tech Tips sponsor segments locally, without playback.
+test-sponsorblock:
+	odin run tests/sponsorblock -out:build/sponsorblock-check
 
 # These commands target the separate prototype app, not either YouTube app.
 install: package

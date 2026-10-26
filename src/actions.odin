@@ -1,10 +1,12 @@
 package main
 
 import "./model"
+import sb "./sponsorblock"
 import "core:fmt"
 import sdl "vendor:sdl3"
 
-key :: proc(code: sdl.Keycode) {
+key :: proc(code: sdl.Keycode, window: ^sdl.Window = nil) {
+	if browsing && search_key(code, window) {return}
 	if browsing {
 		library_focus_pending = true
 		switch code {
@@ -30,13 +32,7 @@ key :: proc(code: sdl.Keycode) {
 		case sdl.K_LEFT, sdl.K_RIGHT:
 			offset: f64 = code == sdl.K_RIGHT ? 10000 : -10000
 			target := model.seek_target(timeline, offset, duration_ms)
-			extra := fmt.aprintf(",\"position\":%d", i64(target))
-			if command(
-				"luna://com.webos.media/seek",
-				extra,
-				.Seek,
-			) {timeline.seek_target_ms = target}
-			delete(extra)
+			seek_to(target)
 		case sdl.K_UP, sdl.K_DOWN:
 			delta: f64 = code == sdl.K_DOWN ? -0.25 : 0.25
 			rate = clamp(rate + delta, 0.5, 2)
@@ -46,4 +42,19 @@ key :: proc(code: sdl.Keycode) {
 		}
 	}
 	dirty = true
+}
+
+seek_to :: proc(target: f64) -> bool {
+	extra := fmt.aprintf(",\"position\":%d", i64(target))
+	defer delete(extra)
+	if !command("luna://com.webos.media/seek", extra, .Seek) {return false}
+	timeline.seek_target_ms = target
+	return true
+}
+
+auto_skip_sponsor :: proc() {
+	if browsing || !loaded || paused || timeline.seek_target_ms >= 0 {return}
+	from := timeline.position_ms
+	target := sb.skip_target(sponsor_segments[:], from, duration_ms)
+	if target >= 0 && seek_to(target) {sb.mark_skipped(sponsor_segments[:], from, target)}
 }

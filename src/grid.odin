@@ -1,34 +1,9 @@
 package main
 
 import clay "../vendor/clay"
-import "./model"
-import "core:fmt"
-import "core:os"
-import sdl "vendor:sdl3"
 import ttf "vendor:sdl3/ttf"
 
 library_focus_pending := true
-
-load_catalog :: proc(renderer: ^sdl.Renderer, directory: string) -> bool {
-	path := fmt.aprintf("%s/catalog.json", directory)
-	defer delete(path)
-	data, error := os.read_entire_file(path, context.allocator)
-	if error != nil {fmt.eprintln("catalog missing; use just browse on the host"); return false}
-	defer delete(data)
-	parsed, ok := model.catalog_parse(string(data))
-	if !ok {fmt.eprintln("invalid video catalog"); return false}
-	catalog = parsed
-	for _, i in catalog.videos {
-		for extension in ([]string{"webp", "jpg"}) {
-			name := fmt.caprintf("%s/%d.%s", directory, i, extension)
-			textures[i] = load_texture(renderer, name)
-			delete(name)
-			if textures[i] != nil {break}
-		}
-		if textures[i] == nil {fmt.eprintln("thumbnail load failed:", i, sdl.GetError())}
-	}
-	return true
-}
 
 grid_layout :: proc() {
 	if clay.UI(clay.ID("grid-root"))(
@@ -42,25 +17,7 @@ grid_layout :: proc() {
 		backgroundColor = COLOR_BACKGROUND,
 	},
 	) {
-		if clay.UI()(
-		{
-			layout = {
-				sizing = {
-					width = clay.SizingGrow({}),
-					height = clay.SizingFixed(f32(ttf.GetFontHeight(fonts[.Heading]))),
-				},
-				padding = padding(8, 8, 0, 0),
-				childAlignment = {y = .Center},
-			},
-			clip = {horizontal = true, vertical = true},
-		},
-		) {
-			label(catalog.query == "" ? "Recommended" : catalog.query, .Heading)
-			if notice != "" {
-				if clay.UI()({layout = {sizing = {width = clay.SizingGrow({})}}}) {}
-				label(notice, .Caption, COLOR_MUTED)
-			}
-		}
+		search_layout()
 		if clay.UI(clay.ID("library-scroll"))(
 		{
 			layout = {
@@ -162,7 +119,7 @@ video_card :: proc(index: int) {
 						height = clay.SizingFit({max = f32(ttf.GetFontHeight(fonts[.Small])) * 2}),
 					},
 				},
-				clip = {vertical = true},
+				clip = {horizontal = true, vertical = true},
 			},
 			) {label(video.title, .Small, wrap = .Words)}
 			if clay.UI()(

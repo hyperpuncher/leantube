@@ -30,7 +30,7 @@ read -r -a libs <<< "$("$pkg" --libs luna-service2 glib-2.0 wayland-client)"
 # shellcheck disable=SC2016
 "$cc" build/obj/*.o -L"$WEBOS_PLATFORM/runtime" -L"$WEBOS_PLATFORM/device-link" \
 	-Wl,-rpath-link,"$WEBOS_PLATFORM/device-link" -l:libSDL3.so.0 -l:libSDL3_ttf.so.0 -l:libSDL3_image.so.0 -lAcbAPI \
-	"${libs[@]}" -lm -lpthread -ldl -lrt -latomic \
+	"${libs[@]}" -Wl,--allow-shlib-undefined -lcurl -l:libcrypto.so.1.0.0 -lz -lm -lpthread -ldl -lrt -latomic \
 	-Wl,--disable-new-dtags,-rpath,'$ORIGIN/lib' -o "build/app/$app_main"
 cp -a app/. build/app/
 mkdir -p build/app/lib

@@ -44,10 +44,17 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 	clay.SetPointerState(point, down)
 	dirty = true
 	if browsing {
+		if clay.PointerOver(clay.ID("search")) {
+			if activate {edit_search(sdl.GetRenderWindow(renderer))}
+			return
+		}
 		for _, i in catalog.videos {
 			if clay.PointerOver(clay.ID("video", u32(i))) {
 				selected = i
-				if activate {start_video()}
+				if activate {
+					if search_editing {finish_search_input(sdl.GetRenderWindow(renderer))}
+					start_video()
+				}
 				break
 			}
 		}

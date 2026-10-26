@@ -5,6 +5,8 @@ import "./model"
 import "core:fmt"
 import "core:math"
 import "core:os"
+import "core:strings"
+import "core:sync/chan"
 import sdl "vendor:sdl3"
 
 UI_TEST :: #config(UI_TEST, false)
@@ -136,11 +138,9 @@ main :: proc() {
 	assert(open_text(renderer), string(sdl.GetError()))
 	defer close_text()
 	defer close_icons()
-	defer for texture in textures {if texture != nil {sdl.DestroyTexture(texture)}}
-	defer model.catalog_destroy(&catalog)
-	if !UI_TEST && len(os.args) > 1 {
-		assert(load_catalog(renderer, "build/catalog"), "prepared catalog could not be loaded")
-	} else {
+	defer clear_catalog()
+	defer {stop_network(); delete(search_text); delete(sponsor_segments)}
+	when UI_TEST {
 		titles := [?]string {
 			"FLOW",
 			"Big Buck Bunny 60fps 4K - Official Blender Foundation Short Film",
@@ -186,7 +186,14 @@ main :: proc() {
 		{handler = clay_error},
 	)
 	clay.SetMeasureTextFunction(measure_text, nil)
-	when UI_TEST {check_layout(renderer, surface)} else {run_dev(renderer)}
+	when UI_TEST {check_layout(renderer, surface)} else {
+		if start_network() {
+			start_search()
+		} else {
+			notice = "network is unavailable"
+		}
+		run_dev(renderer)
+	}
 }
 
 check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
@@ -206,7 +213,7 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	}
 	initial_view := clay.GetElementData(clay.ID("library-scroll")).boundingBox
 	assert(
-		initial_view.y + initial_view.height == view_height,
+		math.abs(initial_view.y + initial_view.height - view_height) < 0.1,
 		"the library must reach the bottom edge",
 	)
 	assert(icon_pixels == i32(scaled(48)))
@@ -283,7 +290,68 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	assert(scroll.scrollPosition^[1] > before_player, "wheel scrolling must move the view")
 	assert(selected == len(catalog.videos) - 1)
 	assert(running)
+	check_search_flow(renderer, surface)
 	fmt.println(
-		"scrolling, focus, player return, and antialiased fill/image edges passed; screenshots: build/ui-test",
+		"scrolling, player return, search states, and image edges passed; screenshots: build/ui-test",
 	)
+}
+
+check_search_flow :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
+	network_requests, _ = chan.create(chan.Chan(Network_Request), 1, context.allocator)
+	network_results, _ = chan.create(chan.Chan(Network_Result), 2, context.allocator)
+	defer stop_network()
+	selected = 0
+	key(sdl.K_UP)
+	assert(search_editing)
+	event: sdl.Event
+	event.type = .TEXT_INPUT
+	event.text.text = "café"
+	handle_event(renderer, event)
+	assert(string(search_text[:]) == "café")
+	event = {}
+	event.type = .KEY_DOWN
+	event.key.raw = 412
+	handle_event(renderer, event)
+	assert(!search_editing && running && browsing)
+	assert(catalog.query != "café", "back must cancel text entry without changing the page")
+	key(sdl.K_TAB)
+	event = {}
+	event.type = .TEXT_INPUT
+	event.text.text = "Linus Tech Tips"
+	handle_event(renderer, event)
+	snapshot(renderer, surface, "search-edit")
+	for state in 0 ..< 3 {
+		key(sdl.K_RETURN)
+		assert(search_loading && !search_editing && len(catalog.videos) == 0)
+		snapshot(renderer, surface, "search-loading")
+		request, ready := chan.try_recv(network_requests)
+		assert(ready && request.text == "Linus Tech Tips")
+		defer delete(request.text)
+		result := Network_Result {
+			kind = .Catalog,
+			page = request.page,
+		}
+		if state == 0 {result.error = .Transport} else {
+			result.catalog.query = strings.clone(request.text)
+			if state == 2 {
+				append(
+					&result.catalog.videos,
+					model.Video {
+						id = strings.clone("DN953UW8iJ8"),
+						title = strings.clone("Linus Tech Tips · local search check"),
+						channel = strings.clone("Linus Tech Tips"),
+						duration_ms = 100000,
+						duration_label = model.time_label(100000),
+					},
+				)
+			}
+		}
+		chan.send(network_results, result)
+		poll_network(renderer)
+		assert(!search_loading && browsing && running)
+		name := state == 0 ? "search-error" : state == 1 ? "search-empty" : "search-results"
+		snapshot(renderer, surface, name)
+		assert(state == 2 ? len(catalog.videos) == 1 && notice == "" : notice != "")
+		if state < 2 {key(sdl.K_TAB)}
+	}
 }

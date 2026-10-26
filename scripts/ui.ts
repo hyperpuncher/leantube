@@ -11,14 +11,8 @@ await $`mkdir -p ${directory}`.quiet();
 await $`odin build src -vet -define:UI_TEST=${!dev} -define:DEV_SMOKE=${smoke} -out:${binary}`;
 if (!buildOnly) {
 	if (dev) {
-		const prepared = await Bun.file("build/catalog/catalog.json").exists();
-		console.log(
-			prepared
-				? "using the prepared catalog"
-				: "using 24 generated cards; just prepare fetches real covers",
-		);
-		// The host reads public metadata and covers, never private load requests.
-		await $`${binary} ${prepared ? ["catalog"] : []}`;
+		console.log("native YouTube search; local playback is UI-only");
+		await $`${binary}`;
 	} else {
 		for (const size of ["1080p", "1440p", "4k", "narrow"]) await $`${binary} ${size}`;
 	}
