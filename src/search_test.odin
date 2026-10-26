@@ -1,3 +1,4 @@
+#+test
 package main
 
 import "./model"
@@ -19,13 +20,11 @@ search_input_replaces_the_old_query_and_deletes_complete_utf8_characters :: proc
 	testing.expect(t, search_replace)
 	append_search_text("café")
 	testing.expect_value(t, string(search_text[:]), "café")
-	search_key(sdl.K_BACKSPACE, nil)
-	testing.expect_value(t, string(search_text[:]), "caf")
 	search_key(sdl.K_AC_BACK, nil)
 	testing.expect(t, !search_editing)
 	testing.expect_value(t, catalog.query, "old query")
 	append_search_text("ignored")
-	testing.expect_value(t, string(search_text[:]), "caf")
+	testing.expect_value(t, string(search_text[:]), "café")
 }
 
 @(test)

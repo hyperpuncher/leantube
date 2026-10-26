@@ -1,7 +1,7 @@
 package model
 
 import "core:encoding/json"
-import "core:testing"
+import "core:strings"
 
 number :: proc(value: json.Value) -> (f64, bool) {
 	#partial switch v in value {
@@ -22,23 +22,27 @@ source_duration :: proc(source: json.Object) -> f64 {
 	return numeric && duration > 0 ? duration : 0
 }
 
-@(test)
-source_duration_uses_program_metadata :: proc(t: ^testing.T) {
-	value, err := json.parse(`{"numPrograms":1,"programInfo":[{"duration":634578}]}`)
-	if !testing.expect(t, err == .None) {return}
-	defer json.destroy_value(value)
-	source, ok := value.(json.Object)
-	if !testing.expect(t, ok) {return}
-	testing.expect_value(t, source_duration(source), f64(634578))
-}
-
-@(test)
-source_duration_rejects_unknown_values :: proc(t: ^testing.T) {
-	for fixture in ([]string{`{}`, `{"programInfo":[]}`, `{"programInfo":[null]}`, `{"programInfo":[{}]}`, `{"programInfo":[{"duration":0}]}`, `{"programInfo":[{"duration":-1}]}`, `{"programInfo":[{"duration":"unknown"}]}`}) {
-		value, err := json.parse(fixture)
-		if !testing.expect(t, err == .None) {continue}
-		source, ok := value.(json.Object)
-		if testing.expect(t, ok) {testing.expect_value(t, source_duration(source), f64(0))}
-		json.destroy_value(value)
+// HLS audio renditions may mark no track as default, and the decoder then
+// falls back to the first rendition. Match the reported original language to
+// the media service audio track order.
+audio_track_index :: proc(source: json.Object, language: string) -> int {
+	if language == "" {return -1}
+	programs, has_programs := source["programInfo"].(json.Array)
+	if !has_programs || len(programs) == 0 {return -1}
+	program, valid_program := programs[0].(json.Object)
+	if !valid_program {return -1}
+	tracks, has_tracks := program["audioTrackInfo"].(json.Array)
+	if !has_tracks {return -1}
+	for track, index in tracks {
+		entry, is_entry := track.(json.Object)
+		if !is_entry {continue}
+		code, has_language := entry["language"].(json.String)
+		if !has_language {continue}
+		value := string(code)
+		if value == language ||
+		   (strings.has_prefix(value, language) &&
+				   len(value) > len(language) &&
+				   value[len(language)] == '-') {return index}
 	}
+	return -1
 }

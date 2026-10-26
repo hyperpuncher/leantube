@@ -39,7 +39,7 @@ https_rejects_untrusted_certificates_wrong_hosts_and_downgrades :: proc(t: ^test
 }
 
 @(test)
-request_reuse_discards_post_state_and_recovers_after_bounded_failures :: proc(t: ^testing.T) {
+request_reuse_discards_post_state_and_recovers_after_failures :: proc(t: ^testing.T) {
 	base := os.get_env("LEANTUBE_TEST_HTTPS", context.allocator)
 	ca_file := os.get_env("LEANTUBE_TEST_CA", context.allocator)
 	defer {delete(base); delete(ca_file)}
@@ -57,26 +57,17 @@ request_reuse_discards_post_state_and_recovers_after_bounded_failures :: proc(t:
 	testing.expect_value(t, post_error, nil)
 	testing.expect_value(t, string(posted.body[:]), body)
 	// The fixture rejects leaked POST methods, headers, or bodies on GET.
-	for stage in 0 ..< 3 {
-		if stage == 1 {
-			response, error := http.request(&client, fmt.tprintf("%s/large", base), max_bytes = 3)
-			testing.expect_value(t, error, http.Error(http.Failure.Body_Limit))
-			testing.expect_value(t, len(response.body), 0)
-			delete(response.body)
-		} else if stage == 2 {
-			response, error := http.request(
-				&client,
-				fmt.tprintf("%s/slow", base),
-				timeout_ms = 100,
-			)
-			testing.expect_value(t, error, http.Error(curl.code.E_OPERATION_TIMEDOUT))
-			testing.expect_value(t, len(response.body), 0)
-			delete(response.body)
-		}
-		response, error := http.request(&client, base)
-		testing.expect_value(t, error, nil)
-		testing.expect_value(t, int(response.status), 200)
-		testing.expect_value(t, string(response.body[:]), "ready")
-		delete(response.body)
-	}
+	timed_out, timeout_error := http.request(
+		&client,
+		fmt.tprintf("%s/slow", base),
+		timeout_ms = 100,
+	)
+	testing.expect_value(t, timeout_error, http.Error(curl.code.E_OPERATION_TIMEDOUT))
+	testing.expect_value(t, len(timed_out.body), 0)
+	delete(timed_out.body)
+	response, response_error := http.request(&client, base)
+	testing.expect_value(t, response_error, nil)
+	testing.expect_value(t, int(response.status), 200)
+	testing.expect_value(t, string(response.body[:]), "ready")
+	delete(response.body)
 }

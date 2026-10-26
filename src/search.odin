@@ -2,6 +2,7 @@ package main
 
 import clay "../vendor/clay"
 import "core:strings"
+import "core:unicode/utf8"
 import sdl "vendor:sdl3"
 
 search_editing: bool
@@ -43,8 +44,8 @@ erase_search_text :: proc(index: i32, length: u32) {
 		start := len(search_text) + int(index)
 		if start < 0 || start > len(search_text) || length > u32(len(search_text) - start) {return}
 		end := start + int(length)
-		if start < len(search_text) && search_text[start] & 0xc0 == 0x80 {return}
-		if end < len(search_text) && search_text[end] & 0xc0 == 0x80 {return}
+		if start < len(search_text) && !utf8.rune_start(search_text[start]) {return}
+		if end < len(search_text) && !utf8.rune_start(search_text[end]) {return}
 		copy(search_text[start:], search_text[end:])
 		resize(&search_text, len(search_text) - int(length))
 	}
@@ -70,9 +71,8 @@ search_key :: proc(code: sdl.Keycode, window: ^sdl.Window) -> bool {
 			start_search(string(search_text[:]))
 		}
 	case sdl.K_BACKSPACE:
-		last := 0
-		for _, index in string(search_text[:]) {last = index}
-		erase_search_text(i32(last - len(search_text)), u32(len(search_text) - last))
+		_, size := utf8.decode_last_rune_in_string(string(search_text[:]))
+		if size > 0 {erase_search_text(-i32(size), u32(size))}
 	}
 	return true
 }

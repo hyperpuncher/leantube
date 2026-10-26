@@ -1,3 +1,4 @@
+#+test
 package youtube
 
 import "../http"
@@ -20,6 +21,33 @@ hls_requires_a_valid_https_manifest_and_does_not_claim_a_resolution :: proc(t: ^
 		delete(failed.url)
 		testing.expect(t, failure != .None)
 	}
+}
+
+@(test)
+hls_uses_the_player_default_audio_language :: proc(t: ^testing.T) {
+	for c in ([]struct {
+			data:     string,
+			language: string,
+		}{{`{"playabilityStatus":{"status":"OK"},"streamingData":{"hlsManifestUrl":"https://media.example/master.m3u8","adaptiveFormats":[{"audioTrack":{"id":"ja.3","audioIsDefault":false}},{"audioTrack":{"id":"en.4","audioIsDefault":true}}]}}`, "en"}, {`{"playabilityStatus":{"status":"OK"},"streamingData":{"hlsManifestUrl":"https://media.example/master.m3u8","adaptiveFormats":[{"audioTrack":{"id":"ja.3","audioIsDefault":false}}]}}`, ""}, {`{"playabilityStatus":{"status":"OK"},"streamingData":{"hlsManifestUrl":"https://media.example/master.m3u8"}}`, ""}}) {
+		stream, error := parse_player(c.data, true)
+		defer delete(stream.url)
+		defer delete(stream.audio_language)
+		testing.expect_value(t, error, .None)
+		testing.expect_value(t, stream.audio_language, c.language)
+	}
+}
+
+@(test)
+hls_uses_the_source_maximum_instead_of_a_fixed_cap :: proc(t: ^testing.T) {
+	stream, error := parse_player(
+		`{"playabilityStatus":{"status":"OK"},"streamingData":{"hlsManifestUrl":"https://media.example/master.m3u8","adaptiveFormats":[{"width":1280,"height":720,"bitrate":2500000},{"width":3840,"height":1920,"bitrate":53080615},{"width":3840,"height":1920,"bitrate":55873126},{"width":2560,"height":1280,"bitrate":12374073}]}}`,
+		true,
+	)
+	defer delete(stream.url)
+	testing.expect_value(t, error, .None)
+	testing.expect_value(t, stream.max_width, 3840)
+	testing.expect_value(t, stream.max_height, 1920)
+	testing.expect_value(t, stream.max_bitrate, 55873126)
 }
 
 player_calls: [dynamic]Profile

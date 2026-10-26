@@ -24,12 +24,7 @@ main :: proc() {
 	stream, player_error := yt.resolve(&client, "C5WDBA2i9nE")
 	assert(player_error == .None, "native player resolution failed")
 	defer delete(stream.url)
-	response, cdn_error := http.request(
-		&client,
-		stream.url,
-		headers = {"Range: bytes=0-1023"},
-		max_bytes = 1024,
-	)
+	response, cdn_error := http.request(&client, stream.url, headers = {"Range: bytes=0-1023"})
 	assert(cdn_error == nil && response.status == 206, "resolved CDN stream could not be read")
 	defer delete(response.body)
 	fmt.println("native combined stream verified; height:", stream.height)
@@ -37,8 +32,9 @@ main :: proc() {
 		hls, hls_error := yt.resolve(&client, id, visitor)
 		defer delete(hls.url)
 		assert(hls_error == .None && hls.hls, "native HLS resolution failed")
+		defer delete(hls.audio_language)
 		assert(hls.height == 0, "a master playlist must not claim the displayed resolution")
-		master, fetch_error := http.request(&client, hls.url, max_bytes = 1024 * 1024)
+		master, fetch_error := http.request(&client, hls.url)
 		defer delete(master.body)
 		assert(fetch_error == nil && master.status == 200, "HLS master could not be read")
 		text := string(master.body[:])
@@ -50,6 +46,21 @@ main :: proc() {
 			strings.contains(text, "vp09") && strings.contains(text, "mp4a.40.2"),
 			"expected VP9 and AAC variants",
 		)
-		fmt.println("native HLS master verified; 4k VP9/AAC advertised; video:", id)
+		fmt.println(
+			"native HLS master verified; 4k VP9/AAC advertised; original audio:",
+			hls.audio_language,
+			"maximum:",
+			hls.max_width,
+			"x",
+			hls.max_height,
+			"at",
+			hls.max_bitrate,
+			"bps; video:",
+			id,
+		)
+		if id == "C5WDBA2i9nE" {
+			assert(hls.audio_language == "en", "default audio language was not detected")
+		}
+		assert(hls.max_height >= 2160, "source 4k maximum was not detected")
 	}
 }

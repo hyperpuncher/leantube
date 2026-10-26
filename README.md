@@ -35,17 +35,19 @@ this is separate from video playback resolution.
 playback now prefers a visionOS HLS master, using the anonymous session returned
 by search. the session stays in worker memory and is not logged or saved.
 if that API does not provide HLS, resolution falls back to a direct H.264/AAC MP4.
-the app requests 3840×2160 through the TV media stack at startup. lower resolutions
-can be selected when the source or connection cannot provide 4k. the quality label
-uses the reported video height, not the largest playlist entry.
+the app requests the video’s advertised maximum resolution and bitrate through
+the TV media stack at startup, with no fixed quality cap. lower resolutions can be
+selected when the source or connection cannot provide 4k. the quality label uses
+the reported video height, not the largest playlist entry.
 
-B9 checks confirmed remote keyboard search, real covers, automatic 3840×2160
-playback for Linus Tech Tips, and changing captured frames. the quality request
-removed the earlier low-resolution stall. Spring played and sought successfully
-at a reported 2048×858. pause, Back, repeated keyboard activation, and complete
-process/media cleanup passed. the LG keyboard adapter uses SDL-webOS text-model
-code and SDK-generated bindings. audible audio, audio/video synchronization, HDR, 4k60, and
-long playback sessions still need checks.
+B9 checks confirmed remote keyboard search, real covers, 4k playback for Linus
+Tech Tips, and changing captured frames. Spring played and sought at 2048×858.
+pause, Back, repeated keyboard activation, and complete process/media cleanup
+passed. startup took about 5 s with one audio track and about 15 s with six, so
+media pipeline startup still needs work. the player selects the original audio
+track when the service reports it. the LG keyboard adapter uses SDL-webOS
+text-model code and SDK-generated bindings. audible audio, audio/video
+synchronization, HDR, 4k60, and long playback sessions still need checks.
 
 media-service playback failures remain errors; there is no hidden retry loop.
 SABR-only or login-only replies produce an error. the B9 capture service rejected

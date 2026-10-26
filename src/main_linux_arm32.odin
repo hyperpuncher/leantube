@@ -34,6 +34,8 @@ unloaded: bool
 media_id: string
 video_metadata: []u8
 video_frame_rate: f64
+video_seen: bool
+audio_selected: bool
 load_replied: bool
 
 send :: proc(endpoint: cstring, payload: string, kind: Request_Kind) -> bool {
@@ -93,6 +95,18 @@ reply :: proc "c" (bus, message, data: rawptr) -> bool {
 			fmt.println("media session:", media_id)
 			command("luna://com.webos.media/subscribe", "", .Subscribe)
 			foreground()
+			// Queue the initial quality before playback so the pipeline does not
+			// start low and re-buffer after a later quality switch.
+			if playback_source.hls && playback_source.max_bitrate > 0 {
+				extra := fmt.aprintf(
+					`,"width":%d,"height":%d,"bitRate":%d,"init":true`,
+					playback_source.max_width,
+					playback_source.max_height,
+					playback_source.max_bitrate,
+				)
+				defer delete(extra)
+				command("luna://com.webos.media/setStreamQuality", extra)
+			}
 			command("luna://com.webos.media/play")
 		}
 	}
@@ -103,7 +117,13 @@ reply :: proc "c" (bus, message, data: rawptr) -> bool {
 			if h_ok && height > 0 {stream_height = int(height); dirty = true}
 			fps, f_ok := model.number(info["frameRate"])
 			if f_ok && fps > 0 {video_frame_rate = fps}
-			if w_ok && h_ok && f_ok {fmt.printf("video %.0fx%.0f fps=%g\n", width, height, fps)}
+			if w_ok && h_ok && f_ok {
+				if !video_seen {
+					video_seen = true
+					fmt.printf("first video after %d ms\n", sdl.GetTicks() - playback_requested_at)
+				}
+				fmt.printf("video %.0fx%.0f fps=%g\n", width, height, fps)
+			}
 			scan, s_ok := info["scanType"].(json.String)
 			if w_ok && h_ok && video_frame_rate > 0 && s_ok && scan == "progressive" {
 				metadata := struct {
@@ -143,6 +163,18 @@ reply :: proc "c" (bus, message, data: rawptr) -> bool {
 		if source, found := root["sourceInfo"].(json.Object); found {
 			duration_ms = model.source_duration(source)
 			fmt.printf("source duration_ms=%.0f\n", duration_ms)
+			if language := playback_source.audio_language; language != "" && !audio_selected {
+				audio_selected = true
+				switch index := model.audio_track_index(source, language); {
+				case index >= 0:
+					extra := fmt.aprintf(`,"type":"audio","index":%d`, index)
+					defer delete(extra)
+					fmt.println("selecting original audio track:", index)
+					command("luna://com.webos.media/selectTrack", extra)
+				case:
+					fmt.println("original audio track not found; keeping the service default")
+				}
+			}
 			dirty = true
 		}
 		if _, found := root["loadCompleted"]; found {
@@ -155,12 +187,6 @@ reply :: proc "c" (bus, message, data: rawptr) -> bool {
 			delete(id)
 			foreground()
 			command("luna://com.webos.media/play")
-			if stream_hls {
-				command(
-					"luna://com.webos.media/setStreamQuality",
-					`,"width":3840,"height":2160,"bitRate":20000000,"init":false`,
-				)
-			}
 		}
 		ms, valid := model.number(root["currentTime"])
 		if time, found := root["currentTime"].(json.Object);
@@ -189,7 +215,10 @@ stop_playback :: proc() {
 	delete(media_id); media_id = ""
 	delete(video_metadata); video_metadata = nil
 	video_frame_rate = 0
-	loaded = false; paused = false; resolving = false; stream_hls = false
+	video_seen = false; audio_selected = false
+	loaded = false; paused = false; resolving = false
+	delete(playback_source.audio_language)
+	playback_source = {}
 	delete(sponsor_segments); sponsor_segments = nil
 	timeline = {
 		seek_target_ms = -1,
@@ -316,7 +345,11 @@ main :: proc() {
 		wheel: f32
 		event: sdl.Event
 		if sdl.WaitEventTimeout(&event, 20) {
-			wheel = handle_event(renderer, event)
+			// SDL documents draining the queue after the blocking wait.
+			for {
+				wheel += handle_event(renderer, event)
+				if !sdl.PollEvent(&event) {break}
+			}
 		}
 		poll_network(renderer)
 		auto_skip_sponsor()

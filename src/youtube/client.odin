@@ -16,9 +16,13 @@ Error :: enum {
 	No_Direct_Stream,
 }
 Stream :: struct {
-	url:    string,
-	height: int,
-	hls:    bool,
+	url:            string,
+	height:         int,
+	hls:            bool,
+	audio_language: string,
+	max_width:      int,
+	max_height:     int,
+	max_bitrate:    int,
 }
 
 // Client profiles follow yt-dlp's YouTube extractor. No account cookies or
@@ -131,6 +135,21 @@ parse_search :: proc(
 	return
 }
 
+// YouTube marks the original audio track with audioIsDefault. Its id is a
+// language tag such as "en.4". HLS renditions do not carry this default flag.
+original_audio_language :: proc(formats: json.Array) -> string {
+	for format in formats {
+		track := field(format, "audioTrack")
+		default, marked := field(track, "audioIsDefault").(json.Boolean)
+		id, tagged := field(track, "id").(json.String)
+		if !marked || !bool(default) || !tagged {continue}
+		language := string(id)
+		if dot := strings.index_byte(language, '.'); dot > 0 {language = language[:dot]}
+		return strings.clone(language)
+	}
+	return ""
+}
+
 parse_player :: proc(data: string, hls: bool = false) -> (stream: Stream, error: Error) {
 	value, err := json.parse(data)
 	if err != .None {return {}, .Invalid_Response}
@@ -140,8 +159,27 @@ parse_player :: proc(data: string, hls: bool = false) -> (stream: Stream, error:
 	if hls {
 		url, _ := field(field(value, "streamingData"), "hlsManifestUrl").(json.String)
 		if !strings.has_prefix(string(url), "https://") {return {}, .No_Direct_Stream}
-		// A master playlist does not tell us the resolution chosen by the decoder.
-		return {url = strings.clone(string(url)), hls = true}, .None
+		formats, _ := field(field(value, "streamingData"), "adaptiveFormats").(json.Array)
+		stream = {
+			url            = strings.clone(string(url)),
+			hls            = true,
+			audio_language = original_audio_language(formats),
+		}
+		// Request the source maximum, not a fixed ceiling. Height decides first
+		// so a wide 4k video is not mislabelled by its shorter dimension.
+		for format in formats {
+			width, has_width := model.number(field(format, "width"))
+			height, has_height := model.number(field(format, "height"))
+			bitrate, has_bitrate := model.number(field(format, "bitrate"))
+			if !has_width || !has_height || !has_bitrate || width <= 0 || height <= 0 {continue}
+			if int(height) > stream.max_height ||
+			   (int(height) == stream.max_height && int(bitrate) > stream.max_bitrate) {
+				stream.max_width = int(width)
+				stream.max_height = int(height)
+				stream.max_bitrate = int(bitrate)
+			}
+		}
+		return stream, .None
 	}
 	formats, _ := field(field(value, "streamingData"), "formats").(json.Array)
 	for format in formats {
@@ -202,14 +240,7 @@ api_post :: proc(
 			"User-Agent: " + VISIONOS_AGENT,
 		}
 	}
-	response, err := http.request(
-		client,
-		url,
-		string(payload),
-		headers,
-		max_bytes = 4 * 1024 * 1024,
-		timeout_ms = 3000,
-	)
+	response, err := http.request(client, url, string(payload), headers, timeout_ms = 3000)
 	if err != nil {return {}, .Transport}
 	if response.status != 200 {delete(response.body); return {}, .HTTP}
 	return response, .None
@@ -327,7 +358,7 @@ player_request :: proc(
 }
 
 fetch_thumbnail :: proc(client: ^http.Client, url: string) -> (http.Response, http.Error) {
-	return http.request(client, url, max_bytes = 2 * 1024 * 1024, timeout_ms = 2000)
+	return http.request(client, url, timeout_ms = 2000)
 }
 
 thumbnail :: proc(

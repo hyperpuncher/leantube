@@ -29,8 +29,6 @@ try {
 					status: 302,
 					headers: { Location: "http://localhost/unsafe" },
 				});
-			if (path === "/large")
-				return new Response("larger than the allowed response");
 			if (
 				request.method !== "GET" ||
 				request.headers.has("x-leantube-test") ||

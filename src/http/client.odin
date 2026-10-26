@@ -6,9 +6,7 @@ import "core:strings"
 import curl "vendor:curl"
 
 Failure :: enum {
-	None,
-	Invalid_Request,
-	Body_Limit,
+	Invalid_Request = 1,
 }
 Error :: union #shared_nil {
 	curl.code,
@@ -42,22 +40,11 @@ close :: proc(client: ^Client) {
 }
 
 @(private)
-Capture :: struct {
-	body:    [dynamic]u8,
-	limit:   int,
-	limited: bool,
-}
-
-@(private)
 receive :: proc "c" (data: rawptr, size, count: c.size_t, user: rawptr) -> c.size_t {
 	context = runtime.default_context()
-	capture := cast(^Capture)user
+	body := cast(^[dynamic]u8)user
 	if size == 0 || count == 0 {return 0}
-	if count > c.size_t(capture.limit - len(capture.body)) / size {
-		capture.limited = true
-		return 0
-	}
-	n, error := append(&capture.body, ..(cast([^]u8)data)[:int(size * count)])
+	n, error := append(body, ..(cast([^]u8)data)[:int(size * count)])
 	return error == nil ? c.size_t(n) : 0
 }
 
@@ -68,7 +55,6 @@ request :: proc(
 	url: string,
 	post_body: Maybe(string) = nil,
 	headers: []string = nil,
-	max_bytes: int = 2 * 1024 * 1024,
 	timeout_ms: c.long = 15000,
 ) -> (
 	response: Response,
@@ -76,18 +62,14 @@ request :: proc(
 ) {
 	if client.handle == nil ||
 	   !strings.has_prefix(url, "https://") ||
-	   max_bytes <= 0 ||
 	   timeout_ms <= 0 {return {}, Failure.Invalid_Request}
 	handle := client.handle
 	// Reset request state while retaining libcurl's connection and TLS caches.
 	curl.easy_reset(handle)
 	target := strings.clone_to_cstring(url)
 	defer delete(target)
-	capture := Capture {
-		body  = make([dynamic]u8, 0, min(max_bytes, 4096)),
-		limit = max_bytes,
-	}
-	defer if error != nil {delete(capture.body)}
+	response_body := make([dynamic]u8, 0, 4096)
+	defer if error != nil {delete(response_body)}
 	list: ^curl.slist
 	defer curl.slist_free_all(list)
 	for header in headers {
@@ -105,19 +87,18 @@ request :: proc(
 	curl.easy_setopt(handle, .URL, target) or_return
 	curl.easy_setopt(handle, .USERAGENT, cstring("leantube")) or_return
 	curl.easy_setopt(handle, .WRITEFUNCTION, receive) or_return
-	curl.easy_setopt(handle, .WRITEDATA, rawptr(&capture)) or_return
+	curl.easy_setopt(handle, .WRITEDATA, rawptr(&response_body)) or_return
 	curl.easy_setopt(handle, .HTTPHEADER, list) or_return
 	if client.ca_file != nil {curl.easy_setopt(handle, .CAINFO, client.ca_file) or_return}
 	if post_body != nil {
-		body := post_body.(string)
+		posted := post_body.(string)
 		curl.easy_setopt(handle, .POST, c.long(1)) or_return
-		curl.easy_setopt(handle, .POSTFIELDSIZE, c.long(len(body))) or_return
-		curl.easy_setopt(handle, .POSTFIELDS, raw_data(body)) or_return
+		curl.easy_setopt(handle, .POSTFIELDSIZE, c.long(len(posted))) or_return
+		curl.easy_setopt(handle, .POSTFIELDS, raw_data(posted)) or_return
 	}
 	code := curl.easy_perform(handle)
-	if capture.limited {return {}, Failure.Body_Limit}
 	if code != .E_OK {return {}, code}
 	curl.easy_getinfo(handle, .RESPONSE_CODE, &response.status) or_return
-	response.body = capture.body
+	response.body = response_body
 	return response, nil
 }

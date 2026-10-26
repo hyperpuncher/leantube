@@ -66,7 +66,7 @@ parse :: proc(data, id: string) -> (segments: [dynamic]Segment, valid: bool) {
 fetch :: proc(client: ^http.Client, id: string) -> (segments: [dynamic]Segment) {
 	url := endpoint(id)
 	defer delete(url)
-	response, error := http.request(client, url, max_bytes = 256 * 1024, timeout_ms = 2000)
+	response, error := http.request(client, url, timeout_ms = 2000)
 	if error != nil {return nil}
 	defer delete(response.body)
 	if response.status != 200 {return nil} 	// 404 means that there are no segments.

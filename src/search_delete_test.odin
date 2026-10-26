@@ -1,6 +1,8 @@
+#+test
 package main
 
 import "core:testing"
+import sdl "vendor:sdl3"
 
 @(test)
 ime_deletion_preserves_utf8_and_rejects_invalid_ranges :: proc(t: ^testing.T) {
@@ -20,4 +22,16 @@ ime_deletion_preserves_utf8_and_rejects_invalid_ranges :: proc(t: ^testing.T) {
 	testing.expect_value(t, string(search_text[:]), "caf")
 	erase_search_text(0, max(u32))
 	testing.expect_value(t, len(search_text), 0)
+}
+
+@(test)
+backspace_removes_a_complete_utf8_rune :: proc(t: ^testing.T) {
+	search_editing = true
+	search_replace = false
+	defer {delete(search_text); search_text = nil; search_editing = false}
+	append_search_text("café")
+	search_key(sdl.K_BACKSPACE, nil)
+	testing.expect_value(t, string(search_text[:]), "caf")
+	search_key(sdl.K_BACKSPACE, nil)
+	testing.expect_value(t, string(search_text[:]), "ca")
 }

@@ -1,3 +1,4 @@
+#+test
 package sponsorblock
 
 import "core:testing"

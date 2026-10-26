@@ -21,7 +21,6 @@ check:
 # Test metadata and installer completion handling without a TV.
 test: test-layout test-http test-ui
 	odin test src/model -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
-	odin test src/input.odin -file -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
 	odin test src/youtube -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
 	odin test src/sponsorblock -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
 	odin test src -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
