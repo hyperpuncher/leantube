@@ -3,6 +3,7 @@ package main
 import clay "../vendor/clay"
 import "./model"
 import "core:fmt"
+import "core:math"
 import "core:os"
 import sdl "vendor:sdl3"
 
@@ -51,6 +52,48 @@ check_rounded_edges :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	assert(sdl.SavePNG(surface, "build/ui-test/rounded-edges.png"))
 }
 
+// A 4:3 JPEG with baked-in bars must fill a 16:9 frame in both render paths.
+check_cover_fill :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
+	texture := load_texture(renderer, "tests/ui/cover.jpg")
+	assert(texture != nil)
+	defer sdl.DestroyTexture(texture)
+	width, height: f32
+	assert(sdl.GetTextureSize(texture, &width, &height))
+	assert(width == 160 && height == 120, "JPEG decoding must retain the source dimensions")
+	commands: [2]clay.RenderCommand
+	for &command, i in commands {
+		command.commandType = .Image
+		command.boundingBox = {f32(16 + i * 200), 16, 160, 90}
+		command.renderData.image.imageData = rawptr(texture)
+		if i == 1 {command.renderData.image.cornerRadius = clay.CornerRadiusAll(12)}
+	}
+	assert(set_color(renderer, {0, 0, 0, 255}) && sdl.RenderClear(renderer))
+	assert(
+		render_commands(
+			renderer,
+			{capacity = 2, length = 2, internalArray = raw_data(commands[:])},
+		),
+	)
+	for i in 0 ..< 2 {
+		for point in ([][2]i32{{80, 2}, {80, 87}, {2, 45}, {157, 45}}) {
+			red: u8
+			assert(
+				sdl.ReadSurfacePixel(
+					surface,
+					i32(16 + i * 200) + point[0],
+					16 + point[1],
+					&red,
+					nil,
+					nil,
+					nil,
+				),
+			)
+			assert(red > 240, "center-crop must remove the baked-in bars without side gaps")
+		}
+	}
+	assert(sdl.SavePNG(surface, "build/ui-test/cover-fill.png"))
+}
+
 main :: proc() {
 	app_directory = "app"
 	window: ^sdl.Window
@@ -80,6 +123,7 @@ main :: proc() {
 		)
 	} else {
 		width, height: i32 = 1920, 1080
+		if os.args[1] == "1440p" {width, height = 2560, 1440}
 		if os.args[1] == "4k" {width, height, ui_scale = 3840, 2160, 2}
 		if os.args[1] == "narrow" {width = 960}
 		surface = sdl.CreateSurface(width, height, .RGBA32)
@@ -97,24 +141,38 @@ main :: proc() {
 	if !UI_TEST && len(os.args) > 1 {
 		assert(load_catalog(renderer, "build/catalog"), "prepared catalog could not be loaded")
 	} else {
-		catalog.query = fmt.aprintf("local scrolling test · 24 videos")
-		for i in 0 ..< model.MAX_VIDEOS {
+		titles := [?]string {
+			"FLOW",
+			"Big Buck Bunny 60fps 4K - Official Blender Foundation Short Film",
+			"café and a longer title for layout checks",
+			"Spring - Blender Open Movie",
+		}
+		count := model.MAX_VIDEOS
+		// Test an incomplete final row.
+		if UI_TEST && os.args[1] == "1440p" {count -= 1}
+		catalog.query = fmt.aprintf("local scrolling test · %d videos", count)
+		for i in 0 ..< count {
 			append(
 				&catalog.videos,
 				model.Video {
-					title = fmt.aprintf(
-						"video %02d · café and a longer title for layout checks",
-						i + 1,
-					),
+					title = fmt.aprintf("video %02d · %s", i + 1, titles[i % len(titles)]),
 					duration_ms = 100000,
 					channel = fmt.aprintf("channel %02d", i + 1),
 					duration_label = model.time_label(100000),
 				},
 			)
-			pixels := [4]u8{u8(80 + i * 6), u8(80 + i * 6), u8(80 + i * 6), 255}
-			textures[i] = sdl.CreateTexture(renderer, .RGBA32, .STATIC, 1, 1)
+			if UI_TEST && i == 1 {
+				textures[i] = load_texture(renderer, "tests/ui/cover.jpg")
+				assert(textures[i] != nil)
+				continue
+			}
+			if UI_TEST && i == 2 {continue} 	// A missing cover must retain its grid slot.
+			shade := u8(80 + i * 6)
+			pixels: [16 * 9][4]u8
+			for &pixel in pixels {pixel = {shade, shade, shade, 255}}
+			textures[i] = sdl.CreateTexture(renderer, .RGBA32, .STATIC, 16, 9)
 			assert(textures[i] != nil)
-			assert(sdl.UpdateTexture(textures[i], nil, raw_data(pixels[:]), 4))
+			assert(sdl.UpdateTexture(textures[i], nil, raw_data(pixels[:]), 16 * 4))
 			assert(sdl.SetTextureBlendMode(textures[i], sdl.BLENDMODE_BLEND))
 		}
 	}
@@ -133,6 +191,19 @@ main :: proc() {
 
 check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	snapshot(renderer, surface, "start")
+	check_cover_fill(renderer, surface)
+	first := clay.GetElementData(clay.ID("video", 0)).boundingBox
+	first_cover := clay.GetElementData(clay.ID("cover", 0)).boundingBox
+	for _, i in catalog.videos {
+		card := clay.GetElementData(clay.ID("video", u32(i))).boundingBox
+		column := clay.GetElementData(clay.ID("video", u32(i % grid_columns))).boundingBox
+		assert(math.abs(card.width - first.width) < 0.1, "all grid cards must have equal widths")
+		assert(math.abs(card.x - column.x) < 0.1, "grid columns must align across rows")
+		cover := clay.GetElementData(clay.ID("cover", u32(i))).boundingBox
+		assert(math.abs(cover.width - first_cover.width) < 0.1)
+		assert(math.abs(cover.height - first_cover.height) < 0.1)
+		assert(math.abs(cover.width - cover.height * (16.0 / 9.0)) < 0.1)
+	}
 	initial_view := clay.GetElementData(clay.ID("library-scroll")).boundingBox
 	assert(
 		initial_view.y + initial_view.height == view_height,
@@ -143,6 +214,7 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 		assert(view_width == 3840 && view_height == 2160)
 		assert(text_sizes[.Body] == BASE_TEXT_SIZES[.Body] * 2)
 	}
+	if os.args[1] == "1440p" {assert(grid_columns == 4)}
 	if os.args[1] == "narrow" {assert(grid_columns == 1)}
 	for direction in ([]int{1, -1}) {
 		for step in 1 ..= 4 {
@@ -176,7 +248,7 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	}
 	// The last card, wheel scrolling, and a round trip through the player must
 	// use the same retained scroll state, without pulling focus to the pointer.
-	selected = model.MAX_VIDEOS - 1
+	selected = len(catalog.videos) - 1
 	library_focus_pending = true
 	snapshot(renderer, surface, "last")
 	viewport := clay.GetElementData(clay.ID("library-scroll")).boundingBox
@@ -209,7 +281,7 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	assert(render(renderer, 10))
 	scroll = clay.GetScrollContainerData(clay.ID("library-scroll"))
 	assert(scroll.scrollPosition^[1] > before_player, "wheel scrolling must move the view")
-	assert(selected == model.MAX_VIDEOS - 1)
+	assert(selected == len(catalog.videos) - 1)
 	assert(running)
 	fmt.println(
 		"scrolling, focus, player return, and antialiased fill/image edges passed; screenshots: build/ui-test",

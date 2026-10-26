@@ -42,29 +42,41 @@ export function searchSource(query: string) {
 		: `ytsearch${CATALOG_LIMIT}:${query}`;
 }
 
-export function thumbnailUrl(id: string) {
+export function thumbnailUrl(
+	id: string,
+	extension: "webp" | "jpg" = "webp",
+	size = "maxresdefault",
+) {
 	if (!/^[\w-]{11}$/.test(id)) throw new Error("invalid video ID");
-	return `https://i.ytimg.com/vi_webp/${id}/maxresdefault.webp`;
+	return `https://i.ytimg.com/${extension === "webp" ? "vi_webp" : "vi"}/${id}/${size}.${extension}`;
 }
 
 export async function downloadThumbnail(
 	id: string,
-	path: string,
+	prefix: string,
 	fetchImage: (url: string, options: RequestInit) => Promise<Response> = fetch,
 ) {
-	const response = await fetchImage(thumbnailUrl(id), {
-		signal: AbortSignal.timeout(15000),
-	});
-	if (!response.ok) return false;
-	const bytes = new Uint8Array(await response.arrayBuffer());
-	if (
-		bytes.length < 12 ||
-		new TextDecoder().decode(bytes.subarray(0, 4)) !== "RIFF" ||
-		new TextDecoder().decode(bytes.subarray(8, 12)) !== "WEBP"
-	)
-		return false;
-	await Bun.write(path, bytes);
-	return true;
+	// Try both formats at each size before accepting a smaller source.
+	for (const size of ["maxresdefault", "hq720", "sddefault", "hqdefault"]) {
+		for (const extension of ["webp", "jpg"] as const) {
+			const response = await fetchImage(thumbnailUrl(id, extension, size), {
+				signal: AbortSignal.timeout(15000),
+			});
+			if (response.status === 404) continue;
+			if (!response.ok) return false;
+			const bytes = new Uint8Array(await response.arrayBuffer());
+			const valid =
+				extension === "jpg"
+					? bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+					: bytes.length >= 12 &&
+						new TextDecoder().decode(bytes.subarray(0, 4)) === "RIFF" &&
+						new TextDecoder().decode(bytes.subarray(8, 12)) === "WEBP";
+			if (!valid) return false;
+			await Bun.write(`${prefix}.${extension}`, bytes);
+			return true;
+		}
+	}
+	return false;
 }
 
 async function prepare(query: string) {
@@ -85,9 +97,9 @@ async function prepare(query: string) {
 			const index = videos.length;
 			await Bun.write(`${stage}/${index}.json`, JSON.stringify(data.request));
 			try {
-				await downloadThumbnail(data.metadata.id, `${stage}/${index}.webp`);
+				await downloadThumbnail(data.metadata.id, `${stage}/${index}`);
 			} catch {
-				/* A missing max-resolution cover uses the UI placeholder. */
+				/* If no thumbnail can be fetched, use the UI placeholder. */
 			}
 			videos.push(data.metadata);
 		}

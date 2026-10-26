@@ -19,9 +19,12 @@ load_catalog :: proc(renderer: ^sdl.Renderer, directory: string) -> bool {
 	if !ok {fmt.eprintln("invalid video catalog"); return false}
 	catalog = parsed
 	for _, i in catalog.videos {
-		name := fmt.caprintf("%s/%d.webp", directory, i)
-		textures[i] = load_texture(renderer, name)
-		delete(name)
+		for extension in ([]string{"webp", "jpg"}) {
+			name := fmt.caprintf("%s/%d.%s", directory, i, extension)
+			textures[i] = load_texture(renderer, name)
+			delete(name)
+			if textures[i] != nil {break}
+		}
 		if textures[i] == nil {fmt.eprintln("thumbnail load failed:", i, sdl.GetError())}
 	}
 	return true
@@ -77,7 +80,14 @@ grid_layout :: proc() {
 						if index < len(catalog.videos) {
 							video_card(index)
 						} else {
-							if clay.UI()({layout = {sizing = {width = clay.SizingGrow({})}}}) {}
+							// Keep the final row gaps equal to those of a full row.
+							if clay.UI()(
+							{
+								layout = {
+									sizing = {width = clay.SizingPercent(1.0 / f32(grid_columns))},
+								},
+							},
+							) {}
 						}
 					}
 				}
@@ -92,7 +102,7 @@ video_card :: proc(index: int) {
 	if clay.UI(clay.ID("video", u32(index)))(
 	{
 		layout = {
-			sizing = {width = clay.SizingGrow({})},
+			sizing = {width = clay.SizingPercent(1.0 / f32(grid_columns))},
 			layoutDirection = .TopToBottom,
 			padding = padding(4, 4, 0, 0),
 			childGap = spacing(4),
@@ -109,10 +119,11 @@ video_card :: proc(index: int) {
 			cornerRadius = clay.CornerRadiusAll(scaled(16)),
 		},
 		) {
-			if clay.UI()(
+			if clay.UI(clay.ID("cover", u32(index)))(
 			{
 				layout = {sizing = {width = clay.SizingGrow({})}},
 				image = {imageData = rawptr(textures[index])},
+				backgroundColor = textures[index] == nil ? COLOR_SURFACE : clay.Color{},
 				aspectRatio = {16.0 / 9.0},
 				cornerRadius = clay.CornerRadiusAll(scaled(12)),
 			},

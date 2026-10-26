@@ -114,6 +114,15 @@ render_commands :: proc(
 				if !rounded_shape(renderer, rect, data.cornerRadius, COLOR_SURFACE) {return false}
 				continue
 			}
+			if rect.w <= 0 || rect.h <= 0 {continue}
+			width, height: f32
+			if !sdl.GetTextureSize(texture, &width, &height) {return false}
+			// Fill the destination without stretching. Crop only during drawing;
+			// the original texture and downloaded file remain unchanged.
+			scale := max(rect.w / width, rect.h / height)
+			source := sdl.FRect{0, 0, rect.w / scale, rect.h / scale}
+			source.x = (width - source.w) / 2
+			source.y = (height - source.h) / 2
 			if data.cornerRadius != (clay.CornerRadius{}) {
 				if !rounded_shape(
 					renderer,
@@ -121,8 +130,9 @@ render_commands :: proc(
 					data.cornerRadius,
 					{255, 255, 255, 255},
 					texture,
+					{source.x / width, source.y / height, source.w / width, source.h / height},
 				) {return false}
-			} else if !sdl.RenderTexture(renderer, texture, nil, &rect) {return false}
+			} else if !sdl.RenderTexture(renderer, texture, &source, &rect) {return false}
 		case .Text:
 			text := command.renderData.text
 			if text.stringContents.length == 0 {continue}

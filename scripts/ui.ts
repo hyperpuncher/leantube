@@ -20,6 +20,6 @@ if (!buildOnly) {
 		// The host reads public metadata and covers, never private load requests.
 		await $`${binary} ${prepared ? ["catalog"] : []}`;
 	} else {
-		for (const size of ["1080p", "4k", "narrow"]) await $`${binary} ${size}`;
+		for (const size of ["1080p", "1440p", "4k", "narrow"]) await $`${binary} ${size}`;
 	}
 }

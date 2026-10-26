@@ -12,6 +12,7 @@ rounded_shape :: proc(
 	corners: clay.CornerRadius,
 	color: clay.Color,
 	texture: ^sdl.Texture = nil,
+	uv: sdl.FRect = {0, 0, 1, 1},
 ) -> bool {
 	if rect.w <= 0 || rect.h <= 0 {return true}
 	SEGMENTS :: 12
@@ -21,7 +22,11 @@ rounded_shape :: proc(
 	tint := sdl.FColor{color[0] / 255, color[1] / 255, color[2] / 255, color[3] / 255}
 	clear := tint
 	clear.a = 0
-	vertices[0] = {{rect.x + rect.w / 2, rect.y + rect.h / 2}, tint, {0.5, 0.5}}
+	vertices[0] = {
+		{rect.x + rect.w / 2, rect.y + rect.h / 2},
+		tint,
+		{uv.x + uv.w / 2, uv.y + uv.h / 2},
+	}
 	radii := [4]f32{corners.topLeft, corners.topRight, corners.bottomRight, corners.bottomLeft}
 	for raw_radius, corner in radii {
 		radius := clamp(raw_radius, 0, min(rect.w, rect.h) / 2)
@@ -37,7 +42,10 @@ rounded_shape :: proc(
 				vertices[1 + index + edge * POINTS] = {
 					{x, y},
 					edge == 0 ? tint : clear,
-					{clamp((x - rect.x) / rect.w, 0, 1), clamp((y - rect.y) / rect.h, 0, 1)},
+					{
+						uv.x + clamp((x - rect.x) / rect.w, 0, 1) * uv.w,
+						uv.y + clamp((y - rect.y) / rect.h, 0, 1) * uv.h,
+					},
 				}
 			}
 			a, b := i32(index + 1), i32((index + 1) % POINTS + 1)

@@ -7,6 +7,7 @@ The fonts use the SIL Open Font License in fonts/OFL.txt.
 Geist Mono has been modified: Unicode zero uses the original font's ss09
 plain-zero glyph. All other glyphs and the original font names are retained.
 
-SDL_image loads WebP covers and rasterizes SVG icons. It includes libwebp
-and NanoSVG. Their license and patent notices are in this directory.
+SDL_image loads WebP and JPEG covers and rasterizes SVG icons. It includes
+libwebp, NanoSVG, and stb_image. Their license and patent notices are in this
+directory. stb_image is used under its public-domain license.
 The Lucide icons use the license in icons/LICENSE.

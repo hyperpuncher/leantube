@@ -45,40 +45,73 @@ test("missing streams, invalid IDs, and live entries cannot become cards", () =>
 		expect(videoData(info, "prototype")).toBeNull();
 });
 
-test("max-resolution WebP covers are saved unchanged, with no smaller fallback", async () => {
+test("thumbnail fallback prefers size, then WebP, and preserves original bytes", async () => {
 	const directory = mkdtempSync("/tmp/leantube-cover-");
 	try {
-		const original = await Bun.file("tests/ui/cover.webp").bytes();
-		const path = `${directory}/cover.webp`;
-		let calls = 0;
-		expect(
-			await downloadThumbnail("aqz-KE-bpKQ", path, async (url) => {
-				calls++;
-				expect(url).toBe(
-					"https://i.ytimg.com/vi_webp/aqz-KE-bpKQ/maxresdefault.webp",
-				);
-				return new Response(original);
-			}),
-		).toBe(true);
-		expect(await Bun.file(path).bytes()).toEqual(original);
-		for (const response of [
-			new Response(null, { status: 404 }),
-			new Response("not a WebP"),
-		]) {
+		const originals = {
+			webp: await Bun.file("tests/ui/cover.webp").bytes(),
+			jpg: await Bun.file("tests/ui/cover.jpg").bytes(),
+		};
+		const cases = [
+			{
+				variant: "vi_webp/aqz-KE-bpKQ/maxresdefault.webp",
+				extension: "webp",
+				calls: 1,
+			},
+			{ variant: "vi/aqz-KE-bpKQ/maxresdefault.jpg", extension: "jpg", calls: 2 },
+			{
+				variant: "vi_webp/aqz-KE-bpKQ/sddefault.webp",
+				extension: "webp",
+				calls: 5,
+			},
+			{ variant: "vi/aqz-KE-bpKQ/hqdefault.jpg", extension: "jpg", calls: 8 },
+		] as const;
+		for (const entry of cases) {
+			const prefix = `${directory}/${entry.calls}`;
+			const calls: string[] = [];
 			expect(
-				await downloadThumbnail(
-					"aqz-KE-bpKQ",
-					`${directory}/missing.webp`,
-					async () => {
-						calls++;
-						return response;
-					},
-				),
-			).toBe(false);
+				await downloadThumbnail("aqz-KE-bpKQ", prefix, async (url) => {
+					calls.push(url);
+					return url === `https://i.ytimg.com/${entry.variant}`
+						? new Response(originals[entry.extension])
+						: new Response(null, { status: 404 });
+				}),
+			).toBe(true);
+			expect(calls[0]).toBe(
+				"https://i.ytimg.com/vi_webp/aqz-KE-bpKQ/maxresdefault.webp",
+			);
+			expect(calls.length).toBe(entry.calls);
+			expect(await Bun.file(`${prefix}.${entry.extension}`).bytes()).toEqual(
+				originals[entry.extension],
+			);
 		}
-		expect(calls).toBe(3);
-		expect(await Bun.file(`${directory}/missing.webp`).exists()).toBe(false);
 		expect(() => thumbnailUrl("../private")).toThrow();
+	} finally {
+		await $`trash -- ${directory}`.quiet();
+	}
+});
+
+test("missing thumbnails use no file; server failures and invalid data do not trigger smaller fallbacks", async () => {
+	const directory = mkdtempSync("/tmp/leantube-cover-");
+	try {
+		for (const status of [404, 503, 200]) {
+			// YouTube can send valid image bytes with a 404 status.
+			const body =
+				status === 404
+					? await Bun.file("tests/ui/cover.webp").bytes()
+					: "not an image";
+			let calls = 0;
+			const prefix = `${directory}/${status}`;
+			expect(
+				await downloadThumbnail("aqz-KE-bpKQ", prefix, async () => {
+					calls++;
+					return new Response(body, { status });
+				}),
+			).toBe(false);
+			expect(calls).toBe(status === 404 ? 8 : 1);
+			expect(await Bun.file(`${prefix}.webp`).exists()).toBe(false);
+			expect(await Bun.file(`${prefix}.jpg`).exists()).toBe(false);
+		}
 	} finally {
 		await $`trash -- ${directory}`.quiet();
 	}
