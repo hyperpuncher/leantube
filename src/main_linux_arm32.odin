@@ -336,6 +336,7 @@ main :: proc() {
 			}
 		}
 		poll_network(renderer)
+		poll_login_tick()
 		auto_skip_sponsor()
 		now := sdl.GetTicks()
 		frame_dt := f32(min(now - previous_frame, 50)) / 1000

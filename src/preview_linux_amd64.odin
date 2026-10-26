@@ -8,6 +8,7 @@ import "core:os"
 import "core:strings"
 import "core:sync/chan"
 import sdl "vendor:sdl3"
+import ttf "vendor:sdl3/ttf"
 
 UI_TEST :: #config(UI_TEST, false)
 
@@ -198,6 +199,38 @@ main :: proc() {
 
 check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	snapshot(renderer, surface, "start")
+	assert(!clay.GetElementData(clay.ID("search")).found)
+	// Use real font measurements, including UTF-8 and an explicit final line.
+	for sample in ([]string{"short", "café café café café café café", "a long channel name that must end with an ellipsis"}) {
+		fit, owned := fit_text(fonts[.Small], sample, 160)
+		defer if owned {delete(fit)}
+		width: i32
+		assert(ttf.GetStringSize(fonts[.Small], raw_data(fit), len(fit), &width, nil))
+		assert(width <= 160)
+		if owned {assert(strings.has_suffix(fit, "…"))} else {assert(fit == sample)}
+	}
+	continued, owned := fit_text(fonts[.Small], "short", 160, true)
+	defer if owned {delete(continued)}
+	assert(strings.has_suffix(continued, "…"))
+	too_narrow, _ := fit_text(fonts[.Small], "text", 1)
+	assert(too_narrow == "")
+	red, green, blue: u8
+	assert(sdl.ReadSurfacePixel(surface, 0, 0, &red, &green, &blue, nil))
+	assert(red == 0 && green == 0 && blue == 0)
+	rail := clay.GetElementData(clay.ID("navigation")).boundingBox
+	assert(rail.x == 0 && rail.y == 0 && rail.height == view_height)
+	previous_bottom: f32
+	for item in Navigation {
+		box := clay.GetElementData(clay.ID("navigation-item", u32(item))).boundingBox
+		assert(box.width > 0 && box.y >= previous_bottom)
+		previous_bottom = box.y + box.height
+	}
+	assert(previous_bottom <= view_height)
+	key(sdl.K_LEFT)
+	assert(rail_focus && selected == 0)
+	snapshot(renderer, surface, "rail-focused")
+	key(sdl.K_RIGHT)
+	assert(!rail_focus && selected == 0)
 	check_cover_fill(renderer, surface)
 	first := clay.GetElementData(clay.ID("video", 0)).boundingBox
 	first_cover := clay.GetElementData(clay.ID("cover", 0)).boundingBox
@@ -291,10 +324,47 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	assert(scroll.scrollPosition^[1] > before_player, "wheel scrolling must move the view")
 	assert(selected == len(catalog.videos) - 1)
 	assert(running)
+	check_account_ui(renderer, surface)
 	check_search_flow(renderer, surface)
 	fmt.println(
 		"scrolling, player return, search states, and image edges passed; screenshots: build/ui-test",
 	)
+}
+
+check_account_ui :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
+	// Local fixtures only. Never load or modify a real account file here.
+	saved_accounts, saved_active := auth_accounts, auth_active
+	saved_signed_in, saved_avatar := signed_in, account_avatar
+	auth_accounts = make([dynamic]Auth_Token)
+	append(&auth_accounts, Auth_Token{name = "Alice"}, Auth_Token{name = "Bob"})
+	auth_active = 0
+	signed_in = true
+	account_avatar = load_texture(renderer, "tests/ui/cover.webp")
+	assert(account_avatar != nil)
+	defer {
+		sdl.DestroyTexture(account_avatar)
+		delete(auth_accounts)
+		auth_accounts, auth_active = saved_accounts, saved_active
+		signed_in, account_avatar = saved_signed_in, saved_avatar
+		account_menu = false
+	}
+	snapshot(renderer, surface, "account-avatar")
+	avatar := clay.GetElementData(clay.ID("account-avatar"))
+	assert(avatar.found && avatar.boundingBox.width == avatar.boundingBox.height)
+	assert(!clay.GetElementData(clay.ID("sign-out")).found)
+	account_menu = true
+	snapshot(renderer, surface, "users")
+	assert(clay.GetElementData(clay.ID("account-row", 0)).found)
+	assert(clay.GetElementData(clay.ID("account-row", 1)).found)
+	assert(clay.GetElementData(clay.ID("add-account")).found)
+	assert(clay.GetElementData(clay.ID("sign-out")).found)
+	account_menu_selected = 0
+	key(sdl.K_DOWN)
+	assert(account_menu_selected == 1)
+	key(sdl.K_UP)
+	assert(account_menu_selected == 0)
+	key(sdl.K_AC_BACK)
+	assert(!account_menu && running)
 }
 
 check_search_flow :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
@@ -302,7 +372,7 @@ check_search_flow :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	network_results, _ = chan.create(chan.Chan(Network_Result), 2, context.allocator)
 	defer stop_network()
 	selected = 0
-	key(sdl.K_UP)
+	key(sdl.K_TAB)
 	assert(search_editing)
 	event: sdl.Event
 	event.type = .TEXT_INPUT

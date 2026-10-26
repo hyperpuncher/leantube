@@ -1,7 +1,9 @@
 package main
 
+import "core:c"
 import "core:fmt"
 import "core:math"
+import "core:strings"
 import sdl "vendor:sdl3"
 import ttf "vendor:sdl3/ttf"
 
@@ -44,6 +46,45 @@ resize_text :: proc() -> bool {
 		text_sizes[style] = size
 	}
 	return true
+}
+
+// Return a borrowed string when it fits; otherwise the caller owns the result.
+fit_text :: proc(
+	font: ^ttf.Font,
+	text: string,
+	width: c.int,
+	continued: bool = false,
+) -> (
+	string,
+	bool,
+) {
+	if text == "" || width <= 0 {return "", false}
+	measured: c.int
+	if !ttf.GetStringSize(font, raw_data(text), c.size_t(len(text)), &measured, nil) {
+		return "", false
+	}
+	if !continued && measured <= width {return text, false}
+	ELLIPSIS: string : "…"
+	ellipsis_width: c.int
+	if !ttf.GetStringSize(font, raw_data(ELLIPSIS), len(ELLIPSIS), &ellipsis_width, nil) {
+		return "", false
+	}
+	if ellipsis_width > width {return "", false}
+	length: c.size_t
+	if width > ellipsis_width {
+		if !ttf.MeasureString(
+			font,
+			raw_data(text),
+			c.size_t(len(text)),
+			width - ellipsis_width,
+			nil,
+			&length,
+		) {
+			return "", false
+		}
+	}
+	prefix := strings.trim_right_space(text[:int(length)])
+	return strings.concatenate({prefix, ELLIPSIS}), true
 }
 
 close_text :: proc() {

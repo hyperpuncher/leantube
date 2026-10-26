@@ -46,6 +46,25 @@ empty_results_are_distinct_from_invalid_responses :: proc(t: ^testing.T) {
 }
 
 @(test)
+tv_search_lockups_are_parsed_without_web_renderers :: proc(t: ^testing.T) {
+	catalog, error, visitor := parse_search_tv(
+		`{"responseContext":{"visitorData":"tv-session"},"contents":{"sectionListRenderer":{"contents":[{"shelfRenderer":{"content":{"horizontalListRenderer":{"items":[
+		{"lockupViewModel":{"contentId":"DN953UW8iJ8","contentType":"LOCKUP_CONTENT_TYPE_VIDEO","metadata":{"lockupMetadataViewModel":{"title":{"content":"TV search result"},"metadata":{"contentMetadataViewModel":{"metadataRows":[{"metadataParts":[{"text":{"content":"Linus Tech Tips"}}]}]}}}},"contentImage":{"thumbnailViewModel":{"overlays":[{"thumbnailBottomOverlayViewModel":{"badges":[{"thumbnailBadgeViewModel":{"text":"15:51"}}]}}]}}}}
+		]}}}}]}}}`,
+		"Linus",
+	)
+	defer model.catalog_destroy(&catalog)
+	defer delete(visitor)
+	if !testing.expect_value(t, error, .None) {return}
+	if !testing.expect_value(t, len(catalog.videos), 1) {return}
+	testing.expect_value(t, visitor, "tv-session")
+	testing.expect_value(t, catalog.videos[0].id, "DN953UW8iJ8")
+	testing.expect_value(t, catalog.videos[0].title, "TV search result")
+	testing.expect_value(t, catalog.videos[0].channel, "Linus Tech Tips")
+	testing.expect_value(t, catalog.videos[0].duration_ms, f64(951000))
+}
+
+@(test)
 player_selects_the_best_direct_combined_h264_stream :: proc(t: ^testing.T) {
 	stream, error := parse_player(
 		`{"playabilityStatus":{"status":"OK"},"streamingData":{"formats":[

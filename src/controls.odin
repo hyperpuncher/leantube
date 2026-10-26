@@ -45,6 +45,37 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 	clay.SetPointerState(point, down)
 	dirty = true
 	if browsing {
+		if account_menu {
+			if clay.PointerOver(clay.ID("account")) {
+				if activate {account_menu = false; dirty = true}
+				return
+			}
+			for _, i in auth_accounts {
+				if clay.PointerOver(clay.ID("account-row", u32(i))) {
+					if activate {activate_account(i)}
+					return
+				}
+			}
+			if clay.PointerOver(clay.ID("add-account")) {
+				if activate {account_menu = false; start_login(true)}
+				return
+			}
+			if clay.PointerOver(clay.ID("sign-out")) {
+				if activate {sign_out()}
+				return
+			}
+			if activate {account_menu = false; dirty = true}
+			return
+		}
+		for item in Navigation {
+			if clay.PointerOver(clay.ID("navigation-item", u32(item))) {
+				if activate {
+					rail_focus = true
+					activate_navigation(item, sdl.GetRenderWindow(renderer))
+				}
+				return
+			}
+		}
 		if clay.PointerOver(clay.ID("search")) {
 			if activate {edit_search(sdl.GetRenderWindow(renderer))}
 			return
@@ -52,6 +83,7 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 		for _, i in catalog.videos {
 			if clay.PointerOver(clay.ID("video", u32(i))) {
 				selected = i
+				rail_focus = false
 				if activate {
 					if search_editing {finish_search_input(sdl.GetRenderWindow(renderer))}
 					start_video()

@@ -23,6 +23,7 @@ edit_search :: proc(window: ^sdl.Window) {
 }
 finish_search_input :: proc(window: ^sdl.Window) {
 	search_editing = false
+	rail_focus = false
 	stop_text_input(window)
 	dirty = true
 }
@@ -54,9 +55,7 @@ erase_search_text :: proc(index: i32, length: u32) {
 
 search_key :: proc(code: sdl.Keycode, window: ^sdl.Window) -> bool {
 	if !search_editing {
-		if code == sdl.K_TAB ||
-		   code == sdl.K_SLASH ||
-		   code == sdl.K_UP && selected < grid_columns {
+		if code == sdl.K_TAB || code == sdl.K_SLASH {
 			edit_search(window)
 			return true
 		}
@@ -78,35 +77,48 @@ search_key :: proc(code: sdl.Keycode, window: ^sdl.Window) -> bool {
 }
 
 search_layout :: proc() {
-	focus := search_editing ? COLOR_ACCENT : COLOR_SURFACE
-	if clay.UI(clay.ID("search"))(
+	if clay.UI(clay.ID("search-row"))(
 	{
-		layout = {sizing = {width = clay.SizingGrow({})}, padding = clay.PaddingAll(spacing(4))},
-		backgroundColor = focus,
-		cornerRadius = clay.CornerRadiusAll(scaled(8)),
+		layout = {
+			sizing = {width = clay.SizingGrow({})},
+			childGap = spacing(16),
+			childAlignment = {y = .Center},
+		},
 	},
 	) {
-		if clay.UI()(
+		focus := search_editing ? COLOR_ACCENT : COLOR_SURFACE
+		if clay.UI(clay.ID("search"))(
 		{
 			layout = {
 				sizing = {width = clay.SizingGrow({})},
-				padding = padding(8, 8, 4, 4),
-				childGap = spacing(16),
-				childAlignment = {y = .Center},
+				padding = clay.PaddingAll(spacing(4)),
 			},
-			backgroundColor = COLOR_SURFACE,
-			cornerRadius = clay.CornerRadiusAll(scaled(4)),
-			clip = {horizontal = true, vertical = true},
+			backgroundColor = focus,
+			cornerRadius = clay.CornerRadiusAll(scaled(8)),
 		},
 		) {
-			value := search_editing ? string(search_text[:]) : catalog.query
-			label(
-				value == "" ? "Search YouTube" : value,
-				.Heading,
-				search_editing && search_replace ? COLOR_MUTED : COLOR_TEXT,
-			)
-			if clay.UI()({layout = {sizing = {width = clay.SizingGrow({})}}}) {}
-			if search_loading {label("Loading…", .Caption, COLOR_MUTED)} else if notice != "" {label(notice, .Caption, COLOR_MUTED)}
+			if clay.UI()(
+			{
+				layout = {
+					sizing = {width = clay.SizingGrow({})},
+					padding = padding(8, 8, 4, 4),
+					childGap = spacing(16),
+					childAlignment = {y = .Center},
+				},
+				backgroundColor = COLOR_SURFACE,
+				cornerRadius = clay.CornerRadiusAll(scaled(4)),
+				clip = {horizontal = true, vertical = true},
+			},
+			) {
+				value := search_editing ? string(search_text[:]) : catalog.query
+				label(
+					value == "" ? "Search YouTube" : value,
+					.Heading,
+					search_editing && search_replace ? COLOR_MUTED : COLOR_TEXT,
+				)
+				if clay.UI()({layout = {sizing = {width = clay.SizingGrow({})}}}) {}
+				if search_loading {label("Loading…", .Caption, COLOR_MUTED)} else if notice != "" {label(notice, .Caption, COLOR_MUTED)}
+			}
 		}
 	}
 }

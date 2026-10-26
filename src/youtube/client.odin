@@ -31,10 +31,21 @@ ANDROID_VERSION :: "21.26.364"
 ANDROID_AGENT :: "com.google.android.youtube/" + ANDROID_VERSION + " (Linux; U; Android 11) gzip"
 VISIONOS_VERSION :: "1.02"
 VISIONOS_AGENT :: "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
+TV_VERSION :: "7.20260707.07.00"
+TV_AGENT :: "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/25.lts.30.1034943-gold (unlike Gecko), Unknown_TV_Unknown_0/Unknown (Unknown, Unknown)"
 Profile :: enum {
 	Web,
+	TV,
 	Android,
 	VisionOS,
+}
+
+access_token: string
+
+set_access_token :: proc(token: string) {
+	if token == access_token {return}
+	delete(access_token)
+	access_token = strings.clone(token)
 }
 
 field :: proc(value: json.Value, name: string) -> json.Value {
@@ -132,6 +143,93 @@ parse_search :: proc(
 	}
 	catalog.query = strings.clone(query)
 	collect_videos(primary, &catalog)
+	return
+}
+
+collect_videos_tv :: proc(value: json.Value, catalog: ^model.Catalog) {
+	if len(catalog.videos) >= model.MAX_VIDEOS {return}
+	#partial switch item in value {
+	case json.Array:
+		for child in item {collect_videos_tv(child, catalog)}
+	case json.Object:
+		if lockup, ok := item["lockupViewModel"].(json.Object); ok {
+			kind, _ := lockup["contentType"].(json.String)
+			if kind != "LOCKUP_CONTENT_TYPE_VIDEO" {return}
+			id, valid := lockup["contentId"].(json.String)
+			if !valid || !video_id_valid(string(id)) {return}
+			for existing in catalog.videos {if existing.id == string(id) {return}}
+			metadata, _ := lockup["metadata"].(json.Object)
+			lockup_metadata, _ := metadata["lockupMetadataViewModel"].(json.Object)
+			title, _ := field(lockup_metadata, "title").(json.Object)
+			title_text, _ := field(title, "content").(json.String)
+			if title_text == "" {return}
+			channel: string
+			rows, _ := field(
+				field(lockup_metadata, "metadata"),
+				"contentMetadataViewModel",
+			).(json.Object)
+			metadata_rows, _ := field(rows, "metadataRows").(json.Array)
+			if len(metadata_rows) > 0 {
+				row, _ := metadata_rows[0].(json.Object)
+				row_parts, _ := field(row, "metadataParts").(json.Array)
+				if len(row_parts) > 0 {
+					part, _ := row_parts[0].(json.Object)
+					channel_text, _ := field(field(part, "text"), "content").(json.String)
+					channel = strings.clone(string(channel_text))
+				}
+			}
+			stamp: string
+			image, _ := lockup["contentImage"].(json.Object)
+			thumbnail, _ := field(image, "thumbnailViewModel").(json.Object)
+			overlays, _ := field(thumbnail, "overlays").(json.Array)
+			if len(overlays) > 0 {
+				overlay, _ := overlays[0].(json.Object)
+				bottom, _ := field(overlay, "thumbnailBottomOverlayViewModel").(json.Object)
+				badges, _ := field(bottom, "badges").(json.Array)
+				if len(badges) > 0 {
+					badge, _ := badges[0].(json.Object)
+					badge_view, _ := field(badge, "thumbnailBadgeViewModel").(json.Object)
+					badge_text, _ := field(badge_view, "text").(json.String)
+					stamp = strings.clone(string(badge_text))
+				}
+			}
+			ms := duration(stamp)
+			if ms <= 0 {delete(stamp); delete(channel); return}
+			append(
+				&catalog.videos,
+				model.Video {
+					id = strings.clone(string(id)),
+					title = strings.clone(string(title_text)),
+					channel = channel,
+					duration_label = stamp,
+					duration_ms = ms,
+				},
+			)
+			return
+		}
+		for _, child in item {collect_videos_tv(child, catalog)}
+	}
+}
+
+parse_search_tv :: proc(
+	data, query: string,
+) -> (
+	catalog: model.Catalog,
+	error: Error,
+	visitor_data: string,
+) {
+	value, err := json.parse(data)
+	if err != .None {return {}, .Invalid_Response, ""}
+	defer json.destroy_value(value)
+	contents := field(value, "contents")
+	if field(contents, "sectionListRenderer") == nil {
+		return {}, .Invalid_Response, ""
+	}
+	if visitor, ok := field(field(value, "responseContext"), "visitorData").(json.String); ok {
+		visitor_data = strings.clone(string(visitor))
+	}
+	catalog.query = strings.clone(query)
+	collect_videos_tv(contents, &catalog)
 	return
 }
 
@@ -249,14 +347,23 @@ api_post :: proc(
 	endpoint: string,
 	payload: []u8,
 	profile: Profile = .Web,
+	request: type_of(http.request) = http.request,
 ) -> (
 	http.Response,
 	Error,
 ) {
 	url := fmt.aprintf("https://www.youtube.com/youtubei/v1/%s?prettyPrint=false", endpoint)
 	defer delete(url)
-	headers := []string{"Content-Type: application/json", "Origin: https://www.youtube.com"}
+	headers: []string = {"Content-Type: application/json", "Origin: https://www.youtube.com"}
 	#partial switch profile {
+	case .TV:
+		headers = {
+			"Content-Type: application/json",
+			"Origin: https://www.youtube.com",
+			"X-YouTube-Client-Name: 7",
+			"X-YouTube-Client-Version: " + TV_VERSION,
+			"User-Agent: " + TV_AGENT,
+		}
 	case .Android:
 		headers = {
 			"Content-Type: application/json",
@@ -274,32 +381,124 @@ api_post :: proc(
 			"User-Agent: " + VISIONOS_AGENT,
 		}
 	}
-	response, err := http.request(client, url, string(payload), headers, timeout_ms = 3000)
+	request_headers: [dynamic]string
+	defer delete(request_headers)
+	for header in headers {append(&request_headers, header)}
+	// Odin defers run at block exit. Keep this string until the request returns.
+	authorization: string
+	defer delete(authorization)
+	if access_token != "" && profile == .TV {
+		authorization = fmt.aprintf("Authorization: Bearer %s", access_token)
+		append(&request_headers, authorization)
+	}
+	response, err := request(client, url, string(payload), request_headers[:], timeout_ms = 3000)
 	if err != nil {return {}, .Transport}
 	if response.status != 200 {delete(response.body); return {}, .HTTP}
 	return response, .None
 }
+profile_request :: proc(
+	client: ^http.Client,
+	endpoint: string,
+	profile: Profile = .Web,
+) -> (
+	http.Response,
+	Error,
+) {
+	body :=
+		`{"context":{"client":{"clientName":"TVHTML5","clientVersion":"` +
+		TV_VERSION +
+		`","hl":"en","gl":"US"}}}`
+	return api_post(client, endpoint, transmute([]u8)body, profile)
+}
+
+account_info :: proc(client: ^http.Client) -> (name, avatar_url: string) {
+	response, error := profile_request(client, "account/accounts_list", .TV)
+	if error != .None {return}
+	defer delete(response.body)
+	value, parse_error := json.parse(string(response.body[:]))
+	if parse_error != .None {return}
+	defer json.destroy_value(value)
+	find_account(value, &name, &avatar_url)
+	return
+}
+
+find_account :: proc(value: json.Value, name, avatar_url: ^string) {
+	#partial switch item in value {
+	case json.Array:
+		for child in item {
+			find_account(child, name, avatar_url)
+			if name^ != "" {return}
+		}
+	case json.Object:
+		if account, is_account := item["accountName"].(json.Object); is_account {
+			if text, has_text := account["simpleText"].(json.String); has_text {
+				name^ = strings.clone(string(text))
+			}
+			if photo, has_photo := item["accountPhoto"].(json.Object); has_photo {
+				if thumbnails, has_thumbs := photo["thumbnails"].(json.Array); has_thumbs {
+					for thumbnail in thumbnails {
+						if url, has_url := field(thumbnail, "url").(json.String); has_url {
+							delete(avatar_url^)
+							avatar_url^ = strings.clone(string(url))
+						}
+					}
+				}
+			}
+			return
+		}
+		for _, child in item {if name^ != "" {return}; find_account(child, name, avatar_url)}
+	}
+}
+
 search :: proc(client: ^http.Client, query: string) -> (model.Catalog, Error, string) {
 	if strings.trim_space(query) == "" || len(query) > 512 {return {}, .Invalid_Response, ""}
+	tv := access_token != ""
+	client_context := Client_Context {
+		clientName    = "WEB",
+		clientVersion = "2.20260708.00.00",
+		hl            = "en",
+		gl            = "US",
+	}
+	if tv {
+		client_context = {
+			clientName    = "TVHTML5",
+			clientVersion = TV_VERSION,
+			hl            = "en",
+			gl            = "US",
+			userAgent     = TV_AGENT,
+		}
+	}
 	request := struct {
 		ctx:           struct {
 			client: Client_Context,
 		} `json:"context"`,
 		query, params: string,
 	} {
-		ctx = {
-			client = {
-				clientName = "WEB",
-				clientVersion = "2.20260708.00.00",
-				hl = "en",
-				gl = "US",
-			},
-		},
+		ctx = {client = client_context},
 		query = query,
 		params = "EgIQAfABAQ==",
 	}
 	body, err := json.marshal(request)
 	if err != nil {return {}, .Invalid_Response, ""}
+	if tv {
+		response, request_error := api_post(client, "search", body, .TV)
+		if request_error == .None {
+			catalog, parse_error, visitor := parse_search_tv(string(response.body[:]), query)
+			delete(response.body)
+			if parse_error == .None {delete(body); return catalog, .None, visitor}
+			model.catalog_destroy(&catalog)
+			delete(visitor)
+		}
+		request.ctx.client = Client_Context {
+			clientName    = "WEB",
+			clientVersion = "2.20260708.00.00",
+			hl            = "en",
+			gl            = "US",
+		}
+		delete(body)
+		body, err = json.marshal(request)
+		if err != nil {return {}, .Invalid_Response, ""}
+	}
 	defer delete(body)
 	response, error := api_post(client, "search", body)
 	if error != .None {return {}, error, ""}

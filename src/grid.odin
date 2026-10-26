@@ -10,52 +10,69 @@ grid_layout :: proc() {
 	{
 		layout = {
 			sizing = {width = clay.SizingGrow({}), height = clay.SizingGrow({})},
-			layoutDirection = .TopToBottom,
-			padding = padding(64, 64, 32, 0),
-			childGap = spacing(16),
+			layoutDirection = .LeftToRight,
 		},
 		backgroundColor = COLOR_BACKGROUND,
 	},
 	) {
-		search_layout()
-		if clay.UI(clay.ID("library-scroll"))(
+		navigation_layout()
+		if clay.UI(clay.ID("library-content"))(
 		{
 			layout = {
 				sizing = {width = clay.SizingGrow({}), height = clay.SizingGrow({})},
 				layoutDirection = .TopToBottom,
-				childGap = spacing(32),
+				padding = padding(32, 48, 32, 0),
+				childGap = spacing(16),
 			},
-			clip = {vertical = true, childOffset = clay.GetScrollOffset()},
 		},
 		) {
-			for row in 0 ..< (len(catalog.videos) + grid_columns - 1) / grid_columns {
-				if clay.UI()(
-				{layout = {sizing = {width = clay.SizingGrow({})}, childGap = spacing(32)}},
-				) {
-					for column in 0 ..< grid_columns {
-						index := row * grid_columns + column
-						if index < len(catalog.videos) {
-							video_card(index)
-						} else {
-							// Keep the final row gaps equal to those of a full row.
-							if clay.UI()(
-							{
-								layout = {
-									sizing = {width = clay.SizingPercent(1.0 / f32(grid_columns))},
+			if search_editing {search_layout()}
+			if search_loading {label("Loading…", .Small, COLOR_MUTED)} else if notice != "" {
+				label(notice, .Small, COLOR_MUTED)
+			}
+			if rail_active != .Search {label(NAV_LABELS[rail_active], .Heading)}
+			if clay.UI(clay.ID("library-scroll"))(
+			{
+				layout = {
+					sizing = {width = clay.SizingGrow({}), height = clay.SizingGrow({})},
+					layoutDirection = .TopToBottom,
+					childGap = spacing(32),
+				},
+				clip = {vertical = true, childOffset = clay.GetScrollOffset()},
+			},
+			) {
+				for row in 0 ..< (len(catalog.videos) + grid_columns - 1) / grid_columns {
+					if clay.UI()(
+					{layout = {sizing = {width = clay.SizingGrow({})}, childGap = spacing(32)}},
+					) {
+						for column in 0 ..< grid_columns {
+							index := row * grid_columns + column
+							if index < len(catalog.videos) {
+								video_card(index)
+							} else {
+								// Keep the final row gaps equal to those of a full row.
+								if clay.UI()(
+								{
+									layout = {
+										sizing = {
+											width = clay.SizingPercent(1.0 / f32(grid_columns)),
+										},
+									},
 								},
-							},
-							) {}
+								) {}
+							}
 						}
 					}
 				}
 			}
 		}
+		if account_menu {account_menu_layout()}
 	}
 }
 
 video_card :: proc(index: int) {
 	video := catalog.videos[index]
-	focus := index == selected ? COLOR_ACCENT : COLOR_BACKGROUND
+	focus := !rail_focus && !search_editing && index == selected ? COLOR_ACCENT : COLOR_BACKGROUND
 	if clay.UI(clay.ID("video", u32(index)))(
 	{
 		layout = {

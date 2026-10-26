@@ -77,7 +77,7 @@ test-youtube:
 test-sponsorblock:
 	odin run tests/sponsorblock -out:build/sponsorblock-check
 
-# These commands target the separate prototype app, not either YouTube app.
+# These commands target the separate LeanTube app, not either YouTube app.
 install: package
 	bash scripts/install.sh
 

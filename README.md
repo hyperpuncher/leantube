@@ -18,8 +18,18 @@ just stop
 
 search results, original cover images, and playback addresses now come from
 native HTTPS requests. no host catalog or prepared stream files are required.
-press up from the first row, press tab or `/`, or click the search field to
-enter a query. enter submits; back cancels text entry.
+the full-height left column has the avatar, search, subscriptions, home,
+playlists, and liked-video icons. left from the first card column selects the
+icons; up and down select an icon; right returns to the cards. select search,
+or press tab or `/`, to open the temporary field and LG keyboard. enter submits;
+back cancels text entry. there is no permanent search field or logo.
+home, subscriptions, playlists, and liked-video feeds are not connected yet.
+
+select the avatar to open the users window, or sign in if no account is active.
+the TV shows a QR code and a short code. scan with a phone, or open
+google.com/device and enter the code. tokens stay in the app directory with
+mode 0600 and are sent only to YouTube over HTTPS. the users window contains
+account switching, Add account, and Sign out.
 
 `just dev` opens the local Wayland UI with real search and cover downloads.
 local playback is UI-only. it does not contact the TV.

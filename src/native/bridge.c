@@ -1,4 +1,5 @@
 #include "keyboard.h"
+#include "qrcodegen.h"
 #include "webos-shell-client-protocol.h"
 #include <appswitching-control-block/AcbAPI.h>
 #include <fcntl.h>
@@ -29,6 +30,18 @@ static bool visible = true;
 static long acb_id = -1;
 static gint display_ready;
 static char *pending_video_data;
+static uint8_t qr_temp[qrcodegen_BUFFER_LEN_MAX];
+
+int tv_qr_encode(const char *text, uint8_t *qr) {
+	if (!text || !qr)
+		return 0;
+	if (!qrcodegen_encodeText(text, qr_temp, qr, qrcodegen_Ecc_MEDIUM, qrcodegen_VERSION_MIN,
+							  qrcodegen_VERSION_MAX, qrcodegen_Mask_AUTO, true))
+		return 0;
+	return qrcodegen_getSize(qr);
+}
+
+bool tv_qr_module(const uint8_t *qr, int x, int y) { return qr && qrcodegen_getModule(qr, x, y); }
 
 static void media_display_event(long id, long task, long event, long app_state, long play_state,
 								const char *reply) {

@@ -6,6 +6,38 @@ import "core:fmt"
 import sdl "vendor:sdl3"
 
 key :: proc(code: sdl.Keycode, window: ^sdl.Window = nil) {
+	if account_menu {
+		add := len(auth_accounts) < MAX_ACCOUNTS
+		last := len(auth_accounts) + int(add)
+		switch code {
+		case sdl.K_ESCAPE, sdl.K_AC_BACK:
+			account_menu = false
+		case sdl.K_UP:
+			account_menu_selected = max(0, account_menu_selected - 1)
+		case sdl.K_DOWN:
+			account_menu_selected = min(last, account_menu_selected + 1)
+		case sdl.K_RETURN, sdl.K_KP_ENTER, sdl.K_SPACE:
+			if account_menu_selected < len(auth_accounts) {
+				activate_account(account_menu_selected)
+			} else if add && account_menu_selected == len(auth_accounts) {
+				account_menu = false
+				start_login(true)
+			} else {
+				sign_out()
+			}
+		}
+		dirty = true
+		return
+	}
+	if login_screen {
+		switch code {
+		case sdl.K_ESCAPE, sdl.K_AC_BACK:
+			close_login_screen()
+		}
+		dirty = true
+		return
+	}
+	if browsing && !search_editing && navigation_key(code, window) {return}
 	if browsing && search_key(code, window) {return}
 	if browsing {
 		library_focus_pending = true

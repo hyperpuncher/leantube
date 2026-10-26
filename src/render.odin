@@ -48,6 +48,14 @@ set_color :: proc(renderer: ^sdl.Renderer, color: clay.Color) -> bool {
 
 render :: proc(renderer: ^sdl.Renderer, wheel: f32 = 0, dt: f32 = 1.0 / 60) -> bool {
 	if !refresh_view(renderer) {return false}
+	if login_screen {
+		if login_code != "" {_ = ensure_login_qr(renderer)}
+		if !set_color(renderer, COLOR_BACKGROUND) || !sdl.RenderClear(renderer) {return false}
+		clay.BeginLayout()
+		login_layout()
+		commands := clay.EndLayout(0)
+		return render_commands(renderer, commands)
+	}
 	color: clay.Color
 	if browsing {color = COLOR_BACKGROUND}
 	if !set_color(renderer, color) || !sdl.RenderClear(renderer) {return false}
@@ -137,13 +145,29 @@ render_commands :: proc(
 		case .Text:
 			text := command.renderData.text
 			if text.stringContents.length == 0 {continue}
-			color := text.textColor
-			value := ttf.CreateText(
-				text_engine,
-				fonts[Text_Style(text.fontId)],
-				text.stringContents.chars,
-				c.size_t(text.stringContents.length),
+			clip := clips[len(clips) - 1]
+			if box.y >= f32(clip.y + clip.h) || box.y + box.height <= f32(clip.y) {continue}
+			continued := false
+			if i + 1 < commands.length {
+				next := clay.RenderCommandArray_Get(&commands, i + 1)
+				continued =
+					next.commandType == .Text &&
+					next.renderData.text.stringContents.baseChars ==
+						text.stringContents.baseChars &&
+					next.boundingBox.y >= f32(clip.y + clip.h)
+			}
+			font := fonts[Text_Style(text.fontId)]
+			available := f32(clip.x + clip.w) - box.x
+			display, owned := fit_text(
+				font,
+				string(text.stringContents.chars[:text.stringContents.length]),
+				c.int(max(0, available)),
+				continued,
 			)
+			defer if owned {delete(display)}
+			if display == "" {continue}
+			color := text.textColor
+			value := ttf.CreateText(text_engine, font, raw_data(display), c.size_t(len(display)))
 			if value == nil {return false}
 			ok :=
 				ttf.SetTextColor(value, u8(color[0]), u8(color[1]), u8(color[2]), u8(color[3])) &&

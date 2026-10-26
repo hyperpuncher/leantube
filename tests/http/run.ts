@@ -15,6 +15,15 @@ try {
 		},
 		async fetch(request) {
 			const path = new URL(request.url).pathname;
+			if (path === "/youtubei/v1/account/accounts_list") {
+				if (
+					request.method !== "POST" ||
+					request.headers.get("authorization") !== "Bearer local-test-token" ||
+					request.headers.get("x-youtube-client-name") !== "7"
+				)
+					return new Response("missing authorization", { status: 401 });
+				return new Response("authorized");
+			}
 			if (path === "/post") {
 				if (
 					request.method !== "POST" ||
@@ -32,6 +41,7 @@ try {
 			if (
 				request.method !== "GET" ||
 				request.headers.has("x-leantube-test") ||
+				request.headers.has("authorization") ||
 				(await request.arrayBuffer()).byteLength !== 0
 			)
 				return new Response("stale request", { status: 400 });

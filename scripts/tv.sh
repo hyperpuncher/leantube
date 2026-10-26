@@ -20,7 +20,7 @@ case "${1:-}" in
 		ssh "$TV_HOST" 'if [ -f /tmp/leantube.pid ]; then read -r pid < /tmp/leantube.pid; for i in 1 2 3 4 5; do if ! kill -0 "$pid" 2>/dev/null; then exit 0; fi; sleep 1; done; printf "prototype process has not stopped\n" >&2; exit 1; fi'
 		ssh "$TV_HOST" 'luna-send -n 1 -w 5000 luna://com.webos.media/getActivePipelines "{}" </dev/null' |
 			jq -e --arg id "$app_id" '[.[] | select(.appId == $id)] | length == 0' >/dev/null
-		printf 'prototype stopped; no media pipeline\n'
+		printf 'leantube stopped; no media pipeline\n'
 		;;
 	logs)
 		ssh "$TV_HOST" 'tail -n 100 /tmp/leantube.log'

@@ -14,14 +14,26 @@ Icon :: enum {
 	Seek_Forward,
 	Slower,
 	Faster,
+	Account,
+	Search,
+	Subscriptions,
+	Home,
+	Playlists,
+	Liked,
 }
 ICON_FILES :: [Icon]string {
-	.Play         = "play",
-	.Pause        = "pause",
-	.Seek_Back    = "rotate-ccw",
-	.Seek_Forward = "rotate-cw",
-	.Slower       = "minus",
-	.Faster       = "plus",
+	.Play          = "play",
+	.Pause         = "pause",
+	.Seek_Back     = "rotate-ccw",
+	.Seek_Forward  = "rotate-cw",
+	.Slower        = "minus",
+	.Faster        = "plus",
+	.Account       = "user-round",
+	.Search        = "search",
+	.Subscriptions = "gallery-vertical-end",
+	.Home          = "house",
+	.Playlists     = "list-video",
+	.Liked         = "thumbs-up",
 }
 icons: [Icon]^sdl.Texture
 icon_pixels: c.int
@@ -64,11 +76,14 @@ close_icons :: proc() {
 	icon_pixels = 0
 }
 
-icon :: proc(id: Icon) {
+icon :: proc(id: Icon, size: f32 = 48) {
 	if clay.UI()(
 	{
 		layout = {
-			sizing = {width = clay.SizingFixed(scaled(48)), height = clay.SizingFixed(scaled(48))},
+			sizing = {
+				width = clay.SizingFixed(scaled(size)),
+				height = clay.SizingFixed(scaled(size)),
+			},
 		},
 		image = {imageData = rawptr(icons[id])},
 	},

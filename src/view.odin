@@ -35,7 +35,7 @@ refresh_view :: proc(renderer: ^sdl.Renderer) -> bool {
 	if changed {
 		if !open_icons(renderer) {return false}
 		// Cards fill each row; only their readable minimum width is a design value.
-		grid_columns = max(1, int((view_width - scaled(128) + scaled(32)) / scaled(480 + 32)))
+		grid_columns = max(1, int((view_width - scaled(208) + scaled(32)) / scaled(480 + 32)))
 		library_focus_pending = true
 	}
 	return true

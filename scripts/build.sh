@@ -22,8 +22,10 @@ mkdir -p build/obj build/app
 cpu=(-mcpu=cortex-a9 -mfpu=neon -mfloat-abi=softfp)
 read -r -a cflags <<< "$("$pkg" --cflags luna-service2 glib-2.0 wayland-client)"
 read -r -a libs <<< "$("$pkg" --libs luna-service2 glib-2.0 wayland-client)"
+"$cc" -c vendor/qrcodegen/qrcodegen.c -o build/obj/qrcodegen.o -std=c11 -O2 \
+	"${cpu[@]}"
 "$cc" -c src/native/bridge.c -o build/obj/bridge.o -std=c11 -Og -g \
-	"${cpu[@]}" -Isrc/native "${cflags[@]}"
+	"${cpu[@]}" -Isrc/native -Ivendor/qrcodegen "${cflags[@]}"
 "$cc" -c src/native/keyboard.c -o build/obj/keyboard.o -std=c11 -Og -g \
 	"${cpu[@]}" -Ibuild/obj "${cflags[@]}"
 "$cc" -c build/obj/text-protocol.c -o build/obj/text-protocol.o \

@@ -2,11 +2,58 @@
 package main
 
 import http "../../src/http"
+import yt "../../src/youtube"
+import "core:c"
 import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:testing"
 import curl "vendor:curl"
+
+// Redirect only the external boundary. Header construction and TLS are real.
+local_youtube_request :: proc(
+	client: ^http.Client,
+	url: string,
+	post_body: Maybe(string),
+	headers: []string,
+	timeout_ms: c.long,
+) -> (
+	http.Response,
+	http.Error,
+) {
+	base := os.get_env("LEANTUBE_TEST_HTTPS", context.allocator)
+	defer delete(base)
+	local_url, _ := strings.replace_all(url, "https://www.youtube.com", base)
+	defer delete(local_url)
+	return http.request(client, local_url, post_body, headers, timeout_ms)
+}
+
+@(test)
+youtube_authorization_survives_until_transfer_and_is_not_reused :: proc(t: ^testing.T) {
+	base := os.get_env("LEANTUBE_TEST_HTTPS", context.allocator)
+	ca_file := os.get_env("LEANTUBE_TEST_CA", context.allocator)
+	defer {delete(base); delete(ca_file)}
+	client, error := http.open(ca_file)
+	if !testing.expect_value(t, error, nil) {return}
+	defer http.close(&client)
+	yt.set_access_token("local-test-token")
+	defer yt.set_access_token("")
+	body := `{"context":{}}`
+	response, request_error := yt.api_post(
+		&client,
+		"account/accounts_list",
+		transmute([]u8)body,
+		.TV,
+		request = local_youtube_request,
+	)
+	defer delete(response.body)
+	testing.expect_value(t, request_error, .None)
+	testing.expect_value(t, string(response.body[:]), "authorized")
+	anonymous, anonymous_error := http.request(&client, base)
+	defer delete(anonymous.body)
+	testing.expect_value(t, anonymous_error, nil)
+	testing.expect_value(t, int(anonymous.status), 200)
+}
 
 @(test)
 https_rejects_untrusted_certificates_wrong_hosts_and_downgrades :: proc(t: ^testing.T) {
