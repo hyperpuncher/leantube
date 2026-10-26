@@ -90,7 +90,6 @@ duration :: proc(label: string) -> f64 {
 }
 
 collect_videos :: proc(value: json.Value, catalog: ^model.Catalog) {
-	if len(catalog.videos) >= model.MAX_VIDEOS {return}
 	#partial switch item in value {
 	case json.Array:
 		for child in item {collect_videos(child, catalog)}
@@ -147,7 +146,6 @@ parse_search :: proc(
 }
 
 collect_videos_tv :: proc(value: json.Value, catalog: ^model.Catalog) {
-	if len(catalog.videos) >= model.MAX_VIDEOS {return}
 	#partial switch item in value {
 	case json.Array:
 		for child in item {collect_videos_tv(child, catalog)}
@@ -396,23 +394,12 @@ api_post :: proc(
 	if response.status != 200 {delete(response.body); return {}, .HTTP}
 	return response, .None
 }
-profile_request :: proc(
-	client: ^http.Client,
-	endpoint: string,
-	profile: Profile = .Web,
-) -> (
-	http.Response,
-	Error,
-) {
+account_info :: proc(client: ^http.Client) -> (name, avatar_url: string) {
 	body :=
 		`{"context":{"client":{"clientName":"TVHTML5","clientVersion":"` +
 		TV_VERSION +
 		`","hl":"en","gl":"US"}}}`
-	return api_post(client, endpoint, transmute([]u8)body, profile)
-}
-
-account_info :: proc(client: ^http.Client) -> (name, avatar_url: string) {
-	response, error := profile_request(client, "account/accounts_list", .TV)
+	response, error := api_post(client, "account/accounts_list", transmute([]u8)body, .TV)
 	if error != .None {return}
 	defer delete(response.body)
 	value, parse_error := json.parse(string(response.body[:]))

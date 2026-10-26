@@ -80,13 +80,17 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 			if activate {edit_search(sdl.GetRenderWindow(renderer))}
 			return
 		}
+		if clay.PointerOver(clay.ID("load-more")) {
+			if activate {load_more()}
+			return
+		}
 		for _, i in catalog.videos {
 			if clay.PointerOver(clay.ID("video", u32(i))) {
 				selected = i
 				rail_focus = false
 				if activate {
 					if search_editing {finish_search_input(sdl.GetRenderWindow(renderer))}
-					start_video()
+					open_selected()
 				}
 				break
 			}

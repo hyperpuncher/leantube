@@ -3,6 +3,7 @@ package main
 import "./model"
 import sb "./sponsorblock"
 import "core:fmt"
+import "core:strings"
 import sdl "vendor:sdl3"
 
 key :: proc(code: sdl.Keycode, window: ^sdl.Window = nil) {
@@ -43,9 +44,11 @@ key :: proc(code: sdl.Keycode, window: ^sdl.Window = nil) {
 		library_focus_pending = true
 		switch code {
 		case sdl.K_ESCAPE, sdl.K_AC_BACK:
-			running = false
+			if rail_active == .Playlists && strings.has_prefix(browse_id, "VL") {
+				start_browse(NAV_BROWSE_IDS[.Playlists])
+			} else {running = false}
 		case sdl.K_RETURN, sdl.K_SPACE, sdl.K_KP_ENTER:
-			start_video()
+			open_selected()
 		case sdl.K_LEFT:
 			selected = model.grid_move(selected, len(catalog.videos), -1, 0, grid_columns)
 		case sdl.K_RIGHT:
@@ -53,6 +56,7 @@ key :: proc(code: sdl.Keycode, window: ^sdl.Window = nil) {
 		case sdl.K_UP:
 			selected = model.grid_move(selected, len(catalog.videos), 0, -1, grid_columns)
 		case sdl.K_DOWN:
+			if selected / grid_columns == (len(catalog.videos) - 1) / grid_columns {load_more()}
 			selected = model.grid_move(selected, len(catalog.videos), 0, 1, grid_columns)
 		}
 	} else {

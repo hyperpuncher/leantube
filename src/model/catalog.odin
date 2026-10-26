@@ -4,14 +4,15 @@ import "core:fmt"
 import "core:strings"
 
 GRID_COLUMNS :: 3
-MAX_VIDEOS :: 24
 Video :: struct {
 	duration_ms:                        f64,
 	id, title, channel, duration_label: string,
+	browse_id, thumbnail_url:           string,
 }
 Catalog :: struct {
-	query:  string,
-	videos: [dynamic]Video,
+	query:        string,
+	videos:       [dynamic]Video,
+	continuation: string,
 }
 
 QUALITY_TIERS := [?]struct {
@@ -53,12 +54,17 @@ time_label :: proc(ms: f64, zero: string = "00:00") -> string {
 	return fmt.aprintf("%02d:%02d", seconds / 60, seconds % 60)
 }
 
+video_destroy :: proc(video: ^Video) {
+	delete(video.id); delete(video.title); delete(video.channel); delete(video.duration_label)
+	delete(video.browse_id); delete(video.thumbnail_url)
+	video^ = {}
+}
+
 catalog_destroy :: proc(catalog: ^Catalog) {
-	for video in catalog.videos {
-		delete(video.id); delete(video.title); delete(video.channel); delete(video.duration_label)
-	}
+	for &video in catalog.videos {video_destroy(&video)}
 	delete(catalog.videos)
 	delete(catalog.query)
+	delete(catalog.continuation)
 	catalog^ = {}
 }
 

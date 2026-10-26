@@ -65,6 +65,49 @@ canceling_and_reopening_the_same_video_rejects_old_replies :: proc(t: ^testing.T
 }
 
 @(test)
+continuation_appends_cards_and_rejects_stale_pages :: proc(t: ^testing.T) {
+	network_results, _ = chan.create(chan.Chan(Network_Result), 2, context.allocator)
+	defer {stop_network(); clear_catalog(); page = 0; selected = 0}
+	page = 4
+	append(&catalog.videos, model.Video{title = strings.clone("first")})
+	catalog.continuation = strings.clone("old-continuation")
+	resize(&textures, 1)
+	for result_page in ([]u32{3, 4}) {
+		result := Network_Result {
+			kind   = .Catalog,
+			page   = result_page,
+			append = true,
+		}
+		append(&result.catalog.videos, model.Video{title = strings.clone("next")})
+		result.catalog.continuation = strings.clone("new-continuation")
+		chan.send(network_results, result)
+		poll_network(nil)
+		testing.expect_value(t, len(catalog.videos), result_page == page ? 2 : 1)
+	}
+	testing.expect_value(t, len(textures), 2)
+	testing.expect_value(t, catalog.videos[0].title, "first")
+	testing.expect_value(t, catalog.videos[1].title, "next")
+	testing.expect_value(t, catalog.continuation, "new-continuation")
+}
+
+@(test)
+queued_account_changes_are_not_discarded_by_page_requests :: proc(t: ^testing.T) {
+	network_requests, _ = chan.create(chan.Chan(Network_Request), 1, context.allocator)
+	defer stop_network()
+	request := Network_Request {
+		kind = .Use_Account,
+		auth_token = {access_token = strings.clone("test-only-token")},
+	}
+	testing.expect(t, submit_network(request))
+	testing.expect(t, !submit_network({kind = .Search, text = strings.clone("query")}))
+	retained, ok := chan.try_recv(network_requests)
+	defer free_network_request(&retained)
+	testing.expect(t, ok)
+	testing.expect_value(t, retained.kind, .Use_Account)
+	testing.expect_value(t, retained.auth_token.access_token, "test-only-token")
+}
+
+@(test)
 search_errors_empty_results_and_recovery_finish_loading :: proc(t: ^testing.T) {
 	network_results, _ = chan.create(chan.Chan(Network_Result), 2, context.allocator)
 	defer {
@@ -90,7 +133,7 @@ search_errors_empty_results_and_recovery_finish_loading :: proc(t: ^testing.T) {
 	poll_network(nil)
 	testing.expect(t, !search_loading)
 	testing.expect_value(t, len(catalog.videos), 0)
-	testing.expect_value(t, notice, "no videos found")
+	testing.expect_value(t, notice, "no items found")
 	result := Network_Result {
 		kind = .Catalog,
 		page = page,

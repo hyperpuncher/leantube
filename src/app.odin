@@ -25,6 +25,6 @@ browsing := true
 return_to_grid: bool
 selected: int
 catalog: model.Catalog
-textures: [model.MAX_VIDEOS]^sdl.Texture
+textures: [dynamic]^sdl.Texture
 app_directory: string
 notice: string

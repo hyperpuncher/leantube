@@ -11,12 +11,12 @@
 - the B9 app ABI is ARM32 soft-float, even though the kernel reports aarch64
 - use the cached compiler with `patches/odin-arm32-softfp.patch`, not stock ARM32 Odin
 - keep the B9's original `libwayland-egl.so.0` under the app-private name `libwayland-egl.so.1`; the newer adapter is incompatible
-- preserve the separate prototype app ID and both installed YouTube apps
+- keep the LeanTube app ID separate from both installed YouTube apps; preserve both YouTube apps
 - do not change TV firmware, system libraries, startup services, or remote bindings
 - announce any standby/wake test before interrupting the TV
 - never log signed stream URLs, credentials, or complete load requests
 - keep private stream requests mode 0600 and out of packages
 - check actual displayed frames when testing playback speed
-- after playback tests, close the prototype and verify its process and media pipelines are gone
+- after playback tests, close LeanTube and verify its process and media pipelines are gone
 - successful service replies alone do not prove video or completed installation
 - do not commit, push, tag, or publish without permission

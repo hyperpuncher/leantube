@@ -10,7 +10,7 @@ cat > "$fixture/bin/ssh" <<'MOCK'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$CAPTURE_CALLS"
 case "$*" in
-	*getForegroundAppInfo*) printf '{"appId":"org.hyperpuncher.odin.tv.prototype"}\n' ;;
+	*getForegroundAppInfo*) printf '{"appId":"org.hyperpuncher.leantube"}\n' ;;
 	*executeOneShot*)
 		if [[ "${CAPTURE_FAIL:-}" == 1 ]]; then
 			printf '{"returnValue":false,"errorText":"Specified size is out of range"}\n'

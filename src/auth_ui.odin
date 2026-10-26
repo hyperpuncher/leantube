@@ -1,7 +1,6 @@
 package main
 
 import clay "../vendor/clay"
-import yt "./youtube"
 import "core:fmt"
 import "core:strings"
 import "core:unicode/utf8"
@@ -95,17 +94,22 @@ use_current_account :: proc() {
 	if account_avatar != nil {sdl.DestroyTexture(account_avatar); account_avatar = nil}
 	token := current_auth()
 	signed_in = token != nil
-	yt.set_access_token(signed_in ? token.access_token : "")
-	if signed_in && token.avatar_url != "" {
-		_ = submit_network({kind = .Avatar, text = strings.clone(token.avatar_url)})
-	}
+	account_revision += 1
+	_ = submit_network(
+		{
+			kind = .Use_Account,
+			account = account_revision,
+			auth_token = signed_in ? clone_auth_token(token^) : Auth_Token{},
+		},
+	)
 	dirty = true
 }
 
 sign_out :: proc() {
 	clear_auth()
 	use_current_account()
-	notice = signed_in ? "account switched" : "signed out"
+	if !signed_in {rail_active = .Home}
+	reload_feed()
 }
 
 activate_account :: proc(index: int) {
@@ -113,7 +117,7 @@ activate_account :: proc(index: int) {
 	auth_active = index
 	use_current_account()
 	_ = save_auth()
-	if catalog.query != "" {start_search(catalog.query)} else {start_search()}
+	reload_feed()
 }
 
 account_initial_name :: proc(name: string) -> string {

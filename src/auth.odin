@@ -189,6 +189,45 @@ poll_login :: proc(client: ^http.Client, device: Device_Auth) -> (Auth_Token, Au
 	return {}, .Failed, strings.clone("login failed")
 }
 
+clone_auth_token :: proc(token: Auth_Token) -> Auth_Token {
+	copy := token
+	copy.access_token = strings.clone(token.access_token)
+	copy.refresh_token = strings.clone(token.refresh_token)
+	copy.scope = strings.clone(token.scope)
+	copy.name = strings.clone(token.name)
+	copy.avatar_url = strings.clone(token.avatar_url)
+	return copy
+}
+
+refresh_auth :: proc(client: ^http.Client, token: ^Auth_Token) -> bool {
+	if token.refresh_token == "" {return false}
+	request := struct {
+		client_id, client_secret, refresh_token, grant_type: string,
+	}{AUTH_CLIENT_ID, AUTH_CLIENT_SECRET, token.refresh_token, "refresh_token"}
+	body, error := json.marshal(request)
+	if error != nil {return false}
+	defer delete(body)
+	response, request_error := http.request(
+		client,
+		"https://oauth2.googleapis.com/token",
+		string(body),
+		{"Content-Type: application/json"},
+		timeout_ms = 5000,
+	)
+	if request_error != nil {return false}
+	defer delete(response.body)
+	if response.status != 200 {return false}
+	refreshed: Auth_Token
+	defer free_auth_token(&refreshed)
+	if json.unmarshal(response.body[:], &refreshed) != nil ||
+	   refreshed.access_token == "" {return false}
+	delete(token.access_token)
+	token.access_token = refreshed.access_token
+	refreshed.access_token = ""
+	token.expires_in = refreshed.expires_in
+	return true
+}
+
 free_device_auth :: proc(device: ^Device_Auth) {
 	delete(device.device_code)
 	delete(device.user_code)

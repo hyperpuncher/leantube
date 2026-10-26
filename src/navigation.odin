@@ -7,6 +7,7 @@ Navigation :: enum {
 	Account,
 	Search,
 	Subscriptions,
+	Watch_Later,
 	Home,
 	Playlists,
 	Liked,
@@ -15,21 +16,32 @@ NAV_ICONS := [Navigation]Icon {
 	.Account       = .Account,
 	.Search        = .Search,
 	.Subscriptions = .Subscriptions,
+	.Watch_Later   = .Watch_Later,
 	.Home          = .Home,
 	.Playlists     = .Playlists,
 	.Liked         = .Liked,
 }
-NAV_LABELS := [Navigation]string {
-	.Account       = "Users",
-	.Search        = "Search",
-	.Subscriptions = "Subscriptions",
-	.Home          = "Home",
-	.Playlists     = "Playlists",
-	.Liked         = "Liked videos",
+NAV_BROWSE_IDS := [Navigation]string {
+	.Account       = "",
+	.Search        = "",
+	.Home          = "FEwhat_to_watch",
+	.Subscriptions = "FEsubscriptions",
+	.Playlists     = "FEplaylist_aggregation",
+	.Liked         = "VLLL",
+	.Watch_Later   = "VLWL",
 }
+browse_id: string
 rail_focus: bool
 rail_cursor: Navigation = .Search
 rail_active: Navigation = .Search
+
+reload_feed :: proc() {
+	if rail_active == .Search {
+		if catalog.query != "" {start_search(catalog.query)} else {start_search()}
+	} else {
+		start_browse(NAV_BROWSE_IDS[rail_active])
+	}
+}
 
 activate_navigation :: proc(item: Navigation, window: ^sdl.Window = nil) {
 	rail_cursor = item
@@ -42,15 +54,11 @@ activate_navigation :: proc(item: Navigation, window: ^sdl.Window = nil) {
 		} else {start_login()}
 	case .Search:
 		edit_search(window)
-	case .Home, .Subscriptions, .Playlists, .Liked:
+	case .Subscriptions, .Watch_Later, .Home, .Playlists, .Liked:
 		if search_editing {finish_search_input(window)}
+		if item != .Home && !signed_in {start_login(); return}
 		rail_active = item
-		rail_focus = true
-		// These feeds are not connected yet. Do not show unrelated search results.
-		page += 1
-		clear_catalog()
-		search_loading = false
-		notice = "This feed is not connected yet"
+		start_browse(NAV_BROWSE_IDS[item])
 	}
 	dirty = true
 }

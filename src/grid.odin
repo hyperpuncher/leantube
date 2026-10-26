@@ -30,7 +30,6 @@ grid_layout :: proc() {
 			if search_loading {label("Loading…", .Small, COLOR_MUTED)} else if notice != "" {
 				label(notice, .Small, COLOR_MUTED)
 			}
-			if rail_active != .Search {label(NAV_LABELS[rail_active], .Heading)}
 			if clay.UI(clay.ID("library-scroll"))(
 			{
 				layout = {
@@ -63,6 +62,21 @@ grid_layout :: proc() {
 							}
 						}
 					}
+				}
+				if catalog.continuation != "" {
+					if clay.UI(clay.ID("load-more"))(
+					{
+						layout = {
+							sizing = {
+								width = clay.SizingGrow({}),
+								height = clay.SizingFixed(scaled(64)),
+							},
+							childAlignment = {x = .Center, y = .Center},
+						},
+						backgroundColor = COLOR_SURFACE,
+						cornerRadius = clay.CornerRadiusAll(scaled(12)),
+					},
+					) {label(search_loading ? "Loading…" : "Load more", .Small)}
 				}
 			}
 		}

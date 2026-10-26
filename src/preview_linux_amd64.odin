@@ -148,9 +148,10 @@ main :: proc() {
 			"café and a longer title for layout checks",
 			"Spring - Blender Open Movie",
 		}
-		count := model.MAX_VIDEOS
+		count := 24
 		// Test an incomplete final row.
 		if UI_TEST && os.args[1] == "1440p" {count -= 1}
+		resize(&textures, count)
 		catalog.query = fmt.aprintf("local scrolling test · %d videos", count)
 		for i in 0 ..< count {
 			append(
@@ -177,8 +178,8 @@ main :: proc() {
 			assert(sdl.SetTextureBlendMode(textures[i], sdl.BLENDMODE_BLEND))
 		}
 	}
-	clay.SetMaxElementCount(512)
-	clay.SetMaxMeasureTextCacheWordCount(2048)
+	clay.SetMaxElementCount(8192)
+	clay.SetMaxMeasureTextCacheWordCount(32768)
 	memory := make([]u8, int(clay.MinMemorySize()))
 	defer delete(memory)
 	clay.Initialize(
@@ -189,7 +190,7 @@ main :: proc() {
 	clay.SetMeasureTextFunction(measure_text, nil)
 	when UI_TEST {check_layout(renderer, surface)} else {
 		if start_network() {
-			start_search()
+			activate_navigation(signed_in ? .Subscriptions : .Home)
 		} else {
 			notice = "network is unavailable"
 		}

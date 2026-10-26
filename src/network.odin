@@ -15,14 +15,18 @@ import img "vendor:sdl3/image"
 Network_Request :: struct {
 	kind:           enum {
 		Search,
+		Browse,
 		Resolve,
-		Account,
-		Avatar,
+		Use_Account,
 		Login_Start,
 		Login_Poll,
 	},
 	page, playback: u32,
 	text:           string,
+	continuation:   string,
+	index:          int,
+	account:        u32,
+	auth_token:     Auth_Token,
 }
 Network_Result :: struct {
 	kind:           enum {
@@ -31,7 +35,6 @@ Network_Result :: struct {
 		Stream,
 		Segments,
 		Account,
-		Avatar,
 		Login_Code,
 		Login_Waiting,
 		Login_Authorized,
@@ -39,6 +42,7 @@ Network_Result :: struct {
 	},
 	page, playback: u32,
 	index:          int,
+	append:         bool,
 	error:          yt.Error,
 	catalog:        model.Catalog,
 	bytes:          [dynamic]u8,
@@ -47,10 +51,9 @@ Network_Result :: struct {
 	login_code:     string,
 	login_url:      string,
 	login_message:  string,
-	login_name:     string,
-	login_avatar:   string,
 	login_interval: int,
 	auth_token:     Auth_Token,
+	account:        u32,
 }
 network_requests: chan.Chan(Network_Request)
 network_results: chan.Chan(Network_Result)
@@ -65,6 +68,14 @@ playback_requested_at: u64
 sponsor_segments: [dynamic]sb.Segment
 pending_auth: Device_Auth
 pending_auth_active: bool
+account_revision: u32
+
+free_network_request :: proc(request: ^Network_Request) {
+	delete(request.text)
+	delete(request.continuation)
+	free_auth_token(&request.auth_token)
+	request^ = {}
+}
 
 free_network_result :: proc(result: ^Network_Result) {
 	model.catalog_destroy(&result.catalog)
@@ -75,8 +86,6 @@ free_network_result :: proc(result: ^Network_Result) {
 	delete(result.login_code)
 	delete(result.login_url)
 	delete(result.login_message)
-	delete(result.login_name)
-	delete(result.login_avatar)
 	free_auth_token(&result.auth_token)
 	result^ = {}
 }
@@ -94,58 +103,124 @@ post_network_result :: proc(result: Network_Result) -> bool {
 network_stopping :: proc() -> bool {return chan.is_closed(network_requests)}
 
 network_main :: proc(_: ^thread.Thread) {
-	ids: [model.MAX_VIDEOS][11]u8
-	count, next: int
+	covers: [dynamic]struct {
+		source: string,
+		index:  int,
+	}
+	defer {for cover in covers {delete(cover.source)}; delete(covers)}
+	next: int
 	cover_page: u32
+	session_auth: Auth_Token
+	defer {free_auth_token(&session_auth); yt.set_access_token("")}
+	session_account: u32
+	refresh_at: u64
 	visitor_data: string
 	defer delete(visitor_data)
 	for !chan.is_closed(network_requests) {
 		request, ready := chan.try_recv(network_requests)
-		if !ready && next < count {
+		if !ready && next < len(covers) {
 			index := next
 			next += 1
-			bytes := yt.thumbnail(&network_client, string(ids[index][:]), network_stopping)
+			bytes: [dynamic]u8
+			if strings.has_prefix(covers[index].source, "https://") {
+				response, error := yt.fetch_thumbnail(&network_client, covers[index].source)
+				if error == nil &&
+				   response.status == 200 {bytes = response.body} else {delete(response.body)}
+			} else {
+				bytes = yt.thumbnail(&network_client, covers[index].source, network_stopping)
+			}
 			if len(bytes) > 0 {
 				if !post_network_result(
-					{kind = .Cover, page = cover_page, index = index, bytes = bytes},
+					{kind = .Cover, page = cover_page, index = covers[index].index, bytes = bytes},
 				) {return}
 			}
 			continue
 		}
 		if !ready {request, ready = chan.recv(network_requests)}
 		if !ready {return}
-		defer delete(request.text)
+		defer free_network_request(&request)
 		switch request.kind {
-		case .Account:
+		case .Use_Account:
+			free_auth_token(&session_auth)
+			session_auth = request.auth_token
+			request.auth_token = {}
+			session_account = request.account
+			delete(visitor_data); visitor_data = ""
+			if session_auth.access_token == "" {yt.set_access_token(""); continue}
+			_ = refresh_auth(&network_client, &session_auth)
+			refresh_at = sdl.GetTicks() + u64(max(session_auth.expires_in - 60, 0)) * 1000
+			yt.set_access_token(session_auth.access_token)
 			name, avatar_url := yt.account_info(&network_client)
+			if name != "" {delete(session_auth.name); session_auth.name = name} else {delete(name)}
+			if avatar_url !=
+			   "" {delete(session_auth.avatar_url); session_auth.avatar_url = avatar_url} else {delete(avatar_url)}
 			avatar: [dynamic]u8
-			if avatar_url != "" {
-				response, error := yt.fetch_thumbnail(&network_client, avatar_url)
-				if error == nil && response.status == 200 {
-					avatar = response.body
-				} else {
-					delete(response.body)
-				}
+			if session_auth.avatar_url != "" {
+				response, error := yt.fetch_thumbnail(&network_client, session_auth.avatar_url)
+				if error == nil &&
+				   response.status == 200 {avatar = response.body} else {delete(response.body)}
 			}
 			if !post_network_result(
-				{kind = .Account, login_name = name, login_avatar = avatar_url, bytes = avatar},
+				{
+					kind = .Account,
+					account = session_account,
+					auth_token = clone_auth_token(session_auth),
+					bytes = avatar,
+				},
 			) {return}
-		case .Avatar:
-			response, error := yt.fetch_thumbnail(&network_client, request.text)
-			if error != nil || response.status != 200 {
-				delete(response.body)
-				continue
+		case .Search, .Browse:
+			if session_auth.access_token != "" && sdl.GetTicks() >= refresh_at {
+				if refresh_auth(&network_client, &session_auth) {
+					yt.set_access_token(session_auth.access_token)
+					if !post_network_result(
+						{
+							kind = .Account,
+							account = session_account,
+							auth_token = clone_auth_token(session_auth),
+						},
+					) {return}
+				}
+				refresh_at = sdl.GetTicks() + u64(max(session_auth.expires_in - 60, 30)) * 1000
 			}
-			if !post_network_result({kind = .Avatar, bytes = response.body}) {return}
-		case .Search:
-			catalog, error, visitor := yt.search(&network_client, request.text)
+			catalog: model.Catalog
+			error: yt.Error
+			visitor: string
+			if request.kind == .Browse {
+				catalog, error, visitor = yt.browse(
+					&network_client,
+					request.text,
+					request.continuation,
+				)
+			} else {
+				catalog, error, visitor = yt.search(&network_client, request.text)
+			}
 			delete(visitor_data)
 			visitor_data = visitor
-			cover_page = request.page
-			count, next = len(catalog.videos), 0
-			for video, i in catalog.videos {copy(ids[i][:], transmute([]u8)video.id)}
+			if request.continuation == "" {
+				cover_page = request.page
+				next = 0
+				for cover in covers {delete(cover.source)}
+				clear(&covers)
+			}
+			for video, i in catalog.videos {
+				append(
+					&covers,
+					{
+						source = strings.clone(
+							video.thumbnail_url != "" ? video.thumbnail_url : video.id,
+						),
+						index = request.index + i,
+					},
+				)
+			}
 			if !post_network_result(
-				{kind = .Catalog, page = request.page, error = error, catalog = catalog},
+				{
+					kind = .Catalog,
+					page = request.page,
+					error = error,
+					catalog = catalog,
+					append = request.continuation != "",
+				},
 			) {return}
 		case .Login_Start:
 			if pending_auth_active {
@@ -184,20 +259,8 @@ network_main :: proc(_: ^thread.Thread) {
 			case .Authorized:
 				free_device_auth(&pending_auth)
 				pending_auth_active = false
-				yt.set_access_token(token.access_token)
-				token.name, token.avatar_url = yt.account_info(&network_client)
-				avatar: [dynamic]u8
-				if token.avatar_url != "" {
-					response, error := yt.fetch_thumbnail(&network_client, token.avatar_url)
-					if error == nil && response.status == 200 {
-						avatar = response.body
-					} else {
-						delete(response.body)
-					}
-				}
-				if !post_network_result(
-					{kind = .Login_Authorized, bytes = avatar, auth_token = token},
-				) {return}
+				// Account selection owns profile and avatar loading in one place.
+				if !post_network_result({kind = .Login_Authorized, auth_token = token}) {return}
 			case .Pending, .Slow_Down:
 				if status == .Slow_Down {pending_auth.interval += 5}
 				if !post_network_result(
@@ -254,14 +317,8 @@ start_network :: proc() -> bool {
 	network_results = results
 	network_thread = thread.create(network_main)
 	if network_thread == nil {return false}
+	if load_auth() {use_current_account()}
 	thread.start(network_thread)
-	if load_auth() {
-		signed_in = auth_active >= 0
-		if token := current_auth(); token != nil {
-			yt.set_access_token(token.access_token)
-			_ = submit_network({kind = .Account})
-		}
-	}
 	success = true
 	return true
 }
@@ -272,7 +329,7 @@ stop_network :: proc() {
 	for {
 		request, ok := chan.try_recv(network_requests)
 		if !ok {break}
-		delete(request.text)
+		free_network_request(&request)
 	}
 	for {
 		result, ok := chan.try_recv(network_results)
@@ -289,23 +346,81 @@ stop_network :: proc() {
 }
 submit_network :: proc(request: Network_Request) -> bool {
 	if chan.try_send(network_requests, request) {return true}
-	// The UI never blocks behind old input. Keep only its latest pending job.
-	if previous, ok := chan.try_recv(network_requests); ok {delete(previous.text)}
+	// Replace old page requests, never pending account or login commands.
+	if previous, ok := chan.try_recv(network_requests); ok {
+		if previous.kind != .Search && previous.kind != .Browse {
+			if !chan.try_send(network_requests, previous) {free_network_request(&previous)}
+			request := request
+			free_network_request(&request)
+			return false
+		}
+		free_network_request(&previous)
+	}
 	if chan.try_send(network_requests, request) {return true}
-	delete(request.text)
+	request := request
+	free_network_request(&request)
 	return false
 }
 clear_catalog :: proc() {
 	for &texture in textures {
 		if texture != nil {sdl.DestroyTexture(texture); texture = nil}
 	}
+	delete(textures); textures = nil
 	model.catalog_destroy(&catalog)
 }
+start_browse :: proc(id: string) {
+	owned := strings.clone(id)
+	delete(browse_id)
+	browse_id = owned
+	clear_catalog()
+	page += 1
+	selected = 0
+	rail_focus = false
+	search_loading = true
+	library_focus_pending = true
+	if scroll := clay.GetScrollContainerData(clay.ID("library-scroll")); scroll.found {
+		scroll.scrollPosition^ = {}
+	}
+	notice = ""
+	dirty = true
+	if !submit_network({kind = .Browse, page = page, text = strings.clone(browse_id)}) {
+		search_loading = false
+		notice = "network is unavailable"
+	}
+}
+
+load_more :: proc() {
+	if search_loading || catalog.continuation == "" || browse_id == "" {return}
+	search_loading = true
+	dirty = true
+	if !submit_network(
+		{
+			kind = .Browse,
+			page = page,
+			text = strings.clone(browse_id),
+			continuation = strings.clone(catalog.continuation),
+			index = len(catalog.videos),
+		},
+	) {
+		search_loading = false
+		notice = "network is unavailable"
+	}
+}
+
+open_selected :: proc() {
+	if selected < 0 || selected >= len(catalog.videos) {return}
+	card := catalog.videos[selected]
+	if card.browse_id != "" {
+		start_browse(card.browse_id)
+	} else {start_video()}
+}
+
 start_search :: proc(query: string = "Linus Tech Tips") {
 	clean_query := strings.trim_space(query)
 	if clean_query == "" || len(clean_query) > 512 {return}
 	// Clone before clearing the old page; query may point into its text.
 	owned := strings.clone(clean_query)
+	delete(browse_id); browse_id = ""
 	clear_catalog()
 	catalog.query = strings.clone(owned)
 	page += 1
@@ -353,21 +468,13 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 		defer free_network_result(&result)
 		#partial switch result.kind {
 		case .Account:
+			if result.account != account_revision {continue}
 			if token := current_auth(); token != nil {
-				if result.login_name != "" {
-					delete(token.name)
-					token.name = strings.clone(result.login_name)
-				}
-				if result.login_avatar != "" {
-					delete(token.avatar_url)
-					token.avatar_url = strings.clone(result.login_avatar)
-				}
+				free_auth_token(token)
+				token^ = result.auth_token
+				result.auth_token = {}
 				_ = save_auth()
 			}
-			set_account_avatar(renderer, result.bytes[:])
-			dirty = true
-			continue
-		case .Avatar:
 			set_account_avatar(renderer, result.bytes[:])
 			dirty = true
 			continue
@@ -391,13 +498,11 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				auth_active = len(auth_accounts) - 1
 				_ = save_auth()
 			}
-			if token := current_auth(); token != nil {yt.set_access_token(token.access_token)}
-			signed_in = true
+			use_current_account()
 			login_add_account = false
-			account_menu = false
-			set_account_avatar(renderer, result.bytes[:])
 			close_login_screen()
-			notice = "signed in"
+			rail_active = .Subscriptions
+			reload_feed()
 			dirty = true
 			continue
 		case .Login_Error:
@@ -415,10 +520,20 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 		#partial switch result.kind {
 		case .Catalog:
 			search_loading = false
-			if result.error != .None {notice = "search failed; try again"; dirty = true; continue}
-			clear_catalog()
-			catalog = result.catalog; result.catalog = {}
-			notice = len(catalog.videos) == 0 ? "no videos found" : ""
+			if result.error !=
+			   .None {notice = "could not load this page; try again"; dirty = true; continue}
+			if result.append {
+				append(&catalog.videos, ..result.catalog.videos[:])
+				clear(&result.catalog.videos)
+				delete(catalog.continuation)
+				catalog.continuation = result.catalog.continuation
+				result.catalog.continuation = ""
+			} else {
+				clear_catalog()
+				catalog = result.catalog; result.catalog = {}
+			}
+			resize(&textures, len(catalog.videos))
+			notice = len(catalog.videos) == 0 ? "no items found" : ""
 			library_focus_pending = true
 		case .Cover:
 			if result.index < 0 || result.index >= len(catalog.videos) {continue}

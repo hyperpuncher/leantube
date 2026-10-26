@@ -18,18 +18,23 @@ just stop
 
 search results, original cover images, and playback addresses now come from
 native HTTPS requests. no host catalog or prepared stream files are required.
-the full-height left column has the avatar, search, subscriptions, home,
-playlists, and liked-video icons. left from the first card column selects the
+the full-height left column has the avatar, search, subscriptions, watch later,
+home, playlists, and liked-video icons. left from the first card column selects the
 icons; up and down select an icon; right returns to the cards. select search,
 or press tab or `/`, to open the temporary field and LG keyboard. enter submits;
 back cancels text entry. there is no permanent search field or logo.
-home, subscriptions, playlists, and liked-video feeds are not connected yet.
+signed-in startup opens subscriptions. subscriptions, watch later, home,
+playlists, and liked videos load real YouTube TV feeds. playlist cards open
+their contents; back returns to the playlist list. down from the final row,
+or Load more, requests the next page. ad cards and live entries are omitted.
+page and sidebar backgrounds are pure black; overflowing text ends with an ellipsis.
 
 select the avatar to open the users window, or sign in if no account is active.
 the TV shows a QR code and a short code. scan with a phone, or open
 google.com/device and enter the code. tokens stay in the app directory with
 mode 0600 and are sent only to YouTube over HTTPS. the users window contains
-account switching, Add account, and Sign out.
+account switching, Add account, and Sign out. the network worker refreshes
+access tokens on account selection and before feed requests when they expire.
 
 `just dev` opens the local Wayland UI with real search and cover downloads.
 local playback is UI-only. it does not contact the TV.
@@ -42,8 +47,8 @@ without playback or skip-count reports.
 arguments override it. the TV capture API requires dimensions and rejects 4k;
 this is separate from video playback resolution.
 
-playback now prefers a visionOS HLS master, using the anonymous session returned
-by search. the session stays in worker memory and is not logged or saved.
+playback prefers a visionOS HLS master, using the visitor session returned
+by search or browsing. the session stays in worker memory and is not logged or saved.
 YouTube often returns a large master with no audio renditions. the app rewrites
 a private master with one highest variant and adds the original AAC track from
 the player byte ranges. the private files are mode 0600 and deleted on stop.

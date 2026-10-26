@@ -11,5 +11,5 @@ COLOR_TRACK :: clay.Color{64, 64, 64, 255}
 COLOR_SPONSOR :: clay.Color{24, 24, 24, 255}
 COLOR_TEXT :: clay.Color{240, 240, 240, 255}
 COLOR_MUTED :: clay.Color{176, 176, 176, 255}
-// Sampled from the logo. Keep accents on focus outlines and progress.
-COLOR_ACCENT :: clay.Color{250, 56, 36, 255}
+// Use the warm accent only on focus outlines and progress.
+COLOR_ACCENT :: clay.Color{250, 88, 36, 255}

@@ -11,7 +11,7 @@ import "core:path/filepath"
 import "core:strings"
 import sdl "vendor:sdl3"
 
-APP_ID :: "org.hyperpuncher.odin.tv.prototype"
+APP_ID :: "org.hyperpuncher.leantube"
 APP_VERSION :: #config(APP_VERSION, "dev")
 Callback :: #type proc "c" (_: rawptr, _: rawptr, _: rawptr) -> bool
 foreign import bridge "system:tv_bridge"
@@ -300,8 +300,8 @@ main :: proc() {
 		u32(size_of(clay.ElementDeclaration)),
 		u32(size_of(clay.ErrorData)),
 	) {fmt.eprintln("Clay ABI mismatch"); return}
-	clay.SetMaxElementCount(512)
-	clay.SetMaxMeasureTextCacheWordCount(2048)
+	clay.SetMaxElementCount(8192)
+	clay.SetMaxMeasureTextCacheWordCount(32768)
 	clay_memory = make([]u8, int(clay.MinMemorySize()))
 	clay.Initialize(
 		clay.CreateArenaWithCapacityAndMemory(uint(len(clay_memory)), raw_data(clay_memory)),
@@ -316,7 +316,7 @@ main :: proc() {
 	app_directory = filepath.dir(path)
 	if !open_text(renderer) {fmt.eprintln("UI assets failed:", sdl.GetError()); return}
 	if start_network() {
-		start_search()
+		activate_navigation(signed_in ? .Subscriptions : .Home)
 	} else {
 		notice = "network is unavailable"
 	}
