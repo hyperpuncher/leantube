@@ -1,14 +1,13 @@
-# Clay source
+# Clay
 
-the header is pinned to Clay revision
-`e6cc36941ab2af5d81107617039d6f527a1c660b`.
+vendored from upstream revision `e6cc36941ab2af5d81107617039d6f527a1c660b`.
+this directory contains the upstream header, Odin binding, Linux x86-64 archive,
+and license. unused platform archives and their import branches are omitted.
+the binding has project formatting changes. Linux ARM32 uses the locally
+compiled B9 library because upstream supplies no ARM32 soft-float archive.
 
-the Odin binding comes from the tested Spoti binding for that header.
-LeanTube changes its foreign library declaration to `system:clay` so the
-build links the C object compiled for the target, not a desktop archive.
-there are no prebuilt Clay libraries in this directory.
-
-the upstream zlib/libpng license is preserved in LICENSE.md and the header.
+local development does not compile Clay. the B9 build compiles the pinned
+header and keeps the C/Odin ABI check.
 
 upstream: https://github.com/nicbarker/clay
-binding reference: https://github.com/hyperpuncher/spoti
+binding: https://github.com/nicbarker/clay/tree/main/bindings/odin/clay-odin

@@ -2,8 +2,14 @@ package clay
 
 import "core:c"
 
-// LeanTube builds clay.c for the target instead of using a desktop archive.
-foreign import Clay "system:clay"
+// Upstream has no ARM32 soft-float archive for the B9.
+when ODIN_OS == .Linux && ODIN_ARCH == .arm32 {
+	foreign import Clay "system:clay"
+} else when ODIN_OS == .Linux && ODIN_ARCH == .amd64 {
+	foreign import Clay "linux/clay.a"
+} else {
+	#panic("LeanTube targets Linux x86-64 development and B9 ARM32")
+}
 
 String :: struct {
 	isStaticallyAllocated: c.bool,

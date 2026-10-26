@@ -12,7 +12,8 @@ check:
 	odin check tests/http -vet
 	bash -n scripts/*.sh tests/install.sh
 	shellcheck -x scripts/*.sh tests/install.sh
-	bun fmt --check scripts/catalog.ts tests/catalog.test.ts tests/http/run.ts
+	bun fmt --check package.json tsconfig.json scripts/catalog.ts tests/catalog.test.ts tests/http/run.ts
+	bun check
 
 # Test metadata and installer completion handling without a TV.
 test: test-layout test-http
@@ -21,12 +22,10 @@ test: test-layout test-http
 	bun test tests/catalog.test.ts
 	bash tests/install.sh
 
-# Check the real C/Odin Clay boundary without opening a window.
+# Test layout with the upstream host library, without opening a window.
 test-layout:
 	mkdir -p build/host-layout
-	cc -std=c11 -O2 -Ivendor/clay -c src/native/clay.c -o build/host-layout/clay.o
-	ar rcs build/host-layout/libclay.a build/host-layout/clay.o
-	odin run tests/layout -out:build/host-layout/layout-check -extra-linker-flags:"-Lbuild/host-layout"
+	odin run tests/layout -out:build/host-layout/layout-check
 
 # Check TLS safety and request recovery against a real local HTTPS server.
 test-http:
@@ -40,7 +39,7 @@ fmt:
 	odinfmt src -w
 	odinfmt tests -w
 	clang-format -i src/native/bridge.c src/native/clay.c
-	bun fmt scripts/catalog.ts tests/catalog.test.ts tests/http/run.ts
+	bun fmt package.json tsconfig.json scripts/catalog.ts tests/catalog.test.ts tests/http/run.ts
 
 # Build the B9 ARM32 executable and stage its private libraries.
 build:
@@ -50,13 +49,8 @@ build:
 test-tv-layout: build
 	bash scripts/test-tv-layout.sh
 
-# Packaging tools are local and ignored, not global dependencies.
-tools:
-	mkdir -p .cache/tools
-	bun add --cwd .cache/tools --ignore-scripts --exact @webos-tools/cli@3.2.6
-
-package: build tools
-	.cache/tools/node_modules/.bin/ares-package build/app -o build
+package: build
+	bun run ares-package build/app -o build
 
 # Prepare one page of results and private requests without touching the TV.
 prepare query="Blender open movies":

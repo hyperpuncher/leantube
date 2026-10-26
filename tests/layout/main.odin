@@ -4,9 +4,11 @@ import clay "../../vendor/clay"
 import "base:runtime"
 import "core:fmt"
 
-foreign import native "system:clay"
-foreign native {
-	tv_clay_abi :: proc(command_size, config_size, error_size: u32) -> bool ---
+when ODIN_ARCH == .arm32 {
+	foreign import native "system:clay"
+	foreign native {
+		tv_clay_abi :: proc(command_size, config_size, error_size: u32) -> bool ---
+	}
 }
 
 layout_error :: proc "c" (error: clay.ErrorData) {
@@ -16,13 +18,15 @@ layout_error :: proc "c" (error: clay.ErrorData) {
 }
 
 main :: proc() {
-	assert(
-		tv_clay_abi(
-			u32(size_of(clay.RenderCommand)),
-			u32(size_of(clay.ElementDeclaration)),
-			u32(size_of(clay.ErrorData)),
-		),
-	)
+	when ODIN_ARCH == .arm32 {
+		assert(
+			tv_clay_abi(
+				u32(size_of(clay.RenderCommand)),
+				u32(size_of(clay.ElementDeclaration)),
+				u32(size_of(clay.ErrorData)),
+			),
+		)
+	}
 	clay.SetMaxElementCount(128)
 	clay.SetMaxMeasureTextCacheWordCount(512)
 	memory := make([]u8, int(clay.MinMemorySize()))

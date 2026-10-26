@@ -6,6 +6,7 @@ Odin + Clay + SDL3, on Wayland.
 `just` lists the development tasks. configure `.env` from `.env.example`.
 
 ```sh
+bun install
 just fmt
 just check
 just test
