@@ -5,7 +5,8 @@ umask 022
 source scripts/env.sh
 cc="$WEBOS_SDK/bin/arm-webos-linux-gnueabi-gcc"
 pkg="$WEBOS_SDK/bin/pkg-config"
-for required in "$WEBOS_ODIN" "$cc" "$pkg" "$WEBOS_SDK/bin/wayland-scanner" "$WEBOS_PLATFORM/runtime/libSDL3.so.0" "$WEBOS_PLATFORM/runtime/libSDL3_ttf.so.0" "$WEBOS_PLATFORM/runtime/libSDL3_image.so.0"; do
+sysroot="$WEBOS_SDK/arm-webos-linux-gnueabi/sysroot"
+for required in "$WEBOS_ODIN" "$cc" "$pkg" "$WEBOS_SDK/bin/wayland-scanner" "$sysroot/usr/lib/libcurl.so.4" "$sysroot/usr/lib/libssl.so.3" "$sysroot/usr/lib/libcrypto.so.3" "$WEBOS_PLATFORM/runtime/libSDL3.so.0" "$WEBOS_PLATFORM/runtime/libSDL3_ttf.so.0" "$WEBOS_PLATFORM/runtime/libSDL3_image.so.0"; do
 	if [[ ! -f "$required" ]]; then
 		printf 'missing toolchain input: %s\nconfigure the cache paths in .env; see .env.example\n' "$required" >&2
 		exit 1
@@ -17,32 +18,49 @@ for directory in build/obj build/app; do
 	if [[ -d "$directory" ]]; then trash -- "$directory"; fi
 done
 mkdir -p build/obj build/app
+odin_flags=(-o:speed)
+c_flags=(-O2)
+if [[ ${LEANTUBE_DEBUG:-0} == 1 ]]; then
+	odin_flags=(-debug -o:minimal)
+	c_flags=(-Og -g)
+fi
 "$WEBOS_ODIN" build src -target:linux_arm32 -microarch:cortex-a9 \
-	-build-mode:obj -out:build/obj/leantube.o -debug -o:minimal -define:APP_VERSION="$app_version"
+	-build-mode:obj -out:build/obj/leantube.o "${odin_flags[@]}" -define:APP_VERSION="$app_version"
 "$WEBOS_SDK/bin/wayland-scanner" client-header vendor/webos-text/text.xml build/obj/text-client-protocol.h
 "$WEBOS_SDK/bin/wayland-scanner" private-code vendor/webos-text/text.xml build/obj/text-protocol.c
 cpu=(-mcpu=cortex-a9 -mfpu=neon -mfloat-abi=softfp)
 read -r -a cflags <<< "$("$pkg" --cflags luna-service2 glib-2.0 wayland-client)"
 read -r -a libs <<< "$("$pkg" --libs luna-service2 glib-2.0 wayland-client)"
-"$cc" -c vendor/qrcodegen/qrcodegen.c -o build/obj/qrcodegen.o -std=c11 -O2 \
+"$cc" -c vendor/qrcodegen/qrcodegen.c -o build/obj/qrcodegen.o -std=c11 "${c_flags[@]}" \
 	"${cpu[@]}"
-"$cc" -c src/native/bridge.c -o build/obj/bridge.o -std=c11 -Og -g \
+"$cc" -c src/native/bridge.c -o build/obj/bridge.o -std=c11 "${c_flags[@]}" \
 	"${cpu[@]}" -Isrc/native -Ivendor/qrcodegen "${cflags[@]}"
-"$cc" -c src/native/keyboard.c -o build/obj/keyboard.o -std=c11 -Og -g \
+"$cc" -c src/native/keyboard.c -o build/obj/keyboard.o -std=c11 "${c_flags[@]}" \
 	"${cpu[@]}" -Ibuild/obj "${cflags[@]}"
-"$cc" -c build/obj/text-protocol.c -o build/obj/text-protocol.o \
+"$cc" -c build/obj/text-protocol.c -o build/obj/text-protocol.o "${c_flags[@]}" \
 	"${cpu[@]}" "${cflags[@]}"
-"$cc" -c src/native/webos-shell-protocol.c -o build/obj/protocol.o \
+"$cc" -c src/native/webos-shell-protocol.c -o build/obj/protocol.o "${c_flags[@]}" \
 	"${cpu[@]}" "${cflags[@]}"
-"$cc" -c src/native/clay.c -o build/obj/clay.o -std=c11 -O2 \
+"$cc" -c src/native/clay.c -o build/obj/clay.o -std=c11 "${c_flags[@]}" \
 	"${cpu[@]}" -Ivendor/clay
 # The ELF loader expands $ORIGIN on the TV, not this shell.
 # shellcheck disable=SC2016
 "$cc" build/obj/*.o -L"$WEBOS_PLATFORM/runtime" -L"$WEBOS_PLATFORM/device-link" \
-	-Wl,-rpath-link,"$WEBOS_PLATFORM/device-link" -l:libSDL3.so.0 -l:libSDL3_ttf.so.0 -l:libSDL3_image.so.0 -lAcbAPI \
-	"${libs[@]}" -Wl,--allow-shlib-undefined -lcurl -l:libcrypto.so.1.0.0 -lz -lm -lpthread -ldl -lrt -latomic \
+	-Wl,-rpath-link,"$WEBOS_PLATFORM/device-link" -Wl,-rpath-link,"$sysroot/usr/lib" \
+	-l:libSDL3.so.0 -l:libSDL3_ttf.so.0 -l:libSDL3_image.so.0 -lAcbAPI \
+	"${libs[@]}" -Wl,--allow-shlib-undefined \
+	-l:libcurl.so.4 -l:libssl.so.3 -l:libcrypto.so.3 -lz -lm -lpthread -ldl -lrt -latomic \
 	-Wl,--disable-new-dtags,-rpath,'$ORIGIN/lib' -o "build/app/$app_main"
 cp -a app/. build/app/
 mkdir -p build/app/lib
 cp -a "$WEBOS_PLATFORM/runtime/." build/app/lib/
+for entry in \
+	"$sysroot/usr/lib/libcurl.so.4.8.0:libcurl.so.4" \
+	"$sysroot/usr/lib/libssl.so.3:libssl.so.3" \
+	"$sysroot/usr/lib/libcrypto.so.3:libcrypto.so.3"; do
+	src=${entry%%:*}
+	dst="build/app/lib/${entry##*:}"
+	cp -a "$src" "$dst"
+	"$WEBOS_SDK/bin/arm-webos-linux-gnueabi-strip" --strip-unneeded "$dst"
+done
 printf 'built %s for B9 ARM32 soft-float\n' "build/app/$app_main"

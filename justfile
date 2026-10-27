@@ -62,6 +62,10 @@ setup-tv-images:
 build:
 	bash scripts/build.sh
 
+# Build with debug information and minimal optimization.
+build-debug:
+	LEANTUBE_DEBUG=1 bash scripts/build.sh
+
 # Run the headless ABI/layout regression on the TV, without opening an app.
 test-tv-layout: build
 	bash scripts/test-tv-layout.sh
