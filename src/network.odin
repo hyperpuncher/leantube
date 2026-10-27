@@ -20,6 +20,7 @@ Network_Request :: struct {
 		Use_Account,
 		Login_Start,
 		Login_Poll,
+		Card_Action,
 	},
 	page, playback: u32,
 	text:           string,
@@ -27,6 +28,7 @@ Network_Request :: struct {
 	index:          int,
 	account:        u32,
 	auth_token:     Auth_Token,
+	action:         model.Card_Action,
 }
 Network_Result :: struct {
 	kind:           enum {
@@ -39,6 +41,7 @@ Network_Result :: struct {
 		Login_Waiting,
 		Login_Authorized,
 		Login_Error,
+		Card_Action,
 	},
 	page, playback: u32,
 	index:          int,
@@ -54,6 +57,7 @@ Network_Result :: struct {
 	login_interval: int,
 	auth_token:     Auth_Token,
 	account:        u32,
+	actions:        [dynamic]model.Card_Action,
 }
 network_requests: chan.Chan(Network_Request)
 network_results: chan.Chan(Network_Result)
@@ -94,12 +98,14 @@ account_revision: u32
 free_network_request :: proc(request: ^Network_Request) {
 	delete(request.text)
 	delete(request.continuation)
+	delete(request.action.label); delete(request.action.target); delete(request.action.payload)
 	free_auth_token(&request.auth_token)
 	request^ = {}
 }
 
 free_network_result :: proc(result: ^Network_Result) {
 	model.catalog_destroy(&result.catalog)
+	model.card_actions_destroy(&result.actions)
 	delete(result.bytes)
 	delete(result.stream.url)
 	delete(result.stream.audio_url)
@@ -189,7 +195,7 @@ network_main :: proc(_: ^thread.Thread) {
 					bytes = avatar,
 				},
 			) {return}
-		case .Search, .Browse:
+		case .Search, .Browse, .Card_Action:
 			if session_auth.access_token != "" && sdl.GetTicks() >= refresh_at {
 				if refresh_auth(&network_client, &session_auth) {
 					yt.set_access_token(session_auth.access_token)
@@ -202,6 +208,20 @@ network_main :: proc(_: ^thread.Thread) {
 					) {return}
 				}
 				refresh_at = sdl.GetTicks() + u64(max(session_auth.expires_in - 60, 30)) * 1000
+			}
+			if request.kind == .Card_Action {
+				actions, error := yt.perform_card_action(&network_client, request.action)
+				if !post_network_result(
+					{
+						kind = .Card_Action,
+						page = request.page,
+						index = request.index,
+						actions = actions,
+						error = error,
+						append = request.action.kind == .Playlists,
+					},
+				) {return}
+				continue
 			}
 			catalog: model.Catalog
 			error: yt.Error
@@ -383,6 +403,7 @@ submit_network :: proc(request: Network_Request) -> bool {
 	return false
 }
 clear_catalog :: proc() {
+	close_card_menu()
 	catalog_revision += 1
 	for &texture in textures {
 		if texture != nil {sdl.DestroyTexture(texture); texture = nil}
@@ -541,6 +562,20 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 		}
 		if result.page != page {continue}
 		#partial switch result.kind {
+		case .Card_Action:
+			if !card_menu || result.index != card_menu_revision {continue}
+			card_menu_waiting = false
+			if result.error != .None {
+				card_menu_error = "action failed; try again"
+			} else if result.append {
+				model.card_actions_destroy(&card_menu_actions)
+				card_menu_actions = result.actions
+				result.actions = nil
+				card_menu_selected = 0
+			} else {
+				close_card_menu()
+				reload_feed()
+			}
 		case .Catalog:
 			search_loading = false
 			if result.error !=

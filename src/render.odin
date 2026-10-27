@@ -85,6 +85,16 @@ render :: proc(renderer: ^sdl.Renderer, wheel: f32 = 0, dt: f32 = 1.0 / 60) -> b
 			commands = clay.EndLayout(0)
 		}
 	}
+	if browsing &&
+	   card_menu &&
+	   reveal_scroll_item(
+		   clay.ID("card-menu-scroll"),
+		   clay.ID("card-action", u32(card_menu_selected)),
+	   ) {
+		clay.BeginLayout()
+		grid_layout()
+		commands = clay.EndLayout(0)
+	}
 	// Cards are not clipped, so their captions are fitted to the measured width.
 	if browsing && grid_measure_labels() {
 		clay.BeginLayout()

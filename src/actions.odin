@@ -7,6 +7,7 @@ import "core:strings"
 import sdl "vendor:sdl3"
 
 key :: proc(code: sdl.Keycode, window: ^sdl.Window = nil) {
+	if card_menu {card_menu_key(code); return}
 	if account_menu {
 		add := len(auth_accounts) < MAX_ACCOUNTS
 		last := len(auth_accounts) + int(add)

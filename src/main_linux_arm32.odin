@@ -342,6 +342,7 @@ main :: proc() {
 			}
 		}
 		poll_network(renderer)
+		poll_card_press(sdl.GetTicks())
 		poll_login_tick()
 		auto_skip_sponsor()
 		expire_player_controls()

@@ -42,6 +42,12 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 	dirty = true
 	if !browsing {show_player_controls()}
 	if browsing {
+		if card_press.active &&
+		   card_press.pointer &&
+		   !clay.PointerOver(clay.ID("video", u32(card_press.index))) {
+			card_press.active = false
+		}
+		if card_menu {card_menu_pointer(activate); return}
 		if account_menu {
 			if clay.PointerOver(clay.ID("account")) {
 				if activate {account_menu = false; dirty = true}
@@ -90,7 +96,7 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 				rail_focus = false
 				if activate {
 					if search_editing {finish_search_input(sdl.GetRenderWindow(renderer))}
-					open_selected()
+					begin_card_press(true, sdl.GetTicks())
 				}
 				break
 			}

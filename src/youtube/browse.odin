@@ -126,6 +126,7 @@ parse_tile :: proc(tile: json.Value) -> (card: model.Video) {
 		}
 	}
 	fill_card_labels(&card, labels[:])
+	card.actions = parse_card_actions(field(tile, "onLongPressCommand"))
 	thumbnails, _ := field(field(header, "thumbnail"), "thumbnails").(json.Array)
 	for thumbnail in thumbnails {
 		if url, ok := field(thumbnail, "url").(json.String);

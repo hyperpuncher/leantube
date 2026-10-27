@@ -60,6 +60,7 @@ run_dev :: proc(renderer: ^sdl.Renderer) {
 		if sdl.WaitEventTimeout(&event, 100) {wheel = handle_event(renderer, event)}
 		if return_to_grid {stop_playback()}
 		poll_network(renderer)
+		poll_card_press(sdl.GetTicks())
 		expire_player_controls()
 		if timeline.seek_target_ms >= 0 {
 			timeline.position_ms = timeline.seek_target_ms

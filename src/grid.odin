@@ -140,6 +140,7 @@ grid_layout :: proc() {
 			}
 		}
 		if account_menu {account_menu_layout()}
+		if card_menu {card_menu_layout()}
 	}
 }
 

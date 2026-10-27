@@ -1,6 +1,6 @@
 {
 	"id": "org.hyperpuncher.leantube",
-	"version": "0.0.23",
+	"version": "0.0.24",
 	"vendor": "hyperpuncher",
 	"type": "native",
 	"main": "leantube",

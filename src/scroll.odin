@@ -4,9 +4,13 @@ import clay "../vendor/clay"
 
 // Keep keyboard focus visible without changing wheel-driven scrolling.
 reveal_selected_video :: proc() -> bool {
-	scroll := clay.GetScrollContainerData(clay.ID("library-scroll"))
-	viewport := clay.GetElementData(clay.ID("library-scroll"))
-	item := clay.GetElementData(clay.ID("video", u32(selected)))
+	return reveal_scroll_item(clay.ID("library-scroll"), clay.ID("video", u32(selected)))
+}
+
+reveal_scroll_item :: proc(scroll_id, item_id: clay.ElementId) -> bool {
+	scroll := clay.GetScrollContainerData(scroll_id)
+	viewport := clay.GetElementData(scroll_id)
+	item := clay.GetElementData(item_id)
 	if !scroll.found || !viewport.found || !item.found {return false}
 	offset: f32
 	if item.boundingBox.y < viewport.boundingBox.y {

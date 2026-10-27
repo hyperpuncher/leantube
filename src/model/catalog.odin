@@ -9,6 +9,7 @@ Video :: struct {
 	id, title, channel, duration_label: string,
 	meta:                               string,
 	browse_id, thumbnail_url:           string,
+	actions:                            [dynamic]Card_Action,
 }
 Catalog :: struct {
 	query:        string,
@@ -127,6 +128,7 @@ time_label :: proc(ms: f64, zero: string = "00:00") -> string {
 video_destroy :: proc(video: ^Video) {
 	delete(video.id); delete(video.title); delete(video.channel); delete(video.duration_label)
 	delete(video.browse_id); delete(video.thumbnail_url); delete(video.meta)
+	card_actions_destroy(&video.actions)
 	video^ = {}
 }
 

@@ -355,6 +355,7 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	assert(scroll.scrollPosition^[1] > before_player, "wheel scrolling must move the view")
 	assert(selected == len(catalog.videos) - 1)
 	assert(running)
+	check_card_menu_ui(renderer, surface)
 	check_account_ui(renderer, surface)
 	check_search_flow(renderer, surface)
 	fmt.println(

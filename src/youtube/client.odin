@@ -136,6 +136,7 @@ collect_videos :: proc(value: json.Value, catalog: ^model.Catalog) {
 			defer delete(view_text)
 			defer delete(published)
 			fill_card_labels(&card, []string{view_text, published})
+			card.actions = parse_card_actions(video["menu"])
 			if card.channel == "" {
 				card.channel = text(video["ownerText"])
 				if card.channel == "" {card.channel = text(video["longBylineText"])}
@@ -228,6 +229,7 @@ collect_videos_tv :: proc(value: json.Value, catalog: ^model.Catalog) {
 				duration_ms    = ms,
 			}
 			fill_card_labels(&card, labels[:])
+			card.actions = parse_card_actions(lockup)
 			append(&catalog.videos, card)
 			return
 		}
