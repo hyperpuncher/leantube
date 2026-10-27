@@ -266,7 +266,14 @@ player_layout :: proc(elapsed, total, speed, quality: string) {
 				// The buttons step the rate that sits between them.
 				if clay.UI()({layout = {childGap = spacing(12), childAlignment = {y = .Center}}}) {
 					control_button(SLOWER_BUTTON)
-					label(speed, .Mono_Body, COLOR_MUTED)
+					if clay.UI()(
+					{
+						layout = {
+							sizing = {width = clay.SizingFixed(scaled(112))},
+							childAlignment = {x = .Center, y = .Center},
+						},
+					},
+					) {label(speed, .Mono_Body, COLOR_MUTED)}
 					control_button(FASTER_BUTTON)
 				}
 				if quality != "" {label(quality, .Mono_Body, COLOR_MUTED)}
