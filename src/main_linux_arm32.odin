@@ -270,6 +270,7 @@ main :: proc() {
 		delete(search_text)
 		clear_catalog()
 		close_icons()
+		close_tv_cursor()
 		close_text()
 		if renderer != nil {sdl.DestroyRenderer(renderer)}
 		tv_shutdown()
@@ -318,6 +319,7 @@ main :: proc() {
 	if path_error != nil {return}
 	defer delete(path)
 	app_directory = filepath.dir(path)
+	if !open_tv_cursor() {fmt.eprintln("cursor failed:", sdl.GetError())}
 	if !open_text(renderer) {fmt.eprintln("UI assets failed:", sdl.GetError()); return}
 	if start_network() {
 		activate_navigation(signed_in ? .Subscriptions : .Home)
