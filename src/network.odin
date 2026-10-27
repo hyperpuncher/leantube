@@ -66,6 +66,8 @@ resolving: bool
 stream_width, stream_height: int
 playback_requested_at: u64
 playback_hdr: yt.Hdr
+// Bumped whenever the catalog contents change, so fitted card labels rebuild.
+catalog_revision: int
 sponsor_segments: [dynamic]sb.Segment
 pending_auth: Device_Auth
 pending_auth_active: bool
@@ -363,6 +365,7 @@ submit_network :: proc(request: Network_Request) -> bool {
 	return false
 }
 clear_catalog :: proc() {
+	catalog_revision += 1
 	for &texture in textures {
 		if texture != nil {sdl.DestroyTexture(texture); texture = nil}
 	}
@@ -534,6 +537,7 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				clear_catalog()
 				catalog = result.catalog; result.catalog = {}
 			}
+			catalog_revision += 1
 			resize(&textures, len(catalog.videos))
 			notice = len(catalog.videos) == 0 ? "no items found" : ""
 			library_focus_pending = true

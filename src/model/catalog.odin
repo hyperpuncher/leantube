@@ -7,6 +7,7 @@ GRID_COLUMNS :: 3
 Video :: struct {
 	duration_ms:                        f64,
 	id, title, channel, duration_label: string,
+	meta:                               string,
 	browse_id, thumbnail_url:           string,
 }
 Catalog :: struct {
@@ -46,6 +47,75 @@ quality_label :: proc(width, height: int) -> string {
 }
 
 
+// Views arrive as text such as "179K views", "1,234,567 views" or "1.1M views".
+// Return 0 for "No views" and for anything unreadable.
+views_count :: proc(text: string) -> u64 {
+	suffix := strings.trim_suffix(strings.trim_suffix(text, " views"), " view")
+	number := suffix
+	scale: f64 = 1
+	if len(number) > 0 {
+		switch number[len(number) - 1] {
+		case 'K':
+			scale = 1_000
+		case 'M':
+			scale = 1_000_000
+		case 'B', 'G':
+			scale = 1_000_000_000
+		}
+		if scale > 1 {number = number[:len(number) - 1]}
+	}
+	value, fraction: f64
+	fraction_scale: f64 = 1
+	seen_digit, seen_dot := false, false
+	for r in number {
+		switch {
+		case r >= '0' && r <= '9':
+			if seen_dot {
+				fraction_scale *= 10
+				fraction += f64(r - '0') / fraction_scale
+			} else {
+				value = value * 10 + f64(r - '0')
+			}
+			seen_digit = true
+		case r == ',', r == ' ':
+		case r == '.' && !seen_dot:
+			seen_dot = true
+		case:
+			return 0
+		}
+	}
+	value += fraction
+	if !seen_digit {return 0}
+	return u64(value * scale + 0.5)
+}
+
+// Round to the nearest shown unit: 987, 12K, 1.2M, 345M, 1.5B.
+views_label :: proc(views: u64) -> string {
+	if views == 0 {return ""}
+	if views < 1_000 {return fmt.aprintf("%d views", views)}
+	value: f64
+	unit: byte
+	switch {
+	case views < 1_000_000:
+		value, unit = f64(views) / 1_000, 'K'
+	case views < 1_000_000_000:
+		value, unit = f64(views) / 1_000_000, 'M'
+	case:
+		value, unit = f64(views) / 1_000_000_000, 'B'
+	}
+	return fmt.aprintf(value < 9.95 ? "%.1f%c views" : "%.0f%c views", value, unit)
+}
+
+// One caption line for a card, for example "1.2M views · 2 years ago".
+video_meta :: proc(views: u64, published: string) -> string {
+	views_text := views_label(views)
+	defer delete(views_text)
+	relative := strings.trim_space(published)
+	if views_text == "" {return strings.clone(published)}
+	if relative == "" {return strings.clone(views_text)}
+	return fmt.aprintf("%s · %s", views_text, relative)
+}
+
 time_label :: proc(ms: f64, zero: string = "00:00") -> string {
 	if ms <= 0 {return strings.clone(zero)}
 	seconds := i64(ms / 1000)
@@ -56,7 +126,7 @@ time_label :: proc(ms: f64, zero: string = "00:00") -> string {
 
 video_destroy :: proc(video: ^Video) {
 	delete(video.id); delete(video.title); delete(video.channel); delete(video.duration_label)
-	delete(video.browse_id); delete(video.thumbnail_url)
+	delete(video.browse_id); delete(video.thumbnail_url); delete(video.meta)
 	video^ = {}
 }
 

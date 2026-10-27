@@ -65,6 +65,27 @@ text :: proc(value: json.Value) -> string {
 	}
 	return strings.concatenate(parts[:])
 }
+// fill_card_labels reads the channel, view count and relative date from the
+// flat labels YouTube serves on a card, in any order. The labels stay owned by
+// the caller.
+fill_card_labels :: proc(card: ^model.Video, labels: []string) {
+	views: u64
+	relative: string
+	defer delete(relative)
+	for label in labels {
+		switch {
+		case strings.contains(label, "views"):
+			views = model.views_count(label)
+		case relative == "" && strings.has_suffix(label, "ago"):
+			relative = strings.clone(label)
+		case card.channel == "" && label != "•":
+			card.channel = strings.clone(label)
+		}
+	}
+	delete(card.meta)
+	card.meta = model.video_meta(views, relative)
+}
+
 video_id_valid :: proc(id: string) -> bool {
 	if len(id) != 11 {return false}
 	for ch in id {
@@ -104,18 +125,22 @@ collect_videos :: proc(value: json.Value, catalog: ^model.Catalog) {
 			if ms <= 0 {delete(stamp); return} 	// Live and upcoming entries are not playable here.
 			title := text(video["title"])
 			if title == "" {delete(title); delete(stamp); return}
-			channel := text(video["ownerText"])
-			if channel == "" {delete(channel); channel = text(video["longBylineText"])}
-			append(
-				&catalog.videos,
-				model.Video {
-					id = strings.clone(string(id)),
-					title = title,
-					channel = channel,
-					duration_label = stamp,
-					duration_ms = ms,
-				},
-			)
+			card := model.Video {
+				id             = strings.clone(string(id)),
+				title          = title,
+				duration_label = stamp,
+				duration_ms    = ms,
+			}
+			view_text := text(video["viewCountText"])
+			published := text(video["publishedTimeText"])
+			defer delete(view_text)
+			defer delete(published)
+			fill_card_labels(&card, []string{view_text, published})
+			if card.channel == "" {
+				card.channel = text(video["ownerText"])
+				if card.channel == "" {card.channel = text(video["longBylineText"])}
+			}
+			append(&catalog.videos, card)
 			return
 		}
 		for _, child in item {collect_videos(child, catalog)}
@@ -162,19 +187,21 @@ collect_videos_tv :: proc(value: json.Value, catalog: ^model.Catalog) {
 			title, _ := field(lockup_metadata, "title").(json.Object)
 			title_text, _ := field(title, "content").(json.String)
 			if title_text == "" {return}
-			channel: string
+			labels: [dynamic]string
+			defer {
+				for label in labels {delete(label)}
+				delete(labels)
+			}
 			rows, _ := field(
 				field(lockup_metadata, "metadata"),
 				"contentMetadataViewModel",
 			).(json.Object)
 			metadata_rows, _ := field(rows, "metadataRows").(json.Array)
-			if len(metadata_rows) > 0 {
-				row, _ := metadata_rows[0].(json.Object)
+			for row in metadata_rows {
 				row_parts, _ := field(row, "metadataParts").(json.Array)
-				if len(row_parts) > 0 {
-					part, _ := row_parts[0].(json.Object)
-					channel_text, _ := field(field(part, "text"), "content").(json.String)
-					channel = strings.clone(string(channel_text))
+				for part in row_parts {
+					label, _ := field(field(part, "text"), "content").(json.String)
+					if label != "" {append(&labels, strings.clone(string(label)))}
 				}
 			}
 			stamp: string
@@ -193,17 +220,15 @@ collect_videos_tv :: proc(value: json.Value, catalog: ^model.Catalog) {
 				}
 			}
 			ms := duration(stamp)
-			if ms <= 0 {delete(stamp); delete(channel); return}
-			append(
-				&catalog.videos,
-				model.Video {
-					id = strings.clone(string(id)),
-					title = strings.clone(string(title_text)),
-					channel = channel,
-					duration_label = stamp,
-					duration_ms = ms,
-				},
-			)
+			if ms <= 0 {delete(stamp); return}
+			card := model.Video {
+				id             = strings.clone(string(id)),
+				title          = strings.clone(string(title_text)),
+				duration_label = stamp,
+				duration_ms    = ms,
+			}
+			fill_card_labels(&card, labels[:])
+			append(&catalog.videos, card)
 			return
 		}
 		for _, child in item {collect_videos_tv(child, catalog)}

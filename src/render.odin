@@ -87,6 +87,12 @@ render :: proc(renderer: ^sdl.Renderer, wheel: f32 = 0, dt: f32 = 1.0 / 60) -> b
 			commands = clay.EndLayout(0)
 		}
 	}
+	// Cards are not clipped, so their captions are fitted to the measured width.
+	if browsing && grid_measure_labels() {
+		clay.BeginLayout()
+		grid_layout()
+		commands = clay.EndLayout(0)
+	}
 	return render_commands(renderer, commands)
 }
 

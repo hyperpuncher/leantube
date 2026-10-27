@@ -2,6 +2,7 @@ package main
 
 import clay "../vendor/clay"
 import "./model"
+import "core:c"
 import "core:fmt"
 import "core:math"
 import "core:os"
@@ -215,6 +216,26 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	assert(strings.has_suffix(continued, "…"))
 	too_narrow, _ := fit_text(fonts[.Small], "text", 1)
 	assert(too_narrow == "")
+	// A wrapped title is fitted to two lines and keeps the trailing ellipsis.
+	wrapped, wrapped_owned := fit_wrapped(
+		fonts[.Small],
+		"a very long video title that keeps going well past two lines of text for the card",
+		400,
+		2,
+	)
+	defer if wrapped_owned {delete(wrapped)}
+	assert(strings.has_suffix(wrapped, "…"))
+	line_height := c.int(ttf.GetFontHeight(fonts[.Small]))
+	probe := ttf.CreateText(text_engine, fonts[.Small], raw_data(wrapped), c.size_t(len(wrapped)))
+	assert(probe != nil)
+	assert(ttf.SetTextWrapWidth(probe, 400))
+	wrapped_width, wrapped_height: c.int
+	assert(ttf.GetTextSize(probe, &wrapped_width, &wrapped_height))
+	ttf.DestroyText(probe)
+	assert(wrapped_width <= 400)
+	assert(wrapped_height <= 2 * line_height, "a fitted title must wrap to two lines at most")
+	fits, fits_owned := fit_wrapped(fonts[.Small], "short title", 400, 2)
+	assert(!fits_owned && fits == "short title")
 	red, green, blue: u8
 	assert(sdl.ReadSurfacePixel(surface, 0, 0, &red, &green, &blue, nil))
 	assert(red == 0 && green == 0 && blue == 0)

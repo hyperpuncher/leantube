@@ -65,6 +65,33 @@ tv_search_lockups_are_parsed_without_web_renderers :: proc(t: ^testing.T) {
 }
 
 @(test)
+search_cards_read_views_and_the_relative_date :: proc(t: ^testing.T) {
+	web, web_error, web_visitor := parse_search(
+		`{"contents":{"twoColumnSearchResultsRenderer":{"primaryContents":{"sectionListRenderer":{"contents":[{"videoRenderer":{"videoId":"DN953UW8iJ8","title":{"simpleText":"Web result"},"ownerText":{"runs":[{"text":"A channel"}]},"lengthText":{"simpleText":"15:51"},"viewCountText":{"simpleText":"1,234,567 views"},"publishedTimeText":{"simpleText":"2 years ago"}}}]}}}}}`,
+		"query",
+	)
+	defer model.catalog_destroy(&web)
+	defer delete(web_visitor)
+	if !testing.expect_value(t, web_error, .None) {return}
+	if !testing.expect_value(t, len(web.videos), 1) {return}
+	testing.expect_value(t, web.videos[0].channel, "A channel")
+	testing.expect_value(t, web.videos[0].meta, "1.2M views · 2 years ago")
+
+	tv, tv_error, tv_visitor := parse_search_tv(
+		`{"contents":{"sectionListRenderer":{"contents":[{"shelfRenderer":{"content":{"horizontalListRenderer":{"items":[
+		{"lockupViewModel":{"contentId":"DN953UW8iJ8","contentType":"LOCKUP_CONTENT_TYPE_VIDEO","metadata":{"lockupMetadataViewModel":{"title":{"content":"TV result"},"metadata":{"contentMetadataViewModel":{"metadataRows":[{"metadataParts":[{"text":{"content":"A channel"}}]},{"metadataParts":[{"text":{"content":"1.1M views"}},{"text":{"content":"16 hours ago"}}]}]}}}},"contentImage":{"thumbnailViewModel":{"overlays":[{"thumbnailBottomOverlayViewModel":{"badges":[{"thumbnailBadgeViewModel":{"text":"15:51"}}]}}]}}}}
+		]}}}}]}}}`,
+		"query",
+	)
+	defer model.catalog_destroy(&tv)
+	defer delete(tv_visitor)
+	if !testing.expect_value(t, tv_error, .None) {return}
+	if !testing.expect_value(t, len(tv.videos), 1) {return}
+	testing.expect_value(t, tv.videos[0].channel, "A channel")
+	testing.expect_value(t, tv.videos[0].meta, "1.1M views · 16 hours ago")
+}
+
+@(test)
 player_selects_the_best_direct_combined_h264_stream :: proc(t: ^testing.T) {
 	stream, error := parse_player(
 		`{"playabilityStatus":{"status":"OK"},"streamingData":{"formats":[

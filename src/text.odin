@@ -87,6 +87,39 @@ fit_text :: proc(
 	return strings.concatenate({prefix, ELLIPSIS}), true
 }
 
+// Wrap text into at most max_lines at width, ellipsizing the last visible line.
+// Return a borrowed string when everything fits; otherwise the caller owns it.
+// SDL_ttf wraps the text, so the line count matches the drawn result exactly.
+fit_wrapped :: proc(
+	font: ^ttf.Font,
+	text: string,
+	width: c.int,
+	max_lines: int,
+) -> (
+	string,
+	bool,
+) {
+	if text == "" || width <= 0 || max_lines < 1 {return text, false}
+	line_height := c.int(ttf.GetFontHeight(font))
+	if line_height <= 0 {return text, false}
+	value := ttf.CreateText(text_engine, font, raw_data(text), c.size_t(len(text)))
+	if value == nil {return text, false}
+	defer ttf.DestroyText(value)
+	if !ttf.SetTextWrapWidth(value, width) {return text, false}
+	_, bounds_height: c.int
+	if !ttf.GetTextSize(value, nil, &bounds_height) {return text, false}
+	if bounds_height <= line_height * c.int(max_lines) {return text, false}
+	line: ttf.SubString
+	if !ttf.GetTextSubStringForLine(value, c.int(max_lines - 1), &line) {return text, false}
+	line_end := line.offset + line.length
+	if int(line_end) >= len(text) {return text, false}
+	// Force the ellipsis: the visible line may fit, but text follows it.
+	fitted, owned := fit_text(font, text[line.offset:line_end], width, true)
+	if !owned {return text, false}
+	defer delete(fitted)
+	return strings.concatenate({text[:line.offset], fitted}), true
+}
+
 close_text :: proc() {
 	if text_engine != nil {ttf.DestroyRendererTextEngine(text_engine); text_engine = nil}
 	for font in fonts {ttf.CloseFont(font)}

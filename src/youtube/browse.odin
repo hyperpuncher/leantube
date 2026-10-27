@@ -112,15 +112,20 @@ parse_tile :: proc(tile: json.Value) -> (card: model.Video) {
 		duration_label = stamp,
 		duration_ms    = playlist ? 0 : duration(stamp),
 	}
+	labels: [dynamic]string
+	defer {
+		for label in labels {delete(label)}
+		delete(labels)
+	}
 	lines, _ := field(metadata, "lines").(json.Array)
-	if len(lines) > 0 {
-		items, _ := field(field(lines[0], "lineRenderer"), "items").(json.Array)
+	for line in lines {
+		items, _ := field(field(line, "lineRenderer"), "items").(json.Array)
 		for item in items {
 			label := text(field(field(item, "lineItemRenderer"), "text"))
-			if label != "" {card.channel = label; break}
-			delete(label)
+			if label != "" {append(&labels, label)}
 		}
 	}
+	fill_card_labels(&card, labels[:])
 	thumbnails, _ := field(field(header, "thumbnail"), "thumbnails").(json.Array)
 	for thumbnail in thumbnails {
 		if url, ok := field(thumbnail, "url").(json.String);

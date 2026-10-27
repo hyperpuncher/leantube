@@ -56,3 +56,16 @@ empty_browse_and_continuation_responses_are_not_transport_errors :: proc(t: ^tes
 		testing.expect_value(t, error, .Invalid_Response)
 	}
 }
+
+@(test)
+browse_cards_read_views_and_the_relative_date :: proc(t: ^testing.T) {
+	catalog, error, visitor := parse_browse(
+		`{"contents":{"gridRenderer":{"items":[{"tileRenderer":{"onSelectCommand":{"watchEndpoint":{"videoId":"DN953UW8iJ8"}},"metadata":{"tileMetadataRenderer":{"title":{"simpleText":"WAN Show"},"lines":[{"lineRenderer":{"items":[{"lineItemRenderer":{"text":{"runs":[{"text":"Linus Tech Tips"}]}}}]}},{"lineRenderer":{"items":[{"lineItemRenderer":{"text":{"simpleText":"179K views"}}},{"lineItemRenderer":{"text":{"simpleText":"•"}}},{"lineItemRenderer":{"text":{"simpleText":"Streamed 5 months ago"}}}]}}]}},"header":{"tileHeaderRenderer":{"thumbnailOverlays":[{"thumbnailOverlayTimeStatusRenderer":{"text":{"simpleText":"4:19:51"}}}]}}}}]}}}`,
+	)
+	defer model.catalog_destroy(&catalog)
+	defer delete(visitor)
+	if !testing.expect_value(t, error, .None) {return}
+	if !testing.expect_value(t, len(catalog.videos), 1) {return}
+	testing.expect_value(t, catalog.videos[0].channel, "Linus Tech Tips")
+	testing.expect_value(t, catalog.videos[0].meta, "179K views · Streamed 5 months ago")
+}
