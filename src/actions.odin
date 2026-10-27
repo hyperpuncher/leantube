@@ -39,7 +39,11 @@ key :: proc(code: sdl.Keycode, window: ^sdl.Window = nil) {
 		dirty = true
 		return
 	}
-	if browsing && !search_editing && navigation_key(code, window) {return}
+	if browsing && !search_editing {
+		if (code == sdl.K_ESCAPE || code == sdl.K_AC_BACK) && browse_back() {return}
+		if !rail_focus && channel_key(code) {return}
+		if navigation_key(code, window) {return}
+	}
 	if browsing && search_key(code, window) {return}
 	if browsing {
 		library_focus_pending = true

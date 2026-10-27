@@ -25,6 +25,7 @@ Network_Request :: struct {
 	page, playback: u32,
 	text:           string,
 	continuation:   string,
+	params, filter: string,
 	index:          int,
 	account:        u32,
 	auth_token:     Auth_Token,
@@ -34,6 +35,7 @@ Network_Result :: struct {
 	kind:           enum {
 		Catalog,
 		Cover,
+		Channel_Avatar,
 		Stream,
 		Segments,
 		Account,
@@ -100,6 +102,7 @@ account_revision: u32
 free_network_request :: proc(request: ^Network_Request) {
 	delete(request.text)
 	delete(request.continuation)
+	delete(request.params); delete(request.filter)
 	delete(request.action.label); delete(request.action.target); delete(request.action.payload)
 	free_auth_token(&request.auth_token)
 	request^ = {}
@@ -136,6 +139,7 @@ network_main :: proc(_: ^thread.Thread) {
 	covers: [dynamic]struct {
 		source: string,
 		index:  int,
+		avatar: bool,
 	}
 	defer {for cover in covers {delete(cover.source)}; delete(covers)}
 	next: int
@@ -168,7 +172,7 @@ network_main :: proc(_: ^thread.Thread) {
 			if surface != nil {
 				if !post_network_result(
 					{
-						kind = .Cover,
+						kind = covers[index].avatar ? .Channel_Avatar : .Cover,
 						page = cover_page,
 						index = covers[index].index,
 						surface = surface,
@@ -245,6 +249,9 @@ network_main :: proc(_: ^thread.Thread) {
 					&network_client,
 					request.text,
 					request.continuation,
+					request.params,
+					request.filter,
+					visitor_data,
 				)
 			} else {
 				catalog, error, visitor = yt.search(&network_client, request.text)
@@ -256,6 +263,12 @@ network_main :: proc(_: ^thread.Thread) {
 				next = 0
 				for cover in covers {delete(cover.source)}
 				clear(&covers)
+			}
+			if catalog.channel.avatar_url != "" {
+				append(
+					&covers,
+					{source = strings.clone(catalog.channel.avatar_url), avatar = true},
+				)
 			}
 			for video, i in catalog.videos {
 				append(
@@ -416,20 +429,30 @@ submit_network :: proc(request: Network_Request) -> bool {
 	free_network_request(&request)
 	return false
 }
-clear_catalog :: proc() {
+clear_catalog :: proc(keep_channel: bool = false) {
 	close_card_menu()
 	catalog_revision += 1
 	for &texture in textures {
 		if texture != nil {sdl.DestroyTexture(texture); texture = nil}
 	}
 	delete(textures); textures = nil
+	channel: model.Channel
+	if keep_channel {channel = catalog.channel; catalog.channel = {}}
 	model.catalog_destroy(&catalog)
+	catalog.channel = channel
+	if !keep_channel &&
+	   channel_avatar != nil {sdl.DestroyTexture(channel_avatar); channel_avatar = nil}
 }
-start_browse :: proc(id: string) {
-	owned := strings.clone(id)
-	delete(browse_id)
-	browse_id = owned
-	clear_catalog()
+start_browse :: proc(id: string, params: string = "", filter: string = "", remember: bool = true) {
+	owned, owned_params, owned_filter :=
+		strings.clone(id), strings.clone(params), strings.clone(filter)
+	if remember && id != browse_id && (browse_id != "" || catalog.query != "") {remember_browse()}
+	keep_channel := id == browse_id && catalog.channel.id == id
+	delete(browse_id); delete(browse_params); delete(browse_filter)
+	browse_id, browse_params, browse_filter = owned, owned_params, owned_filter
+	clear_catalog(keep_channel)
+	channel_focus = false
+	restore_selected = -1
 	page += 1
 	selected = 0
 	rail_focus = false
@@ -440,7 +463,15 @@ start_browse :: proc(id: string) {
 	}
 	notice = ""
 	dirty = true
-	if !submit_network({kind = .Browse, page = page, text = strings.clone(browse_id)}) {
+	if !submit_network(
+		{
+			kind = .Browse,
+			page = page,
+			text = strings.clone(browse_id),
+			params = strings.clone(browse_params),
+			filter = strings.clone(browse_filter),
+		},
+	) {
 		search_loading = false
 		notice = "network is unavailable"
 	}
@@ -472,12 +503,17 @@ open_selected :: proc() {
 	} else {start_video()}
 }
 
-start_search :: proc(query: string = "Linus Tech Tips") {
+start_search :: proc(query: string = "Linus Tech Tips", keep_history: bool = false) {
 	clean_query := strings.trim_space(query)
 	if clean_query == "" || len(clean_query) > 512 {return}
 	// Clone before clearing the old page; query may point into its text.
 	owned := strings.clone(clean_query)
+	if !keep_history {clear_browse_history()}
 	delete(browse_id); browse_id = ""
+	delete(browse_params); browse_params = ""
+	delete(browse_filter); browse_filter = ""
+	channel_focus = false
+	restore_selected = -1
 	clear_catalog()
 	catalog.query = strings.clone(owned)
 	page += 1
@@ -601,22 +637,45 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				catalog.continuation = result.catalog.continuation
 				result.catalog.continuation = ""
 			} else {
-				clear_catalog()
+				same_channel :=
+					result.catalog.channel.id != "" &&
+					result.catalog.channel.id == catalog.channel.id
+				if same_channel && result.catalog.channel.title == "" {
+					sorts := result.catalog.channel.sorts
+					result.catalog.channel.sorts = nil
+					model.channel_destroy(&result.catalog.channel)
+					result.catalog.channel = catalog.channel
+					catalog.channel = {}
+					if len(sorts) > 0 {
+						model.channel_options_destroy(&result.catalog.channel.sorts)
+						result.catalog.channel.sorts = sorts
+					}
+				}
+				clear_catalog(same_channel)
+				model.channel_destroy(&catalog.channel)
 				catalog = result.catalog; result.catalog = {}
+				if restore_selected >= 0 {
+					selected = clamp(restore_selected, 0, max(0, len(catalog.videos) - 1))
+					restore_selected = -1
+				}
 			}
 			catalog_revision += 1
 			resize(&textures, len(catalog.videos))
 			notice = len(catalog.videos) == 0 ? "no items found" : ""
 			library_focus_pending = true
-		case .Cover:
-			if result.index < 0 || result.index >= len(catalog.videos) {continue}
+		case .Cover, .Channel_Avatar:
+			slot := &channel_avatar
+			if result.kind == .Cover {
+				if result.index < 0 || result.index >= len(catalog.videos) {continue}
+				slot = &textures[result.index]
+			}
 			if result.surface == nil {continue}
 			texture := sdl.CreateTextureFromSurface(renderer, result.surface)
 			if texture == nil {continue}
 			_ = sdl.SetTextureBlendMode(texture, sdl.BLENDMODE_BLEND)
 			_ = sdl.SetTextureScaleMode(texture, .LINEAR)
-			if textures[result.index] != nil {sdl.DestroyTexture(textures[result.index])}
-			textures[result.index] = texture
+			if slot^ != nil {sdl.DestroyTexture(slot^)}
+			slot^ = texture
 		case .Stream:
 			if browsing || return_to_grid || !resolving || result.playback != playback {continue}
 			resolving = false

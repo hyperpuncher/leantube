@@ -278,6 +278,8 @@ main :: proc() {
 		stop_playback()
 		stop_network()
 		delete(search_text)
+		clear_browse_history()
+		delete(browse_id); delete(browse_params); delete(browse_filter)
 		clear_catalog()
 		close_icons()
 		close_tv_cursor()

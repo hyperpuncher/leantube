@@ -28,6 +28,7 @@ Stream :: struct {
 
 // Client profiles follow yt-dlp's YouTube extractor. No account cookies or
 // attestation tokens are used. Unsupported playback must fail visibly.
+WEB_VERSION :: "2.20260708.00.00"
 ANDROID_VERSION :: "21.26.364"
 ANDROID_AGENT :: "com.google.android.youtube/" + ANDROID_VERSION + " (Linux; U; Android 11) gzip"
 VISIONOS_VERSION :: "1.02"
@@ -54,6 +55,32 @@ field :: proc(value: json.Value, name: string) -> json.Value {
 	if !ok {return nil}
 	return object[name]
 }
+// Borrow a renderer or command from the response. The JSON value owns it.
+find_node :: proc(value: json.Value, key: string) -> json.Value {
+	#partial switch item in value {
+	case json.Object:
+		if node := item[key]; node != nil {return node}
+		for _, child in item {if node := find_node(child, key); node != nil {return node}}
+	case json.Array:
+		for child in item {if node := find_node(child, key); node != nil {return node}}
+	}
+	return nil
+}
+
+largest_image :: proc(images: json.Value) -> (url: string) {
+	items, _ := images.(json.Array)
+	best: f64 = -1
+	for item in items {
+		link, _ := field(item, "url").(json.String)
+		width, _ := numeric(field(item, "width"))
+		if !strings.has_prefix(string(link), "https://") || width <= best {continue}
+		delete(url)
+		url = strings.clone(string(link))
+		best = width
+	}
+	return
+}
+
 text :: proc(value: json.Value) -> string {
 	if simple, ok := field(value, "simpleText").(json.String);
 	   ok {return strings.clone(string(simple))}
@@ -137,10 +164,14 @@ collect_videos :: proc(value: json.Value, catalog: ^model.Catalog) {
 			defer delete(published)
 			fill_card_labels(&card, []string{view_text, published})
 			card.actions = parse_card_actions(video["menu"])
+			card.thumbnail_url = largest_image(field(video["thumbnail"], "thumbnails"))
 			if card.channel == "" {
 				card.channel = text(video["ownerText"])
 				if card.channel == "" {card.channel = text(video["longBylineText"])}
 			}
+			byline := video["ownerText"]
+			if byline == nil {byline = video["longBylineText"]}
+			add_channel_action(&card, byline)
 			append(&catalog.videos, card)
 			return
 		}
@@ -172,17 +203,22 @@ parse_search :: proc(
 	return
 }
 
-collect_videos_tv :: proc(value: json.Value, catalog: ^model.Catalog) {
+collect_lockups :: proc(value: json.Value, catalog: ^model.Catalog) {
 	#partial switch item in value {
 	case json.Array:
-		for child in item {collect_videos_tv(child, catalog)}
+		for child in item {collect_lockups(child, catalog)}
 	case json.Object:
 		if lockup, ok := item["lockupViewModel"].(json.Object); ok {
 			kind, _ := lockup["contentType"].(json.String)
-			if kind != "LOCKUP_CONTENT_TYPE_VIDEO" {return}
+			playlist := kind == "LOCKUP_CONTENT_TYPE_PLAYLIST"
+			if kind != "LOCKUP_CONTENT_TYPE_VIDEO" && !playlist {return}
 			id, valid := lockup["contentId"].(json.String)
-			if !valid || !video_id_valid(string(id)) {return}
-			for existing in catalog.videos {if existing.id == string(id) {return}}
+			if !valid || id == "" || (!playlist && !video_id_valid(string(id))) {return}
+			for existing in catalog.videos {
+				if (!playlist && existing.id == string(id)) ||
+				   (playlist &&
+						   strings.trim_prefix(existing.browse_id, "VL") == string(id)) {return}
+			}
 			metadata, _ := lockup["metadata"].(json.Object)
 			lockup_metadata, _ := metadata["lockupMetadataViewModel"].(json.Object)
 			title, _ := field(lockup_metadata, "title").(json.Object)
@@ -207,33 +243,41 @@ collect_videos_tv :: proc(value: json.Value, catalog: ^model.Catalog) {
 			}
 			stamp: string
 			image, _ := lockup["contentImage"].(json.Object)
-			thumbnail, _ := field(image, "thumbnailViewModel").(json.Object)
+			thumbnail := find_node(image, "thumbnailViewModel")
 			overlays, _ := field(thumbnail, "overlays").(json.Array)
-			if len(overlays) > 0 {
-				overlay, _ := overlays[0].(json.Object)
-				bottom, _ := field(overlay, "thumbnailBottomOverlayViewModel").(json.Object)
+			for overlay in overlays {
+				bottom := field(overlay, "thumbnailBottomOverlayViewModel")
+				if bottom == nil {bottom = field(overlay, "thumbnailOverlayBadgeViewModel")}
 				badges, _ := field(bottom, "badges").(json.Array)
-				if len(badges) > 0 {
-					badge, _ := badges[0].(json.Object)
-					badge_view, _ := field(badge, "thumbnailBadgeViewModel").(json.Object)
-					badge_text, _ := field(badge_view, "text").(json.String)
-					stamp = strings.clone(string(badge_text))
+				for badge in badges {
+					badge_text, _ := field(
+						field(badge, "thumbnailBadgeViewModel"),
+						"text",
+					).(json.String)
+					if badge_text != "" && (playlist || duration(string(badge_text)) > 0) {
+						stamp = strings.clone(string(badge_text))
+						break
+					}
 				}
+				if stamp != "" {break}
 			}
 			ms := duration(stamp)
-			if ms <= 0 {delete(stamp); return}
+			if !playlist && ms <= 0 {delete(stamp); return}
 			card := model.Video {
-				id             = strings.clone(string(id)),
+				id             = playlist ? "" : strings.clone(string(id)),
+				browse_id      = playlist ? fmt.aprintf("VL%s", string(id)) : "",
 				title          = strings.clone(string(title_text)),
 				duration_label = stamp,
 				duration_ms    = ms,
 			}
 			fill_card_labels(&card, labels[:])
 			card.actions = parse_card_actions(lockup)
+			card.thumbnail_url = largest_image(field(field(thumbnail, "image"), "sources"))
+			add_channel_action(&card, field(lockup_metadata, "metadata"))
 			append(&catalog.videos, card)
 			return
 		}
-		for _, child in item {collect_videos_tv(child, catalog)}
+		for _, child in item {collect_lockups(child, catalog)}
 	}
 }
 
@@ -255,7 +299,7 @@ parse_search_tv :: proc(
 		visitor_data = strings.clone(string(visitor))
 	}
 	catalog.query = strings.clone(query)
-	collect_videos_tv(contents, &catalog)
+	collect_lockups(contents, &catalog)
 	return
 }
 
@@ -449,18 +493,8 @@ find_account :: proc(value: json.Value, name, avatar_url: ^string) {
 			if text, has_text := account["simpleText"].(json.String); has_text {
 				name^ = strings.clone(string(text))
 			}
-			thumbnails, _ := field(item["accountPhoto"], "thumbnails").(json.Array)
-			best_width: f64 = -1
-			for thumbnail in thumbnails {
-				url, has_url := field(thumbnail, "url").(json.String)
-				width, _ := numeric(field(thumbnail, "width"))
-				if !has_url ||
-				   !strings.has_prefix(string(url), "https://") ||
-				   width <= best_width {continue}
-				delete(avatar_url^)
-				avatar_url^ = strings.clone(string(url))
-				best_width = width
-			}
+			delete(avatar_url^)
+			avatar_url^ = largest_image(field(item["accountPhoto"], "thumbnails"))
 			return
 		}
 		for _, child in item {if name^ != "" {return}; find_account(child, name, avatar_url)}
@@ -472,7 +506,7 @@ search :: proc(client: ^http.Client, query: string) -> (model.Catalog, Error, st
 	tv := access_token != ""
 	client_context := Client_Context {
 		clientName    = "WEB",
-		clientVersion = "2.20260708.00.00",
+		clientVersion = WEB_VERSION,
 		hl            = "en",
 		gl            = "US",
 	}
@@ -508,7 +542,7 @@ search :: proc(client: ^http.Client, query: string) -> (model.Catalog, Error, st
 		}
 		request.ctx.client = Client_Context {
 			clientName    = "WEB",
-			clientVersion = "2.20260708.00.00",
+			clientVersion = WEB_VERSION,
 			hl            = "en",
 			gl            = "US",
 		}

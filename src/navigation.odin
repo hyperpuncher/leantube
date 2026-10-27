@@ -36,7 +36,9 @@ rail_cursor: Navigation = .Search
 rail_active: Navigation = .Search
 
 reload_feed :: proc() {
-	if rail_active == .Search {
+	if browse_id != "" {
+		start_browse(browse_id, browse_params, browse_filter, false)
+	} else if rail_active == .Search {
 		if catalog.query != "" {start_search(catalog.query)} else {start_search()}
 	} else {
 		start_browse(NAV_BROWSE_IDS[rail_active])
@@ -58,7 +60,8 @@ activate_navigation :: proc(item: Navigation, window: ^sdl.Window = nil) {
 		if search_editing {finish_search_input(window)}
 		if item != .Home && !signed_in {start_login(); return}
 		rail_active = item
-		start_browse(NAV_BROWSE_IDS[item])
+		clear_browse_history()
+		start_browse(NAV_BROWSE_IDS[item], remember = false)
 	}
 	dirty = true
 }
@@ -80,6 +83,7 @@ navigation_key :: proc(code: sdl.Keycode, window: ^sdl.Window) -> bool {
 		rail_cursor = Navigation(min(int(Navigation.Liked), int(rail_cursor) + 1))
 	case sdl.K_RIGHT:
 		rail_focus = false
+		channel_focus = len(catalog.channel.tabs) > 0
 		library_focus_pending = true
 	case sdl.K_RETURN, sdl.K_SPACE, sdl.K_KP_ENTER:
 		activate_navigation(rail_cursor, window)

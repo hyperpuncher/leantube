@@ -15,6 +15,7 @@ Catalog :: struct {
 	query:        string,
 	videos:       [dynamic]Video,
 	continuation: string,
+	channel:      Channel,
 }
 
 QUALITY_TIERS := [?]struct {
@@ -137,6 +138,7 @@ catalog_destroy :: proc(catalog: ^Catalog) {
 	delete(catalog.videos)
 	delete(catalog.query)
 	delete(catalog.continuation)
+	channel_destroy(&catalog.channel)
 	catalog^ = {}
 }
 

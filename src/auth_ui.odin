@@ -103,6 +103,7 @@ close_login_screen :: proc() {
 }
 
 use_current_account :: proc() {
+	clear_browse_history()
 	account_menu = false
 	if account_avatar != nil {sdl.DestroyTexture(account_avatar); account_avatar = nil}
 	token := current_auth()

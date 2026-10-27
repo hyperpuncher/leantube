@@ -9,11 +9,17 @@ browse :: proc(
 	client: ^http.Client,
 	id: string,
 	continuation: string = "",
+	params: string = "",
+	filter: string = "",
+	visitor_data: string = "",
 ) -> (
 	model.Catalog,
 	Error,
 	string,
 ) {
+	if strings.has_prefix(id, "UC") {
+		return channel_browse(client, id, params, continuation, filter, visitor_data)
+	}
 	request := struct {
 		ctx:          struct {
 			client: Client_Context,

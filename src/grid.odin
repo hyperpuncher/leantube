@@ -86,6 +86,7 @@ grid_layout :: proc() {
 		},
 		) {
 			if search_editing {search_layout()}
+			channel_layout()
 			if search_loading && len(catalog.videos) == 0 {centered_spinner()}
 			if !search_loading && notice != "" {
 				label(notice, .Small, COLOR_MUTED)
@@ -155,7 +156,8 @@ video_card :: proc(index: int) {
 		channel = card_labels[index].channel
 		meta = card_labels[index].meta
 	}
-	focus := !rail_focus && !search_editing && index == selected ? COLOR_ACCENT : COLOR_BACKGROUND
+	focus :=
+		!rail_focus && !channel_focus && !search_editing && index == selected ? COLOR_ACCENT : COLOR_BACKGROUND
 	if clay.UI(clay.ID("video", u32(index)))(
 	{
 		layout = {

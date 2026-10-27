@@ -141,7 +141,11 @@ main :: proc() {
 	defer close_text()
 	defer close_icons()
 	defer clear_catalog()
-	defer {stop_network(); delete(search_text); delete(sponsor_segments)}
+	defer {
+		stop_network(); delete(search_text); delete(sponsor_segments)
+		clear_browse_history()
+		delete(browse_id); delete(browse_params); delete(browse_filter)
+	}
 	when UI_TEST {
 		titles := [?]string {
 			"FLOW",
@@ -356,6 +360,7 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	assert(selected == len(catalog.videos) - 1)
 	assert(running)
 	check_card_menu_ui(renderer, surface)
+	check_channel_ui(renderer, surface)
 	check_account_ui(renderer, surface)
 	check_search_flow(renderer, surface)
 	fmt.println(

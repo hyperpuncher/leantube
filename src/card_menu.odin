@@ -22,6 +22,7 @@ can_press_card :: proc() -> bool {
 	return(
 		browsing &&
 		!rail_focus &&
+		!channel_focus &&
 		!search_editing &&
 		!account_menu &&
 		!login_screen &&
