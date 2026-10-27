@@ -33,7 +33,7 @@ ICON_FILES :: [Icon]string {
 	.Home          = "house",
 	.Playlists     = "list-video",
 	.Liked         = "thumbs-up",
-	.Spinner       = "loader",
+	.Spinner       = "loader-circle",
 }
 icons: [Icon]^sdl.Texture
 icon_pixels: c.int
