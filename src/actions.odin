@@ -77,10 +77,17 @@ key :: proc(code: sdl.Keycode, window: ^sdl.Window = nil) {
 			seek_to(target)
 		case sdl.K_UP, sdl.K_DOWN:
 			delta: f64 = code == sdl.K_DOWN ? -0.25 : 0.25
-			rate = clamp(rate + delta, 0.5, 2)
-			extra := fmt.aprintf(",\"playRate\":%.2f,\"audioOutput\":true", rate)
-			command("luna://com.webos.media/setPlayRate", extra)
-			delete(extra)
+			next := clamp(rate + delta, 0.5, 2)
+			if next != rate {
+				rate = next
+				extra := fmt.aprintf(",\"playRate\":%.2f,\"audioOutput\":true", rate)
+				rate_repair_pending = true
+				rate_repair_at = sdl.GetTicks() + 800
+				if !command("luna://com.webos.media/setPlayRate", extra, .Rate) {
+					rate_repair_pending = false
+				}
+				delete(extra)
+			}
 		}
 	}
 	dirty = true

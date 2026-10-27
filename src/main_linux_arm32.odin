@@ -73,6 +73,7 @@ reply :: proc "c" (bus, message, data: rawptr) -> bool {
 	if success, found := root["returnValue"].(json.Boolean); found {
 		fmt.printf("reply kind=%v accepted=%v\n", kind, bool(success))
 		if !bool(success) {
+			if kind == .Rate {rate_repair_pending = false}
 			if kind == .Seek {timeline.seek_target_ms = -1}
 			if kind == .Load {notice = "video could not be loaded"; return_to_grid = true}
 			if code, valid := model.number(root["errorCode"]); valid {
@@ -176,7 +177,17 @@ reply :: proc "c" (bus, message, data: rawptr) -> bool {
 		if time, found := root["currentTime"].(json.Object);
 		   found {ms, valid = model.number(time["currentTime"])}
 		if valid {timeline.position_ms = ms; dirty = true}
-		if _, found := root["seekDone"]; found {model.seek_done(&timeline); dirty = true}
+		if _, found := root["seekDone"]; found {
+			model.seek_done(&timeline)
+			// UriPlayer::SetPlayRate uses GST_SEEK_FLAG_TRICKMODE, which can mute
+			// audio and decode keyframes only. A normal seek at the stored rate
+			// re-enters the audio-capable seek path.
+			if rate_repair_pending {
+				rate_repair_pending = false
+				_ = seek_to(timeline.position_ms)
+			}
+			dirty = true
+		}
 		if _, found := root["error"]; found {
 			fmt.eprintln("native media error event")
 			notice = "video playback failed; choose another video"
@@ -213,6 +224,7 @@ stop_playback :: proc() {
 	video_frame_rate = 0
 	video_seen = false
 	loaded = false; paused = false; resolving = false; attach_pending = false
+	rate_repair_pending = false; rate_repair_at = 0
 	delete(sponsor_segments); sponsor_segments = nil
 	timeline = {
 		seek_target_ms = -1,
@@ -248,6 +260,7 @@ load_video :: proc(url: string, renderer: ^sdl.Renderer) {
 	timeline = {
 		seek_target_ms = -1,
 	}; rate = 1
+	rate_repair_pending = false; rate_repair_at = 0
 	duration_ms = catalog.videos[selected].duration_ms
 	dirty = true
 	if !send(
@@ -359,6 +372,10 @@ main :: proc() {
 		auto_skip_sponsor()
 		expire_player_controls()
 		now := sdl.GetTicks()
+		if rate_repair_pending && now >= rate_repair_at {
+			rate_repair_pending = false
+			_ = seek_to(timeline.position_ms)
+		}
 		frame_dt := f32(min(now - previous_frame, 50)) / 1000
 		previous_frame = now
 		if !tv_visible() {running = false}
