@@ -49,6 +49,8 @@ Network_Result :: struct {
 	error:          yt.Error,
 	catalog:        model.Catalog,
 	bytes:          [dynamic]u8,
+	// Cover pixels are decoded by the worker; only texture upload uses the UI.
+	surface:        ^sdl.Surface,
 	stream:         yt.Stream,
 	segments:       [dynamic]sb.Segment,
 	login_code:     string,
@@ -107,6 +109,7 @@ free_network_result :: proc(result: ^Network_Result) {
 	model.catalog_destroy(&result.catalog)
 	model.card_actions_destroy(&result.actions)
 	delete(result.bytes)
+	sdl.DestroySurface(result.surface)
 	delete(result.stream.url)
 	delete(result.stream.audio_url)
 	delete(result.segments)
@@ -156,9 +159,20 @@ network_main :: proc(_: ^thread.Thread) {
 			} else {
 				bytes = yt.thumbnail(&network_client, covers[index].source, network_stopping)
 			}
+			surface: ^sdl.Surface
 			if len(bytes) > 0 {
+				io := sdl.IOFromConstMem(raw_data(bytes), uint(len(bytes)))
+				if io != nil {surface = img.Load_IO(io, true)}
+			}
+			delete(bytes)
+			if surface != nil {
 				if !post_network_result(
-					{kind = .Cover, page = cover_page, index = covers[index].index, bytes = bytes},
+					{
+						kind = .Cover,
+						page = cover_page,
+						index = covers[index].index,
+						surface = surface,
+					},
 				) {return}
 			}
 			continue
@@ -596,9 +610,8 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 			library_focus_pending = true
 		case .Cover:
 			if result.index < 0 || result.index >= len(catalog.videos) {continue}
-			io := sdl.IOFromConstMem(raw_data(result.bytes), uint(len(result.bytes)))
-			if io == nil {continue}
-			texture := img.LoadTexture_IO(renderer, io, true)
+			if result.surface == nil {continue}
+			texture := sdl.CreateTextureFromSurface(renderer, result.surface)
 			if texture == nil {continue}
 			_ = sdl.SetTextureBlendMode(texture, sdl.BLENDMODE_BLEND)
 			_ = sdl.SetTextureScaleMode(texture, .LINEAR)
@@ -613,7 +626,7 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 					result.error == .No_Direct_Stream ? "YouTube did not provide a supported direct stream" : "video resolution failed; try again"
 			} else {
 				playback_hdr = result.stream.hdr
-				load_video(result.stream.url)
+				load_video(result.stream.url, renderer)
 				show_player_controls()
 			}
 		case .Segments:

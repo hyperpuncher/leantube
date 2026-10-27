@@ -19,6 +19,7 @@ Icon :: enum {
 	Home,
 	Playlists,
 	Liked,
+	Spinner,
 }
 ICON_FILES :: [Icon]string {
 	.Play          = "play",
@@ -32,6 +33,7 @@ ICON_FILES :: [Icon]string {
 	.Home          = "house",
 	.Playlists     = "list-video",
 	.Liked         = "thumbs-up",
+	.Spinner       = "loader",
 }
 icons: [Icon]^sdl.Texture
 icon_pixels: c.int
@@ -72,6 +74,19 @@ close_icons :: proc() {
 	for texture in icons {if texture != nil {sdl.DestroyTexture(texture)}}
 	icons = {}
 	icon_pixels = 0
+}
+
+// Float in the center without changing the parent's content layout.
+centered_spinner :: proc() {
+	if clay.UI()(
+	{
+		floating = {
+			attachTo = .Parent,
+			attachment = {element = .CenterCenter, parent = .CenterCenter},
+			pointerCaptureMode = .Passthrough,
+		},
+	},
+	) {icon(.Spinner)}
 }
 
 icon :: proc(id: Icon, size: f32 = 48) {

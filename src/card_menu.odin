@@ -186,7 +186,16 @@ card_menu_layout :: proc() {
 		},
 	},
 	) {
-		if card_menu_waiting {label("Loading…", .Small, COLOR_MUTED)}
+		if card_menu_waiting {
+			if clay.UI()(
+			{
+				layout = {
+					sizing = {width = clay.SizingGrow({}), height = clay.SizingFixed(scaled(48))},
+					childAlignment = {x = .Center, y = .Center},
+				},
+			},
+			) {icon(.Spinner, 32)}
+		}
 		if card_menu_error != "" {label(card_menu_error, .Small, COLOR_MUTED)}
 		if clay.UI(clay.ID("card-menu-scroll"))(
 		{

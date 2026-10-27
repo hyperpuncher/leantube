@@ -6,6 +6,8 @@ import sb "./sponsorblock"
 import "core:strings"
 import "core:sync/chan"
 import "core:testing"
+import sdl "vendor:sdl3"
+import img "vendor:sdl3/image"
 
 @(test)
 canceling_and_reopening_the_same_video_rejects_old_replies :: proc(t: ^testing.T) {
@@ -146,6 +148,56 @@ search_errors_empty_results_and_recovery_finish_loading :: proc(t: ^testing.T) {
 	testing.expect(t, !search_loading && notice == "")
 	testing.expect_value(t, catalog.query, "recovered query")
 	testing.expect_value(t, len(catalog.videos), 1)
+}
+
+@(test)
+decoded_covers_upload_and_stale_results_keep_the_current_texture :: proc(t: ^testing.T) {
+	output := sdl.CreateSurface(160, 120, .RGBA32)
+	if !testing.expect(t, output != nil) {return}
+	defer sdl.DestroySurface(output)
+	renderer := sdl.CreateSoftwareRenderer(output)
+	if !testing.expect(t, renderer != nil) {return}
+	defer sdl.DestroyRenderer(renderer)
+	network_results, _ = chan.create(chan.Chan(Network_Result), 1, context.allocator)
+	defer {stop_network(); clear_catalog(); page = 0}
+	page = 4
+	append(&catalog.videos, model.Video{})
+	resize(&textures, 1)
+	for fixture in ([]struct {
+			file:    cstring,
+			page:    u32,
+			index:   int,
+			replace: bool,
+		} {
+			{"tests/ui/cover.webp", 4, 0, true},
+			{"tests/ui/cover.jpg", 3, 0, false}, // Stale page.
+			{"tests/ui/cover.jpg", 4, 1, false}, // Missing card.
+			{"tests/ui/cover.jpg", 4, 0, true},
+		}) {
+		image := img.Load(fixture.file)
+		if !testing.expect(t, image != nil) {return}
+		expected_width, expected_height := f32(image.w), f32(image.h)
+		previous := textures[0]
+		chan.send(
+			network_results,
+			Network_Result {
+				kind = .Cover,
+				page = fixture.page,
+				index = fixture.index,
+				surface = image,
+			},
+		)
+		poll_network(renderer)
+		if !fixture.replace {
+			testing.expect_value(t, textures[0], previous)
+			continue
+		}
+		if !testing.expect(t, textures[0] != nil) {return}
+		width, height: f32
+		testing.expect(t, sdl.GetTextureSize(textures[0], &width, &height))
+		testing.expect_value(t, width, expected_width)
+		testing.expect_value(t, height, expected_height)
+	}
 }
 
 @(test)

@@ -117,7 +117,7 @@ search_layout :: proc() {
 					search_editing && search_replace ? COLOR_MUTED : COLOR_TEXT,
 				)
 				if clay.UI()({layout = {sizing = {width = clay.SizingGrow({})}}}) {}
-				if search_loading {label("Loading…", .Caption, COLOR_MUTED)} else if notice != "" {label(notice, .Caption, COLOR_MUTED)}
+				if !search_loading && notice != "" {label(notice, .Caption, COLOR_MUTED)}
 			}
 		}
 	}

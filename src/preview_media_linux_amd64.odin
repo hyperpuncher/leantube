@@ -24,7 +24,7 @@ command :: proc(endpoint: cstring, _: string = "", _: Request_Kind = .Control) -
 	return true
 }
 
-load_video :: proc(_: string) {start_video()}
+load_video :: proc(_: string, _: ^sdl.Renderer) {start_video()}
 
 start_video :: proc() {
 	if selected < 0 || selected >= len(catalog.videos) {return}
@@ -57,7 +57,10 @@ run_dev :: proc(renderer: ^sdl.Renderer) {
 	for running {
 		wheel: f32
 		event: sdl.Event
-		if sdl.WaitEventTimeout(&event, 100) {wheel = handle_event(renderer, event)}
+		if sdl.WaitEventTimeout(
+			&event,
+			loading_active() ? 16 : 100,
+		) {wheel = handle_event(renderer, event)}
 		if return_to_grid {stop_playback()}
 		poll_network(renderer)
 		poll_card_press(sdl.GetTicks())
@@ -66,7 +69,7 @@ run_dev :: proc(renderer: ^sdl.Renderer) {
 			timeline.position_ms = timeline.seek_target_ms
 			model.seek_done(&timeline)
 		}
-		if dirty {
+		if dirty || loading_active() {
 			assert(render(renderer, wheel), string(sdl.GetError()))
 			dirty = false
 		}

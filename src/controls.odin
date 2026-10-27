@@ -224,6 +224,7 @@ player_layout :: proc(elapsed, total, speed, quality: string) {
 		},
 	},
 	) {
+		if !loaded {centered_spinner()}
 		if clay.UI()({layout = {sizing = {height = clay.SizingGrow({})}}}) {}
 		if clay.UI(clay.ID("controls"))(
 		{
@@ -245,7 +246,7 @@ player_layout :: proc(elapsed, total, speed, quality: string) {
 				},
 				clip = {horizontal = true, vertical = true},
 			},
-			) {label(loaded ? catalog.videos[selected].title : "Loading video…", .Body)}
+			) {if loaded {label(catalog.videos[selected].title, .Body)}}
 			timeline_bar()
 			if clay.UI()(
 			{

@@ -86,7 +86,8 @@ grid_layout :: proc() {
 		},
 		) {
 			if search_editing {search_layout()}
-			if search_loading {label("Loading…", .Small, COLOR_MUTED)} else if notice != "" {
+			if search_loading && len(catalog.videos) == 0 {centered_spinner()}
+			if !search_loading && notice != "" {
 				label(notice, .Small, COLOR_MUTED)
 			}
 			if clay.UI(clay.ID("library-scroll"))(
@@ -135,7 +136,9 @@ grid_layout :: proc() {
 						backgroundColor = COLOR_SURFACE,
 						cornerRadius = clay.CornerRadiusAll(scaled(12)),
 					},
-					) {label(search_loading ? "Loading…" : "Load more", .Small)}
+					) {
+						if search_loading {icon(.Spinner, 32)} else {label("Load more", .Small)}
+					}
 				}
 			}
 		}

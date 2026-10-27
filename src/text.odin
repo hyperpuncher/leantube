@@ -29,7 +29,15 @@ text_engine: ^ttf.TextEngine
 
 open_text :: proc(renderer: ^sdl.Renderer) -> bool {
 	if !ttf.Init() {return false}
-	text_engine = ttf.CreateRendererTextEngine(renderer)
+	properties := sdl.CreateProperties()
+	if properties == 0 {return false}
+	defer sdl.DestroyProperties(properties)
+	// GLES uploads the whole atlas for each new glyph. Keep those uploads small.
+	if !sdl.SetPointerProperty(properties, ttf.PROP_RENDERER_TEXT_ENGINE_RENDERER, renderer) ||
+	   !sdl.SetNumberProperty(properties, ttf.PROP_RENDERER_TEXT_ENGINE_ATLAS_TEXTURE_SIZE, 128) {
+		return false
+	}
+	text_engine = ttf.CreateRendererTextEngineWithProperties(properties)
 	if text_engine == nil {return false}
 	for size, style in text_sizes {
 		mono := style == .Mono_Small || style == .Mono_Body
@@ -105,7 +113,8 @@ fit_wrapped :: proc(
 	if text == "" || width <= 0 || max_lines < 1 {return text, false}
 	line_height := c.int(ttf.GetFontHeight(font))
 	if line_height <= 0 {return text, false}
-	value := ttf.CreateText(text_engine, font, raw_data(text), c.size_t(len(text)))
+	// Measurement needs shaping only, not renderer glyph uploads.
+	value := ttf.CreateText(nil, font, raw_data(text), c.size_t(len(text)))
 	if value == nil {return text, false}
 	defer ttf.DestroyText(value)
 	if !ttf.SetTextWrapWidth(value, width) {return text, false}

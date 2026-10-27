@@ -37,6 +37,7 @@ video_metadata: []u8
 video_frame_rate: f64
 video_seen: bool
 load_replied: bool
+attach_pending: bool
 
 send :: proc(endpoint: cstring, payload: string, kind: Request_Kind) -> bool {
 	body := strings.clone_to_cstring(payload)
@@ -166,14 +167,10 @@ reply :: proc "c" (bus, message, data: rawptr) -> bool {
 		}
 		if _, found := root["loadCompleted"]; found {
 			loaded = true
-			fmt.println("native load completed")
-			id := strings.clone_to_cstring(media_id)
-			metadata := strings.clone_to_cstring(string(video_metadata))
-			fmt.println("native display attached:", tv_attach_media(APP_ID, id, metadata))
-			delete(metadata)
-			delete(id)
-			foreground()
-			command("luna://com.webos.media/play")
+			// Draw the loaded frame before the synchronous display attach, so the
+			// spinner does not freeze on screen while TV display control blocks.
+			attach_pending = true
+			dirty = true
 		}
 		ms, valid := model.number(root["currentTime"])
 		if time, found := root["currentTime"].(json.Object);
@@ -189,6 +186,17 @@ reply :: proc "c" (bus, message, data: rawptr) -> bool {
 	}
 	return true
 }
+attach_media :: proc() {
+	fmt.println("native load completed")
+	id := strings.clone_to_cstring(media_id)
+	metadata := strings.clone_to_cstring(string(video_metadata))
+	fmt.println("native display attached:", tv_attach_media(APP_ID, id, metadata))
+	delete(metadata)
+	delete(id)
+	foreground()
+	command("luna://com.webos.media/play")
+}
+
 stop_playback :: proc() {
 	if media_id != "" {
 		unloaded = false
@@ -204,7 +212,7 @@ stop_playback :: proc() {
 	delete(video_metadata); video_metadata = nil
 	video_frame_rate = 0
 	video_seen = false
-	loaded = false; paused = false; resolving = false
+	loaded = false; paused = false; resolving = false; attach_pending = false
 	delete(sponsor_segments); sponsor_segments = nil
 	timeline = {
 		seek_target_ms = -1,
@@ -217,7 +225,7 @@ start_video :: proc() {
 	resolve_selected()
 }
 
-load_video :: proc(url: string) {
+load_video :: proc(url: string, renderer: ^sdl.Renderer) {
 	request := struct {
 		uri:     string,
 		kind:    string `json:"type"`,
@@ -236,6 +244,7 @@ load_video :: proc(url: string) {
 	defer delete(load)
 	notice = ""
 	browsing = false; paused = false; loaded = false; load_replied = false
+	attach_pending = false
 	timeline = {
 		seek_target_ms = -1,
 	}; rate = 1
@@ -249,10 +258,11 @@ load_video :: proc(url: string) {
 	// Serialize opening and closing. Do not start a second session while the
 	// first load response is pending. SDL keeps input queued during this wait.
 	start := sdl.GetTicks()
-	for !load_replied &&
-	    running &&
-	    !tv_closing() &&
-	    sdl.GetTicks() - start < 3000 {tv_poll(); sdl.Delay(10)}
+	for !load_replied && running && !tv_closing() && sdl.GetTicks() - start < 3000 {
+		tv_poll()
+		if !render(renderer) {running = false; return}
+		sdl.Delay(10)
+	}
 	if !load_replied {fmt.eprintln("media load response timed out"); running = false}
 }
 
@@ -334,7 +344,7 @@ main :: proc() {
 		if return_to_grid {stop_playback()}
 		wheel: f32
 		event: sdl.Event
-		if sdl.WaitEventTimeout(&event, 20) {
+		if sdl.WaitEventTimeout(&event, loading_active() ? 0 : 20) {
 			// SDL documents draining the queue after the blocking wait.
 			for {
 				wheel += handle_event(renderer, event)
@@ -350,7 +360,8 @@ main :: proc() {
 		frame_dt := f32(min(now - previous_frame, 50)) / 1000
 		previous_frame = now
 		if !tv_visible() {running = false}
-		if dirty {if !render(renderer, wheel, frame_dt) {break}; dirty = false}
+		if dirty || loading_active() {if !render(renderer, wheel, frame_dt) {break}; dirty = false}
+		if attach_pending {attach_pending = false; attach_media()}
 	}
 	fmt.println("player stopping")
 }

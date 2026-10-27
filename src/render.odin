@@ -42,6 +42,11 @@ label :: proc(
 	)
 }
 
+loading_active :: proc() -> bool {
+	if login_screen {return false}
+	return browsing ? search_loading || card_menu_waiting : !loaded
+}
+
 set_color :: proc(renderer: ^sdl.Renderer, color: clay.Color) -> bool {
 	return sdl.SetRenderDrawColor(renderer, u8(color[0]), u8(color[1]), u8(color[2]), u8(color[3]))
 }
@@ -138,6 +143,18 @@ render_commands :: proc(
 				continue
 			}
 			if rect.w <= 0 || rect.h <= 0 {continue}
+			if texture == icons[.Spinner] {
+				if !sdl.RenderTextureRotated(
+					renderer,
+					texture,
+					nil,
+					&rect,
+					f64(sdl.GetTicks() % 1000) * 0.36,
+					nil,
+					.NONE,
+				) {return false}
+				continue
+			}
 			width, height: f32
 			if !sdl.GetTextureSize(texture, &width, &height) {return false}
 			// Fill the destination without stretching. Crop only during drawing;
