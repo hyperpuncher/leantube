@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Package assets must remain readable and executable by the TV's app user.
+umask 022
 source scripts/env.sh
 cc="$WEBOS_SDK/bin/arm-webos-linux-gnueabi-gcc"
 pkg="$WEBOS_SDK/bin/pkg-config"
