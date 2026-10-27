@@ -447,15 +447,17 @@ find_account :: proc(value: json.Value, name, avatar_url: ^string) {
 			if text, has_text := account["simpleText"].(json.String); has_text {
 				name^ = strings.clone(string(text))
 			}
-			if photo, has_photo := item["accountPhoto"].(json.Object); has_photo {
-				if thumbnails, has_thumbs := photo["thumbnails"].(json.Array); has_thumbs {
-					for thumbnail in thumbnails {
-						if url, has_url := field(thumbnail, "url").(json.String); has_url {
-							delete(avatar_url^)
-							avatar_url^ = strings.clone(string(url))
-						}
-					}
-				}
+			thumbnails, _ := field(item["accountPhoto"], "thumbnails").(json.Array)
+			best_width: f64 = -1
+			for thumbnail in thumbnails {
+				url, has_url := field(thumbnail, "url").(json.String)
+				width, _ := numeric(field(thumbnail, "width"))
+				if !has_url ||
+				   !strings.has_prefix(string(url), "https://") ||
+				   width <= best_width {continue}
+				delete(avatar_url^)
+				avatar_url^ = strings.clone(string(url))
+				best_width = width
 			}
 			return
 		}

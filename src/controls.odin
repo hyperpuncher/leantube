@@ -49,15 +49,18 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 			}
 			for _, i in auth_accounts {
 				if clay.PointerOver(clay.ID("account-row", u32(i))) {
+					account_menu_selected = i
 					if activate {activate_account(i)}
 					return
 				}
 			}
 			if clay.PointerOver(clay.ID("add-account")) {
+				account_menu_selected = len(auth_accounts)
 				if activate {account_menu = false; start_login(true)}
 				return
 			}
 			if clay.PointerOver(clay.ID("sign-out")) {
+				account_menu_selected = len(auth_accounts) + int(len(auth_accounts) < MAX_ACCOUNTS)
 				if activate {sign_out()}
 				return
 			}

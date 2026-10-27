@@ -31,7 +31,20 @@ set_account_avatar :: proc(renderer: ^sdl.Renderer, bytes: []u8) {
 	if len(bytes) == 0 {return}
 	io := sdl.IOFromConstMem(raw_data(bytes), uint(len(bytes)))
 	if io == nil {return}
-	texture := img.LoadTexture_IO(renderer, io, true)
+	surface := img.Load_IO(io, true)
+	if surface == nil {return}
+	defer sdl.DestroySurface(surface)
+	// Prefilter large photos before upload. A single texture sample from a
+	// large photo loses detail when drawn as a small avatar.
+	size := i32(scaled(64))
+	for surface.w > size || surface.h > size {
+		width, height := max(size, surface.w / 2), max(size, surface.h / 2)
+		next := sdl.ScaleSurface(surface, width, height, .LINEAR)
+		if next == nil {return}
+		sdl.DestroySurface(surface)
+		surface = next
+	}
+	texture := sdl.CreateTextureFromSurface(renderer, surface)
 	if texture == nil {return}
 	_ = sdl.SetTextureBlendMode(texture, sdl.BLENDMODE_BLEND)
 	_ = sdl.SetTextureScaleMode(texture, .LINEAR)
@@ -295,34 +308,57 @@ account_button :: proc(compact: bool = false) {
 }
 
 account_menu_layout :: proc() {
-	width := scaled(560)
+	if clay.UI(clay.ID("account-scrim"))(
+	{
+		layout = {
+			sizing = {
+				width = clay.SizingFixed(view_width),
+				height = clay.SizingFixed(view_height),
+			},
+		},
+		backgroundColor = {0, 0, 0, 160},
+		floating = {attachTo = .Root, zIndex = 10},
+	},
+	) {}
+	width := min(scaled(640), view_width - scaled(64))
 	if clay.UI(clay.ID("account-menu"))(
 	{
 		layout = {
 			sizing = {width = clay.SizingFixed(width)},
 			layoutDirection = .TopToBottom,
-			childGap = spacing(4),
-			padding = clay.PaddingAll(spacing(12)),
+			childGap = spacing(8),
+			padding = clay.PaddingAll(spacing(24)),
 		},
 		backgroundColor = COLOR_SURFACE,
-		cornerRadius = clay.CornerRadiusAll(scaled(16)),
+		cornerRadius = clay.CornerRadiusAll(scaled(24)),
 		floating = {
 			attachTo = .Root,
 			attachment = {element = .CenterCenter, parent = .CenterCenter},
-			zIndex = 10,
+			zIndex = 11,
 		},
 	},
 	) {
-		label("Users", .Heading)
+		if clay.UI()(
+		{
+			layout = {
+				layoutDirection = .TopToBottom,
+				childGap = spacing(4),
+				padding = padding(12, 12, 4, 16),
+			},
+		},
+		) {
+			label("Accounts", .Heading)
+			label("Choose a YouTube account", .Small, COLOR_MUTED)
+		}
 		for token, i in auth_accounts {
 			selected := i == auth_active
 			if clay.UI(clay.ID("account-row", u32(i)))(
 			{
 				layout = {
-					sizing = {width = clay.SizingGrow({}), height = clay.SizingFixed(scaled(56))},
-					childGap = spacing(12),
+					sizing = {width = clay.SizingGrow({}), height = clay.SizingFixed(scaled(88))},
+					childGap = spacing(16),
 					childAlignment = {y = .Center},
-					padding = clay.PaddingAll(spacing(8)),
+					padding = clay.PaddingAll(spacing(12)),
 				},
 				backgroundColor = account_menu_selected == i ? COLOR_HOVER : COLOR_SURFACE,
 				cornerRadius = clay.CornerRadiusAll(scaled(10)),
@@ -332,14 +368,14 @@ account_menu_layout :: proc() {
 				{
 					layout = {
 						sizing = {
-							width = clay.SizingFixed(scaled(40)),
-							height = clay.SizingFixed(scaled(40)),
+							width = clay.SizingFixed(scaled(64)),
+							height = clay.SizingFixed(scaled(64)),
 						},
 						childAlignment = {x = .Center, y = .Center},
 					},
 					backgroundColor = selected && account_avatar != nil ? clay.Color{} : COLOR_BACKGROUND,
 					image = {imageData = selected ? rawptr(account_avatar) : nil},
-					cornerRadius = clay.CornerRadiusAll(scaled(20)),
+					cornerRadius = clay.CornerRadiusAll(scaled(32)),
 				},
 				) {
 					if !selected || account_avatar == nil {
@@ -351,34 +387,51 @@ account_menu_layout :: proc() {
 					layout = {
 						sizing = {
 							width = clay.SizingGrow({}),
-							height = clay.SizingFixed(scaled(40)),
+							height = clay.SizingFixed(scaled(64)),
 						},
 						childAlignment = {y = .Center},
 					},
 					clip = {horizontal = true, vertical = true},
 				},
-				) {label(token.name == "" ? "YouTube" : token.name, .Small)}
+				) {label(token.name == "" ? "YouTube" : token.name, .Body)}
+				if selected {
+					if clay.UI()(
+					{
+						layout = {padding = padding(12, 12, 6, 6)},
+						backgroundColor = COLOR_BACKGROUND,
+						cornerRadius = clay.CornerRadiusAll(scaled(8)),
+					},
+					) {label("Active", .Caption, COLOR_MUTED)}
+				}
 			}
 		}
+		if clay.UI()(
+		{
+			layout = {
+				sizing = {width = clay.SizingGrow({}), height = clay.SizingFixed(scaled(1))},
+			},
+			backgroundColor = COLOR_TRACK,
+		},
+		) {}
 		if len(auth_accounts) < MAX_ACCOUNTS {
 			if clay.UI(clay.ID("add-account"))(
 			{
 				layout = {
-					sizing = {width = clay.SizingGrow({}), height = clay.SizingFixed(scaled(48))},
+					sizing = {width = clay.SizingGrow({}), height = clay.SizingFixed(scaled(64))},
 					childAlignment = {y = .Center},
-					padding = clay.PaddingAll(spacing(8)),
+					padding = padding(16, 16, 8, 8),
 				},
 				backgroundColor = account_menu_selected == len(auth_accounts) ? COLOR_HOVER : COLOR_SURFACE,
 				cornerRadius = clay.CornerRadiusAll(scaled(10)),
 			},
-			) {label("Add account", .Small, COLOR_MUTED)}
+			) {label("Add account", .Small)}
 		}
 		if clay.UI(clay.ID("sign-out"))(
 		{
 			layout = {
-				sizing = {width = clay.SizingGrow({}), height = clay.SizingFixed(scaled(48))},
+				sizing = {width = clay.SizingGrow({}), height = clay.SizingFixed(scaled(64))},
 				childAlignment = {y = .Center},
-				padding = clay.PaddingAll(spacing(8)),
+				padding = padding(16, 16, 8, 8),
 			},
 			backgroundColor = account_menu_selected == len(auth_accounts) + int(len(auth_accounts) < MAX_ACCOUNTS) ? COLOR_HOVER : COLOR_SURFACE,
 			cornerRadius = clay.CornerRadiusAll(scaled(10)),
