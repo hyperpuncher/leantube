@@ -1,6 +1,7 @@
 package youtube
 
 import "../http"
+import "core:encoding/base64"
 import "core:fmt"
 import "core:math"
 import "core:os"
@@ -226,16 +227,41 @@ hls_variant_index :: proc(lines: []string) -> int {
 // falls back to the byte-range rendition.
 audio_group_lines :: proc(lines: []string, group: string) -> (result: [dynamic]string) {
 	if group == "" {return}
+	matching: [dynamic]string
+	defer delete(matching)
 	for line in lines {
 		if !strings.has_prefix(line, "#EXT-X-MEDIA:") || attribute(line, "TYPE") != "AUDIO" {
 			continue
 		}
 		if attribute(line, "GROUP-ID") == group &&
 		   strings.has_prefix(attribute(line, "URI"), "https://") {
-			append(&result, line)
+			append(&matching, line)
 		}
 	}
+	has_original := false
+	for line in matching {
+		if audio_is_original(line) {
+			has_original = true
+			break
+		}
+	}
+	for line in matching {
+		if has_original && !audio_is_original(line) {continue}
+		append(&result, line)
+	}
 	return
+}
+
+// YouTube marks the source-language rendition in YT-EXT-XTAGS as acont=original.
+// Dubs use acont=dubbed or acont=dubbed-auto. The tag is base64 protobuf, but
+// the value is plain text, so a contained check is enough and stays stable.
+audio_is_original :: proc(line: string) -> bool {
+	tags := attribute(line, "YT-EXT-XTAGS")
+	if tags == "" {return false}
+	decoded, error := base64.decode(tags)
+	if error != nil {return false}
+	defer delete(decoded)
+	return strings.contains(string(decoded), "original")
 }
 
 // Force the highest HLS variant and keep its audio. The master's own AAC

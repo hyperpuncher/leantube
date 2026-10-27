@@ -1,7 +1,6 @@
 #+test
 package youtube
 
-import "core:strings"
 import "core:testing"
 
 @(test)
@@ -98,9 +97,38 @@ hls_uses_only_an_absolute_master_audio_group :: proc(t: ^testing.T) {
 	group := audio_group_lines(lines, "234")
 	defer delete(group)
 	if !testing.expect_value(t, len(group), 1) {return}
-	testing.expect(t, strings.contains(group[0], `GROUP-ID="234"`))
+	testing.expect_value(t, attribute(group[0], "GROUP-ID"), "234")
 	testing.expect_value(t, len(audio_group_lines(lines, "233")), 0)
 	testing.expect_value(t, len(audio_group_lines(lines, "missing")), 0)
+}
+
+@(test)
+hls_keeps_only_the_original_audio_rendition :: proc(t: ^testing.T) {
+	lines := []string {
+		`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="234",LANGUAGE="de-DE",NAME="Deutsch (Deutschland) - dubbed-auto",YT-EXT-XTAGS="ChQKBWFjb250EgtkdWJiZWQtYXV0bwoNCgRsYW5nEgVkZS1ERQ",DEFAULT=NO,AUTOSELECT=YES,URI="https://media.example/de"`,
+		`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="234",LANGUAGE="en-US",NAME="American English - original",YT-EXT-XTAGS="ChEKBWFjb250EghvcmlnaW5hbAoNCgRsYW5nEgVlbi1VUw",DEFAULT=NO,AUTOSELECT=YES,URI="https://media.example/en"`,
+		`#EXT-X-STREAM-INF:RESOLUTION=3840x2160,CODECS="vp09.00.50.08",AUDIO="234"`,
+		"https://media.example/video",
+	}
+	group := audio_group_lines(lines, "234")
+	defer delete(group)
+	if !testing.expect_value(t, len(group), 1) {return}
+	testing.expect_value(t, attribute(group[0], "NAME"), "American English - original")
+	testing.expect_value(t, attribute(group[0], "LANGUAGE"), "en-US")
+	testing.expect_value(t, attribute(group[0], "URI"), "https://media.example/en")
+}
+
+@(test)
+hls_falls_back_to_all_audio_renditions_without_original_marker :: proc(t: ^testing.T) {
+	lines := []string {
+		`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="234",NAME="First",AUTOSELECT=YES,URI="https://media.example/first"`,
+		`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="234",NAME="Second",AUTOSELECT=YES,URI="https://media.example/second"`,
+	}
+	group := audio_group_lines(lines, "234")
+	defer delete(group)
+	if !testing.expect_value(t, len(group), 2) {return}
+	testing.expect_value(t, attribute(group[0], "NAME"), "First")
+	testing.expect_value(t, attribute(group[1], "NAME"), "Second")
 }
 
 @(test)
