@@ -60,10 +60,11 @@ key :: proc(code: sdl.Keycode, window: ^sdl.Window = nil) {
 			selected = model.grid_move(selected, len(catalog.videos), 0, 1, grid_columns)
 		}
 	} else {
+		show_player_controls()
 		switch code {
 		case sdl.K_ESCAPE, sdl.K_AC_BACK:
 			return_to_grid = true
-		case sdl.K_RETURN, sdl.K_SPACE, sdl.K_KP_ENTER:
+		case sdl.K_RETURN, sdl.K_SPACE, sdl.K_KP_ENTER, sdl.K_MEDIA_PLAY, sdl.K_MEDIA_PAUSE:
 			if paused {command("luna://com.webos.media/play")} else {command("luna://com.webos.media/pause")}
 		case sdl.K_LEFT, sdl.K_RIGHT:
 			offset: f64 = code == sdl.K_RIGHT ? 10000 : -10000

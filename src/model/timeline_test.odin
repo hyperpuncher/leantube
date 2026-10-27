@@ -32,3 +32,16 @@ seek_targets_accumulate_and_stay_in_range :: proc(t: ^testing.T) {
 	testing.expect_value(t, seek_target(time, 100000, 60000), f64(60000))
 	testing.expect_value(t, seek_target(time, 100000, 0), f64(112000))
 }
+
+@(test)
+pending_seek_is_displayed_before_the_decoder_reports_it :: proc(t: ^testing.T) {
+	seek := Timeline {
+		position_ms    = 5_000,
+		seek_target_ms = -1,
+	}
+	testing.expect_value(t, display_position(seek), f64(5_000))
+	seek.seek_target_ms = 62_000
+	testing.expect_value(t, display_position(seek), f64(62_000))
+	seek_done(&seek)
+	testing.expect_value(t, display_position(seek), f64(62_000))
+}

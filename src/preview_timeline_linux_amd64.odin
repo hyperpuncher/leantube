@@ -43,11 +43,11 @@ check_sponsor_timeline :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 		},
 	)
 	snapshot(renderer, surface, "player-sponsors")
-	track := clay.GetElementData(clay.ID("timeline")).boundingBox
+	track := clay.GetElementData(clay.ID("timeline-track")).boundingBox
 	marker := clay.GetElementData(clay.ID("sponsor-marker", 1)).boundingBox
 	assert(math.abs(marker.x - (track.x + track.width * 0.4)) < 0.1)
 	assert(math.abs(marker.width - track.width * 0.2) < 0.1)
-	assert(marker.y == track.y && marker.height == track.height)
+	assert(marker.y == track.y && marker.height == scaled(TIMELINE_TRACK))
 	for c in ([]struct {
 			fraction: f32,
 			color:    clay.Color,

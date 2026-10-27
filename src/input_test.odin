@@ -9,3 +9,9 @@ remote_back_uses_the_same_action_as_standard_back :: proc(t: ^testing.T) {
 	testing.expect_value(t, input_key(412, sdl.K_UNKNOWN), sdl.Keycode(sdl.K_AC_BACK))
 	testing.expect_value(t, input_key(412, sdl.Keycode(0x200003)), sdl.Keycode(sdl.K_AC_BACK))
 }
+
+@(test)
+remote_play_and_pause_keep_their_own_keys :: proc(t: ^testing.T) {
+	testing.expect_value(t, input_key(207, sdl.K_UNKNOWN), sdl.Keycode(sdl.K_MEDIA_PLAY))
+	testing.expect_value(t, input_key(119, sdl.K_UNKNOWN), sdl.Keycode(sdl.K_MEDIA_PAUSE))
+}

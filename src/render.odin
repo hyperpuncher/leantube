@@ -60,23 +60,21 @@ render :: proc(renderer: ^sdl.Renderer, wheel: f32 = 0, dt: f32 = 1.0 / 60) -> b
 	if browsing {color = COLOR_BACKGROUND}
 	if !set_color(renderer, color) || !sdl.RenderClear(renderer) {return false}
 	// Clay borrows these strings until the render commands have been drawn.
-	stamp, speed: string
-	defer {delete(stamp); delete(speed)}
+	elapsed, total, speed, quality: string
+	// quality is a static label and must not be freed.
+	defer {delete(elapsed); delete(total); delete(speed)}
 	// Each scroll update must have a layout. Idle updates without layouts
 	// make Clay discard the container and its saved scroll position.
 	if browsing {clay.UpdateScrollContainers(false, {0, wheel}, dt)}
 	clay.BeginLayout()
 	if browsing {
 		grid_layout()
-	} else {
-		elapsed := model.time_label(timeline.position_ms)
-		total := model.time_label(duration_ms, "--:--")
-		stamp = fmt.aprintf("%s / %s", elapsed, total)
-		delete(elapsed)
-		delete(total)
-		quality := model.quality_label(stream_width, stream_height)
-		speed = quality != "" ? fmt.aprintf("%gx · %s", rate, quality) : fmt.aprintf("%gx", rate)
-		player_layout(stamp, speed)
+	} else if player_controls_visible() {
+		elapsed = model.time_label(model.display_position(timeline))
+		total = model.time_label(duration_ms, "--:--")
+		quality = model.quality_label(stream_width, stream_height)
+		speed = fmt.aprintf("%gx", rate)
+		player_layout(elapsed, total, speed, quality)
 	}
 	commands := clay.EndLayout(0)
 	if browsing && library_focus_pending {

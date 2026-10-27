@@ -68,6 +68,24 @@ playback_requested_at: u64
 playback_hdr: yt.Hdr
 // Bumped whenever the catalog contents change, so fitted card labels rebuild.
 catalog_revision: int
+
+// Playing controls fade out after a few quiet seconds and any input revives them.
+// A zero deadline means hidden.
+PLAYER_CONTROLS_MS :: 3000
+controls_until: u64
+
+show_player_controls :: proc() {controls_until = sdl.GetTicks() + PLAYER_CONTROLS_MS}
+
+player_controls_visible :: proc() -> bool {
+	return paused || !loaded || sdl.GetTicks() < controls_until
+}
+
+expire_player_controls :: proc() {
+	if browsing || paused || !loaded || controls_until == 0 {return}
+	if sdl.GetTicks() < controls_until {return}
+	controls_until = 0
+	dirty = true
+}
 sponsor_segments: [dynamic]sb.Segment
 pending_auth: Device_Auth
 pending_auth_active: bool
@@ -561,6 +579,7 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 			} else {
 				playback_hdr = result.stream.hdr
 				load_video(result.stream.url)
+				show_player_controls()
 			}
 		case .Segments:
 			if browsing || return_to_grid || result.playback != playback {continue}

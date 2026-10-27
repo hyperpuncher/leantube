@@ -10,8 +10,6 @@ import img "vendor:sdl3/image"
 Icon :: enum {
 	Play,
 	Pause,
-	Seek_Back,
-	Seek_Forward,
 	Slower,
 	Faster,
 	Account,
@@ -25,8 +23,6 @@ Icon :: enum {
 ICON_FILES :: [Icon]string {
 	.Play          = "play",
 	.Pause         = "pause",
-	.Seek_Back     = "rotate-ccw",
-	.Seek_Forward  = "rotate-cw",
 	.Slower        = "minus",
 	.Faster        = "plus",
 	.Account       = "user-round",

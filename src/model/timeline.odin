@@ -5,6 +5,11 @@ Timeline :: struct {
 	seek_target_ms: f64,
 }
 
+// Show the requested position at once, before the decoder reports it.
+display_position :: proc(time: Timeline) -> f64 {
+	return time.seek_target_ms >= 0 ? time.seek_target_ms : time.position_ms
+}
+
 seek_target :: proc(time: Timeline, offset, duration_ms: f64) -> f64 {
 	base := time.seek_target_ms >= 0 ? time.seek_target_ms : time.position_ms
 	target := max(0, base + offset)

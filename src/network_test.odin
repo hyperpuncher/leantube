@@ -147,3 +147,23 @@ search_errors_empty_results_and_recovery_finish_loading :: proc(t: ^testing.T) {
 	testing.expect_value(t, catalog.query, "recovered query")
 	testing.expect_value(t, len(catalog.videos), 1)
 }
+
+@(test)
+playing_controls_hide_only_while_playing :: proc(t: ^testing.T) {
+	saved_browsing, saved_paused, saved_loaded := browsing, paused, loaded
+	saved_until := controls_until
+	defer {
+		browsing, paused, loaded = saved_browsing, saved_paused, saved_loaded
+		controls_until = saved_until
+	}
+	browsing, loaded, paused = false, true, false
+	show_player_controls()
+	testing.expect(t, player_controls_visible())
+	controls_until = 0
+	testing.expect(t, !player_controls_visible())
+	paused = true
+	testing.expect(t, player_controls_visible())
+	browsing, paused, controls_until = true, false, 0
+	expire_player_controls()
+	testing.expect_value(t, controls_until, u64(0))
+}

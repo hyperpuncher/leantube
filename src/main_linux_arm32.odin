@@ -342,6 +342,7 @@ main :: proc() {
 		poll_network(renderer)
 		poll_login_tick()
 		auto_skip_sponsor()
+		expire_player_controls()
 		now := sdl.GetTicks()
 		frame_dt := f32(min(now - previous_frame, 50)) / 1000
 		previous_frame = now

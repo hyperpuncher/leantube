@@ -321,6 +321,15 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	key(sdl.K_RETURN)
 	assert(!browsing && loaded && paused)
 	check_sponsor_timeline(renderer, surface)
+	// A pending seek must move the knob and the time before the decoder replies.
+	knob_before := clay.GetElementData(clay.ID("timeline-knob")).boundingBox
+	timeline.seek_target_ms = duration_ms / 2
+	assert(render(renderer, 10))
+	knob_target := clay.GetElementData(clay.ID("timeline-knob")).boundingBox
+	assert(knob_target.x > knob_before.x + scaled(10), "the knob must follow a pending seek")
+	model.seek_done(&timeline)
+	assert(timeline.position_ms == duration_ms / 2)
+	snapshot(renderer, surface, "player-seek")
 	snapshot(renderer, surface, "player-paused")
 	panel := clay.GetElementData(clay.ID("controls")).boundingBox
 	play_button := clay.GetElementData(clay.ID("pause")).boundingBox

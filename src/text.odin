@@ -13,6 +13,7 @@ Text_Style :: enum u16 {
 	Caption,
 	Heading,
 	Mono_Small,
+	Mono_Body,
 }
 BASE_TEXT_SIZES :: [Text_Style]u16 {
 	.Body       = 32,
@@ -20,6 +21,7 @@ BASE_TEXT_SIZES :: [Text_Style]u16 {
 	.Caption    = 20,
 	.Heading    = 36,
 	.Mono_Small = 20,
+	.Mono_Body  = 32,
 }
 text_sizes := BASE_TEXT_SIZES
 fonts: [Text_Style]^ttf.Font
@@ -30,7 +32,8 @@ open_text :: proc(renderer: ^sdl.Renderer) -> bool {
 	text_engine = ttf.CreateRendererTextEngine(renderer)
 	if text_engine == nil {return false}
 	for size, style in text_sizes {
-		file := style == .Mono_Small ? "GeistMono-Regular.ttf" : "Geist.ttf"
+		mono := style == .Mono_Small || style == .Mono_Body
+		file := mono ? "GeistMono-Regular.ttf" : "Geist.ttf"
 		path := fmt.caprintf("%s/fonts/%s", app_directory, file)
 		fonts[style] = ttf.OpenFont(path, f32(size))
 		delete(path)
