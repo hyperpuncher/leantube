@@ -297,6 +297,8 @@ main :: proc() {
 	) {fmt.eprintln("LG window role is unavailable"); return}
 	renderer = sdl.CreateRenderer(window, "opengles2")
 	if renderer == nil {fmt.eprintln("renderer failed:", sdl.GetError()); return}
+	// Present on the panel's refresh so a frame is never shown half updated.
+	if !sdl.SetRenderVSync(renderer, 1) {fmt.eprintln("vsync is unavailable:", sdl.GetError())}
 	if !tv_clay_abi(
 		u32(size_of(clay.RenderCommand)),
 		u32(size_of(clay.ElementDeclaration)),
