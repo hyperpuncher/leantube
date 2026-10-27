@@ -17,6 +17,7 @@ local_youtube_request :: proc(
 	post_body: Maybe(string),
 	headers: []string,
 	timeout_ms: c.long,
+	follow_redirects: bool,
 ) -> (
 	http.Response,
 	http.Error,
@@ -25,7 +26,7 @@ local_youtube_request :: proc(
 	defer delete(base)
 	local_url, _ := strings.replace_all(url, "https://www.youtube.com", base)
 	defer delete(local_url)
-	return http.request(client, local_url, post_body, headers, timeout_ms)
+	return http.request(client, local_url, post_body, headers, timeout_ms, follow_redirects)
 }
 
 @(test)
@@ -83,6 +84,51 @@ https_rejects_untrusted_certificates_wrong_hosts_and_downgrades :: proc(t: ^test
 	defer delete(redirect.body)
 	testing.expect_value(t, redirect_error, nil)
 	testing.expect_value(t, int(redirect.status), 302)
+}
+
+@(test)
+media_ranges_follow_https_redirects_without_allowing_downgrades_or_credentials :: proc(
+	t: ^testing.T,
+) {
+	base := os.get_env("LEANTUBE_TEST_HTTPS", context.allocator)
+	ca_file := os.get_env("LEANTUBE_TEST_CA", context.allocator)
+	defer {delete(base); delete(ca_file)}
+	client, error := http.open(ca_file)
+	if !testing.expect_value(t, error, nil) {return}
+	defer http.close(&client)
+	bytes, ok := yt.fetch_range(&client, fmt.tprintf("%s/range-redirect", base), 3, 5)
+	defer delete(bytes)
+	testing.expect(t, ok)
+	testing.expect_value(t, string(bytes), "def")
+	for endpoint, i in ([]string{"redirect", "redirect-loop", "redirect-wrong-host"}) {
+		response, request_error := http.request(
+			&client,
+			fmt.tprintf("%s/%s", base, endpoint),
+			follow_redirects = true,
+		)
+		defer delete(response.body)
+		expected := [?]curl.code {
+			.E_UNSUPPORTED_PROTOCOL,
+			.E_TOO_MANY_REDIRECTS,
+			.E_PEER_FAILED_VERIFICATION,
+		}
+		testing.expect_value(t, request_error, http.Error(expected[i]))
+	}
+	for header in ([]string{"Authorization: Bearer test-only", "cOoKiE: test-only=value"}) {
+		response, request_error := http.request(
+			&client,
+			base,
+			headers = {header},
+			follow_redirects = true,
+		)
+		defer delete(response.body)
+		testing.expect_value(t, request_error, http.Error(http.Failure.Invalid_Request))
+	}
+	// Redirect state is reset before the next API request.
+	response, request_error := http.request(&client, fmt.tprintf("%s/range-redirect", base))
+	defer delete(response.body)
+	testing.expect_value(t, request_error, nil)
+	testing.expect_value(t, int(response.status), 302)
 }
 
 @(test)

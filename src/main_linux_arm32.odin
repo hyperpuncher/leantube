@@ -131,6 +131,7 @@ reply :: proc "c" (bus, message, data: rawptr) -> bool {
 						scanType:      string,
 						width, height: i64,
 						path:          string,
+						hdrType:       string `json:",omitempty"`,
 					},
 				} {
 					ctx     = media_id,
@@ -141,6 +142,7 @@ reply :: proc "c" (bus, message, data: rawptr) -> bool {
 						i64(width),
 						i64(height),
 						"network",
+						yt.hdr_label(playback_hdr),
 					},
 				}
 				delete(video_metadata)

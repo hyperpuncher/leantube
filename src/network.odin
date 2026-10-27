@@ -65,6 +65,7 @@ search_loading: bool
 resolving: bool
 stream_width, stream_height: int
 playback_requested_at: u64
+playback_hdr: yt.Hdr
 sponsor_segments: [dynamic]sb.Segment
 pending_auth: Device_Auth
 pending_auth_active: bool
@@ -444,6 +445,7 @@ resolve_selected :: proc() {
 	playback_requested_at = sdl.GetTicks()
 	resolving = true
 	browsing = false
+	playback_hdr = .None
 	loaded = false
 	stream_width, stream_height = 0, 0
 	notice = ""
@@ -553,6 +555,7 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				notice =
 					result.error == .No_Direct_Stream ? "YouTube did not provide a supported direct stream" : "video resolution failed; try again"
 			} else {
+				playback_hdr = result.stream.hdr
 				load_video(result.stream.url)
 			}
 		case .Segments:

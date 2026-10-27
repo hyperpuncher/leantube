@@ -23,6 +23,7 @@ Stream :: struct {
 	audio_index_end:    int,
 	audio_content_size: int,
 	audio_duration_ms:  f64,
+	hdr:                Hdr,
 }
 
 // Client profiles follow yt-dlp's YouTube extractor. No account cookies or

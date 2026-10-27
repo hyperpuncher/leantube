@@ -12,6 +12,13 @@ LOCAL_HLS_PATH :: "/tmp/leantube-master.m3u8"
 LOCAL_AUDIO_HLS_PATH :: "/tmp/leantube-audio.m3u8"
 LOCAL_AUDIO_GROUP :: "leantube-audio"
 
+// HDR type of a stream; the display is told through ACB metadata.
+Hdr :: enum {
+	None,
+	Hdr10,
+	Hlg,
+}
+
 attribute :: proc(line, key: string) -> string {
 	needle := strings.concatenate({key, "="})
 	defer delete(needle)
@@ -150,7 +157,13 @@ fetch_range :: proc(client: ^http.Client, url: string, start, end: int) -> ([]u8
 	if start < 0 || end < start {return nil, false}
 	header := fmt.aprintf("Range: bytes=%d-%d", start, end)
 	defer delete(header)
-	response, request_error := http.request(client, url, "", []string{header}, timeout_ms = 3000)
+	response, request_error := http.request(
+		client,
+		url,
+		headers = []string{header},
+		timeout_ms = 3000,
+		follow_redirects = true,
+	)
 	if request_error != nil {return nil, false}
 	defer delete(response.body)
 	result := make([]u8, end - start + 1)
@@ -164,31 +177,99 @@ fetch_range :: proc(client: ^http.Client, url: string, start, end: int) -> ([]u8
 	return result, true
 }
 
-// Force the highest HLS variant and add the original AAC track as a local
-// audio rendition. Returns false and leaves the original URL untouched on any
-// parse or write failure.
+// HDR10 and HLG are the two types this display accepts through ACB metadata.
+hdr_from_range :: proc(range: string) -> Hdr {
+	switch range {
+	case "PQ":
+		return .Hdr10
+	case "HLG":
+		return .Hlg
+	}
+	return .None
+}
+
+hdr_label :: proc(hdr: Hdr) -> string {
+	switch hdr {
+	case .Hdr10:
+		return "HDR10"
+	case .Hlg:
+		return "HLG"
+	case .None:
+	}
+	return ""
+}
+
+hls_variant_index :: proc(lines: []string) -> int {
+	best, best_height := -1, 0
+	best_rank := 0
+	for line, index in lines {
+		if !strings.has_prefix(line, "#EXT-X-STREAM-INF:") || index + 1 >= len(lines) {continue}
+		height := resolution_height(attribute(line, "RESOLUTION"))
+		if height > 2160 || height <= 0 {continue}
+		// HDR variants share a resolution with their SDR twin. The B9 decodes
+		// VP9 profile 2 (vp09.02) HDR, so rank PQ and HLG above SDR, and VP9's
+		// fragmented MP4 above YouTube's MPEG-TS AVC.
+		range := attribute(line, "VIDEO-RANGE")
+		hdr := range == "PQ" || range == "HLG"
+		vp9 := strings.has_prefix(attribute(line, "CODECS"), "vp09")
+		rank := (hdr ? 2 : 0) + (vp9 ? 1 : 0)
+		if height > best_height || (height == best_height && rank > best_rank) {
+			best, best_height, best_rank = index, height, rank
+		}
+	}
+	return best
+}
+
+// EXT-X-MEDIA lines that belong to one audio group. Using the master's own
+// rendition avoids rebuilding AAC from player byte ranges. A private master
+// lives on file://, so only absolute HTTPS playlists qualify; anything else
+// falls back to the byte-range rendition.
+audio_group_lines :: proc(lines: []string, group: string) -> (result: [dynamic]string) {
+	if group == "" {return}
+	for line in lines {
+		if !strings.has_prefix(line, "#EXT-X-MEDIA:") || attribute(line, "TYPE") != "AUDIO" {
+			continue
+		}
+		if attribute(line, "GROUP-ID") == group &&
+		   strings.has_prefix(attribute(line, "URI"), "https://") {
+			append(&result, line)
+		}
+	}
+	return
+}
+
+// Force the highest HLS variant and keep its audio. The master's own AAC
+// rendition is preferred; only a master without one gets a rendition rebuilt
+// from the player's byte ranges. Returns false and leaves the original URL
+// untouched on any parse or write failure.
 localize_hls :: proc(client: ^http.Client, stream: ^Stream) -> bool {
-	response, request_error := http.request(client, stream.url, timeout_ms = 3000)
+	response, request_error := http.request(
+		client,
+		stream.url,
+		timeout_ms = 3000,
+		follow_redirects = true,
+	)
 	if request_error != nil {return false}
 	defer delete(response.body)
 	if response.status != 200 {return false}
 	master := string(response.body[:])
 	lines := strings.split(master, "\n")
 	defer delete(lines)
-	best, best_height := -1, 0
-	for line, index in lines {
-		if !strings.has_prefix(line, "#EXT-X-STREAM-INF:") || index + 1 >= len(lines) {continue}
-		height := resolution_height(attribute(line, "RESOLUTION"))
-		if height > 2160 {continue}
-		if height > best_height {best, best_height = index, height}
-	}
+	best := hls_variant_index(lines)
 	if best < 0 {return false}
 	variant := lines[best]
 	variant_uri := strings.trim_space(lines[best + 1])
 	if !strings.has_prefix(variant_uri, "https://") {return false}
-	has_audio := false
+	stream.hdr = hdr_from_range(attribute(variant, "VIDEO-RANGE"))
+	group := attribute(variant, "AUDIO")
+	audio_lines := audio_group_lines(lines, group)
+	defer delete(audio_lines)
+	has_audio := len(audio_lines) > 0
 	init_len := stream.audio_init_end + 1
-	if stream.audio_url != "" && init_len > 0 && stream.audio_index_end >= stream.audio_init_end {
+	if !has_audio &&
+	   stream.audio_url != "" &&
+	   init_len > 0 &&
+	   stream.audio_index_end >= stream.audio_init_end {
 		index_start := init_len
 		index_end := stream.audio_index_end
 		if sidx, fetched := fetch_range(client, stream.audio_url, index_start, index_end);
@@ -231,8 +312,8 @@ localize_hls :: proc(client: ^http.Client, stream: ^Stream) -> bool {
 			}
 		}
 	}
-	if !has_audio {_ = os.remove(LOCAL_AUDIO_HLS_PATH)}
-	if attribute(variant, "AUDIO") != "" {variant = without_attribute(variant, "AUDIO")}
+	if len(audio_lines) > 0 || !has_audio {_ = os.remove(LOCAL_AUDIO_HLS_PATH)}
+	if len(audio_lines) == 0 && group != "" {variant = without_attribute(variant, "AUDIO")}
 	if attribute(variant, "SUBTITLES") != "" {variant = without_attribute(variant, "SUBTITLES")}
 	variant = strings.trim_space(variant)
 	builder := strings.builder_make()
@@ -245,7 +326,12 @@ localize_hls :: proc(client: ^http.Client, stream: ^Stream) -> bool {
 			strings.write_byte(&builder, '\n')
 		}
 	}
-	if has_audio {
+	if len(audio_lines) > 0 {
+		for line in audio_lines {
+			strings.write_string(&builder, line)
+			strings.write_byte(&builder, '\n')
+		}
+	} else if has_audio {
 		strings.write_string(
 			&builder,
 			`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="` +
@@ -255,14 +341,19 @@ localize_hls :: proc(client: ^http.Client, stream: ^Stream) -> bool {
 		)
 	}
 	strings.write_string(&builder, variant)
-	if has_audio {
+	if has_audio && len(audio_lines) == 0 {
 		strings.write_string(&builder, `,AUDIO="` + LOCAL_AUDIO_GROUP + `"`)
 	}
 	strings.write_byte(&builder, '\n')
 	strings.write_string(&builder, variant_uri)
 	strings.write_byte(&builder, '\n')
 	if !write_private(LOCAL_HLS_PATH, strings.to_string(builder)) {return false}
-	fmt.printf("private hls master: %dp audio=%v\n", best_height, has_audio)
+	fmt.printf(
+		"private HLS: resolution=%s codecs=%s audio=%v\n",
+		attribute(variant, "RESOLUTION"),
+		attribute(variant, "CODECS"),
+		has_audio,
+	)
 	delete(stream.url)
 	stream.url = strings.clone("file://" + LOCAL_HLS_PATH)
 	return true

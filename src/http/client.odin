@@ -21,6 +21,11 @@ Response :: struct {
 	body:   [dynamic]u8,
 }
 
+// CURLOPT_REDIR_PROTOCOLS is 182 in curl's ABI. The B9's curl 7.53 predates
+// REDIR_PROTOCOLS_STR; current Odin bindings omit this deprecated enum member.
+@(private)
+CURL_REDIR_PROTOCOLS :: curl.option(182)
+
 // Open before starting the network worker; close after joining it. Keep HTTPS
 // on one worker for the B9's OpenSSL 1.0.2. Requests must stay off the UI thread.
 open :: proc(ca_file: string = "") -> (client: Client, error: Error) {
@@ -49,13 +54,15 @@ receive :: proc "c" (data: rawptr, size, count: c.size_t, user: rawptr) -> c.siz
 }
 
 // The caller owns response.body, including non-2xx responses. Errors return no
-// body. Redirects are returned, not followed, to prevent silent HTTPS downgrades.
+// body. Redirects are returned by default. Unauthenticated media GETs can
+// opt into bounded HTTPS-only redirects; API requests keep the default.
 request :: proc(
 	client: ^Client,
 	url: string,
 	post_body: Maybe(string) = nil,
 	headers: []string = nil,
 	timeout_ms: c.long = 15000,
+	follow_redirects: bool = false,
 ) -> (
 	response: Response,
 	error: Error,
@@ -63,6 +70,17 @@ request :: proc(
 	if client.handle == nil ||
 	   !strings.has_prefix(url, "https://") ||
 	   timeout_ms <= 0 {return {}, Failure.Invalid_Request}
+	if follow_redirects {
+		if post_body != nil {return {}, Failure.Invalid_Request}
+		for header in headers {
+			colon := strings.index_byte(header, ':')
+			if colon > 0 &&
+			   (strings.equal_fold(header[:colon], "Authorization") ||
+					   strings.equal_fold(header[:colon], "Cookie")) {
+				return {}, Failure.Invalid_Request
+			}
+		}
+	}
 	handle := client.handle
 	// Reset request state while retaining libcurl's connection and TLS caches.
 	curl.easy_reset(handle)
@@ -89,6 +107,11 @@ request :: proc(
 	curl.easy_setopt(handle, .WRITEFUNCTION, receive) or_return
 	curl.easy_setopt(handle, .WRITEDATA, rawptr(&response_body)) or_return
 	curl.easy_setopt(handle, .HTTPHEADER, list) or_return
+	if follow_redirects {
+		curl.easy_setopt(handle, CURL_REDIR_PROTOCOLS, c.long(curl.PROTO_HTTPS)) or_return
+		curl.easy_setopt(handle, .MAXREDIRS, c.long(5)) or_return
+		curl.easy_setopt(handle, .FOLLOWLOCATION, c.long(1)) or_return
+	}
 	if client.ca_file != nil {curl.easy_setopt(handle, .CAINFO, client.ca_file) or_return}
 	if post_body != nil {
 		posted := post_body.(string)

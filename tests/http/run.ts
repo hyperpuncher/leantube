@@ -32,6 +32,35 @@ try {
 					return new Response("bad request", { status: 400 });
 				return new Response(await request.arrayBuffer());
 			}
+			if (path === "/range-redirect")
+				return new Response(null, {
+					status: 302,
+					headers: { Location: new URL("/range", request.url).href },
+				});
+			if (path === "/range") {
+				if (
+					request.method !== "GET" ||
+					request.headers.get("range") !== "bytes=3-5"
+				)
+					return new Response("bad range request", { status: 400 });
+				return new Response("def", {
+					status: 206,
+					headers: { "Content-Range": "bytes 3-5/6" },
+				});
+			}
+			if (path === "/redirect-loop")
+				return new Response(null, {
+					status: 302,
+					headers: { Location: request.url },
+				});
+			if (path === "/redirect-wrong-host") {
+				const url = new URL("/", request.url);
+				url.hostname = "127.0.0.1";
+				return new Response(null, {
+					status: 302,
+					headers: { Location: url.href },
+				});
+			}
 			if (path === "/slow") await Bun.sleep(300);
 			if (path === "/redirect")
 				return new Response("redirect", {
