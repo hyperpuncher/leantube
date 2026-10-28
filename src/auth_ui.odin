@@ -148,17 +148,14 @@ account_initial_name :: proc(name: string) -> string {
 ensure_login_qr :: proc(renderer: ^sdl.Renderer) -> bool {
 	if login_qr != nil {return true}
 	if login_code == "" || login_url == "" {return false}
-	payload := fmt.aprintf(
+	payload := fmt.caprintf(
 		strings.contains(login_url, "?") ? "%s&user_code=%s" : "%s?user_code=%s",
 		login_url,
 		login_code,
 	)
 	defer delete(payload)
-	qr := make([]u8, 4096)
-	defer delete(qr)
-	text := strings.clone_to_cstring(payload)
-	defer delete(text)
-	size := int(qr_encode(text, raw_data(qr)))
+	qr: QR_Buffer
+	size := int(qr_encode(payload, &qr))
 	if size <= 0 {return false}
 	// Store one pixel per module. SDL scales the QR with nearest sampling.
 	modules := size + 8
@@ -171,7 +168,7 @@ ensure_login_qr :: proc(renderer: ^sdl.Renderer) -> bool {
 				y >= 4 &&
 				x < 4 + size &&
 				y < 4 + size &&
-				qr_module(raw_data(qr), i32(x - 4), i32(y - 4))
+				qr_module(&qr, i32(x - 4), i32(y - 4))
 			value := u8(black ? 0 : 255)
 			pixels[y * modules + x] = {value, value, value, 255}
 		}
