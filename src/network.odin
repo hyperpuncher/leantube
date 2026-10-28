@@ -270,14 +270,15 @@ network_main :: proc(_: ^thread.Thread) {
 					{source = strings.clone(catalog.channel.avatar_url), avatar = true},
 				)
 			}
-			for video, i in catalog.videos {
+			for &video, i in catalog.videos {
+				video.cover_index = request.index + i
 				append(
 					&covers,
 					{
 						source = strings.clone(
 							video.thumbnail_url != "" ? video.thumbnail_url : video.id,
 						),
-						index = request.index + i,
+						index = video.cover_index,
 					},
 				)
 			}
@@ -554,6 +555,20 @@ resolve_selected :: proc() {
 		resolving = false; browsing = true; notice = "network is unavailable"
 	}
 }
+// Cover replies use the original feed position, not the sorted grid position.
+sort_subscriptions :: proc(preserve_selection: bool) {
+	if len(catalog.videos) == 0 {return}
+	covers := make(map[int]^sdl.Texture)
+	defer delete(covers)
+	selected_cover := preserve_selection ? catalog.videos[selected].cover_index : -1
+	for video, i in catalog.videos {covers[video.cover_index] = textures[i]}
+	model.sort_latest(catalog.videos[:])
+	for video, i in catalog.videos {
+		textures[i] = covers[video.cover_index]
+		if video.cover_index == selected_cover {selected = i}
+	}
+}
+
 poll_network :: proc(renderer: ^sdl.Renderer) {
 	// Bound image uploads per frame so input is still serviced during loading.
 	for _ in 0 ..< 2 {
@@ -662,16 +677,20 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 					restore_selected = -1
 				}
 			}
-			if browse_id == "FEsubscriptions" {model.sort_latest(catalog.videos[:])}
-			catalog_revision += 1
 			resize(&textures, len(catalog.videos))
+			if browse_id == "FEsubscriptions" {sort_subscriptions(result.append)}
+			catalog_revision += 1
 			notice = ""
 			library_focus_pending = true
 		case .Cover, .Channel_Avatar:
 			slot := &channel_avatar
 			if result.kind == .Cover {
-				if result.index < 0 || result.index >= len(catalog.videos) {continue}
-				slot = &textures[result.index]
+				index := -1
+				for video, i in catalog.videos {
+					if video.cover_index == result.index {index = i; break}
+				}
+				if index < 0 {continue}
+				slot = &textures[index]
 			}
 			if result.surface == nil {continue}
 			texture := sdl.CreateTextureFromSurface(renderer, result.surface)

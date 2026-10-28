@@ -11,6 +11,8 @@ Video :: struct {
 	id, title, channel, duration_label: string,
 	meta:                               string,
 	published_age_s:                    i64,
+	// Original feed position, kept stable when the display order changes.
+	cover_index:                        int,
 	browse_id, thumbnail_url:           string,
 	actions:                            [dynamic]Card_Action,
 }
