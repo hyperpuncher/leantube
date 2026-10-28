@@ -12,6 +12,7 @@ Text_Style :: enum u16 {
 	Small,
 	Caption,
 	Heading,
+	Title,
 	Mono_Small,
 	Mono_Body,
 }
@@ -20,6 +21,7 @@ BASE_TEXT_SIZES :: [Text_Style]u16 {
 	.Small      = 26,
 	.Caption    = 20,
 	.Heading    = 36,
+	.Title      = 56,
 	.Mono_Small = 20,
 	.Mono_Body  = 32,
 }

@@ -1,11 +1,16 @@
 package main
 
-// The host preview does not load the TV bridge. Login rendering stays disabled
-// until the ARM32 build supplies the real QR encoder.
-qr_encode :: proc(_: cstring, _: [^]u8) -> i32 {
-	return 0
+// Use the same QR library as the TV, without loading the webOS bridge.
+foreign import qr "../build/host-qr/qrcodegen.a"
+foreign qr {
+	qrcodegen_encodeText :: proc(text: cstring, temp, code: [^]u8, ecc, min_version, max_version, mask: i32, boost: bool) -> bool ---
+	qrcodegen_getSize :: proc(code: [^]u8) -> i32 ---
+	@(link_name = "qrcodegen_getModule")
+	qr_module :: proc(code: [^]u8, x, y: i32) -> bool ---
 }
 
-qr_module :: proc(_: [^]u8, _, _: i32) -> bool {
-	return false
+qr_encode :: proc(text: cstring, code: [^]u8) -> i32 {
+	temp: [4096]u8
+	if !qrcodegen_encodeText(text, raw_data(temp[:]), code, 1, 1, 40, -1, true) {return 0}
+	return qrcodegen_getSize(code)
 }

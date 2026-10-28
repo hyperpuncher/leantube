@@ -289,6 +289,7 @@ main :: proc() {
 	defer {
 		if search_editing {finish_search_input(window)}
 		stop_playback()
+		close_login_screen()
 		stop_network()
 		delete(search_text)
 		clear_browse_history()

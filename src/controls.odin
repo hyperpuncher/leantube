@@ -40,6 +40,15 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 	if !sdl.RenderCoordinatesFromWindow(renderer, x, y, &point[0], &point[1]) {return}
 	clay.SetPointerState(point, down)
 	dirty = true
+	if login_screen {
+		if activate {
+			if clay.PointerOver(
+				clay.ID("login-search"),
+			) {leave_login(sdl.GetRenderWindow(renderer))}
+			if clay.PointerOver(clay.ID("login-retry")) {retry_login()}
+		}
+		return
+	}
 	if !browsing {show_player_controls()}
 	if browsing {
 		if card_press.active &&

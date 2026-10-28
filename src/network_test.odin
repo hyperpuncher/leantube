@@ -135,7 +135,7 @@ search_errors_empty_results_and_recovery_finish_loading :: proc(t: ^testing.T) {
 	poll_network(nil)
 	testing.expect(t, !search_loading)
 	testing.expect_value(t, len(catalog.videos), 0)
-	testing.expect_value(t, notice, "no items found")
+	testing.expect_value(t, notice, "")
 	result := Network_Result {
 		kind = .Catalog,
 		page = page,

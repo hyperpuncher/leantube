@@ -34,7 +34,11 @@ key :: proc(code: sdl.Keycode, window: ^sdl.Window = nil) {
 	if login_screen {
 		switch code {
 		case sdl.K_ESCAPE, sdl.K_AC_BACK:
-			close_login_screen()
+			leave_login(window)
+		case sdl.K_UP, sdl.K_DOWN, sdl.K_TAB:
+			if login_failed() {login_retry_selected = !login_retry_selected}
+		case sdl.K_RETURN, sdl.K_KP_ENTER, sdl.K_SPACE:
+			if login_retry_selected {retry_login()} else {leave_login(window)}
 		}
 		dirty = true
 		return

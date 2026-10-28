@@ -16,6 +16,7 @@ login_interval_ms: u64 = 5000
 login_next_poll: u64
 login_waiting: bool
 login_add_account: bool
+login_retry_selected: bool
 login_qr: ^sdl.Texture
 account_menu: bool
 account_menu_selected: int
@@ -55,16 +56,17 @@ set_account_avatar :: proc(renderer: ^sdl.Renderer, bytes: []u8) {
 start_login :: proc(add := false) {
 	if login_screen || (signed_in && !add) {return}
 	login_add_account = add
+	login_retry_selected = false
 	login_screen = true
 	login_waiting = true
 	login_next_poll = 0
 	delete(login_message)
-	login_message = strings.clone("requesting a sign-in code…")
+	login_message = strings.clone("Getting your sign-in code…")
 	dirty = true
 	if !submit_network({kind = .Login_Start}) {
 		login_waiting = false
 		delete(login_message)
-		login_message = strings.clone("could not start sign-in")
+		login_message = strings.clone("Could not get a sign-in code. Try again.")
 	}
 }
 
@@ -122,7 +124,10 @@ use_current_account :: proc() {
 sign_out :: proc() {
 	clear_auth()
 	use_current_account()
-	if !signed_in {rail_active = .Home}
+	if !signed_in {
+		start_login()
+		return
+	}
 	reload_feed()
 }
 
@@ -155,9 +160,9 @@ ensure_login_qr :: proc(renderer: ^sdl.Renderer) -> bool {
 	defer delete(text)
 	size := int(qr_encode(text, raw_data(qr)))
 	if size <= 0 {return false}
+	// Store one pixel per module. SDL scales the QR with nearest sampling.
 	modules := size + 8
-	scale := 8
-	pixels := make([]u8, modules * modules * scale * scale * 4)
+	pixels := make([][4]u8, modules * modules)
 	defer delete(pixels)
 	for y in 0 ..< modules {
 		for x in 0 ..< modules {
@@ -167,25 +172,16 @@ ensure_login_qr :: proc(renderer: ^sdl.Renderer) -> bool {
 				x < 4 + size &&
 				y < 4 + size &&
 				qr_module(raw_data(qr), i32(x - 4), i32(y - 4))
-			for py in 0 ..< scale {
-				for px in 0 ..< scale {
-					index := ((y * scale + py) * modules * scale + x * scale + px) * 4
-					value := u8(black ? 0 : 255)
-					pixels[index + 0] = value
-					pixels[index + 1] = value
-					pixels[index + 2] = value
-					pixels[index + 3] = 255
-				}
-			}
+			value := u8(black ? 0 : 255)
+			pixels[y * modules + x] = {value, value, value, 255}
 		}
 	}
-	pixel_width := modules * scale
 	surface := sdl.CreateSurfaceFrom(
-		i32(pixel_width),
-		i32(pixel_width),
+		i32(modules),
+		i32(modules),
 		.RGBA32,
 		raw_data(pixels),
-		i32(pixel_width * 4),
+		i32(modules * 4),
 	)
 	if surface == nil {return false}
 	defer sdl.DestroySurface(surface)
@@ -195,67 +191,187 @@ ensure_login_qr :: proc(renderer: ^sdl.Renderer) -> bool {
 	return true
 }
 
+// Back and the secondary action return to search for a signed-out user.
+leave_login :: proc(window: ^sdl.Window) {
+	close_login_screen()
+	if !signed_in {edit_search(window)}
+}
+
+login_failed :: proc() -> bool {
+	return !login_waiting && login_next_poll == 0
+}
+
+retry_login :: proc() {
+	add := login_add_account
+	close_login_screen()
+	start_login(add)
+}
+
 login_layout :: proc() {
+	width := min(scaled(1200), view_width - scaled(128))
+	stacked := view_width < scaled(1000)
+	qr_size := scaled(stacked ? 256 : 400)
 	if clay.UI(clay.ID("login-root"))(
 	{
 		layout = {
 			sizing = {width = clay.SizingGrow({}), height = clay.SizingGrow({})},
-			layoutDirection = .TopToBottom,
 			childAlignment = {x = .Center, y = .Center},
 			padding = clay.PaddingAll(spacing(48)),
 		},
 		backgroundColor = COLOR_BACKGROUND,
 	},
 	) {
-		if clay.UI(clay.ID("login-card"))(
+		if clay.UI(clay.ID("login-content"))(
 		{
 			layout = {
-				sizing = {width = clay.SizingFixed(scaled(560))},
-				layoutDirection = .TopToBottom,
+				sizing = {width = clay.SizingFixed(width)},
+				layoutDirection = stacked ? .TopToBottom : .LeftToRight,
+				childGap = spacing(stacked ? 32 : 96),
 				childAlignment = {x = .Center, y = .Center},
-				childGap = spacing(16),
-				padding = clay.PaddingAll(spacing(36)),
 			},
-			backgroundColor = COLOR_SURFACE,
-			cornerRadius = clay.CornerRadiusAll(scaled(24)),
 		},
 		) {
-			label(
-				login_add_account ? "Scan to add a YouTube account" : "Scan the QR to sign in to YouTube",
-				.Heading,
-			)
-			if login_qr != nil {
-				if clay.UI(clay.ID("login-qr"))(
+			if clay.UI(clay.ID("login-instructions"))(
+			{
+				layout = {
+					sizing = {width = clay.SizingGrow({})},
+					layoutDirection = .TopToBottom,
+					childGap = spacing(stacked ? 16 : 24),
+				},
+			},
+			) {
+				label(
+					login_add_account ? "Add your account" : "Sign in to YouTube",
+					.Title,
+					wrap = .Words,
+				)
+				label(
+					"Your subscriptions and saved videos, ready to watch.",
+					.Small,
+					COLOR_MUTED,
+					.Words,
+				)
+				if clay.UI()(
 				{
 					layout = {
-						sizing = {
-							width = clay.SizingFixed(scaled(320)),
-							height = clay.SizingFixed(scaled(320)),
+						sizing = {width = clay.SizingGrow({})},
+						layoutDirection = .TopToBottom,
+						childGap = spacing(12),
+						padding = padding(0, 0, 12, 12),
+					},
+				},
+				) {
+					label("Scan the QR code with your phone.", .Body, wrap = .Words)
+					label("Or open the link and enter this code:", .Small, COLOR_MUTED, .Words)
+					label("google.com/device", .Body)
+					if clay.UI(clay.ID("login-code"))(
+					{
+						layout = {
+							sizing = {height = clay.SizingFixed(scaled(52))},
+							childAlignment = {y = .Center},
 						},
 					},
-					image = {imageData = rawptr(login_qr)},
-					cornerRadius = clay.CornerRadiusAll(scaled(8)),
-				},
-				) {}
-			} else {
-				if clay.UI(clay.ID("login-waiting"))(
+					) {
+						if login_code != "" {label(login_code, .Mono_Body)}
+					}
+				}
+				if clay.UI()(
 				{
 					layout = {
-						sizing = {
-							width = clay.SizingFixed(scaled(320)),
-							height = clay.SizingFixed(scaled(320)),
-						},
+						layoutDirection = .TopToBottom,
+						childGap = spacing(12),
+						sizing = {width = clay.SizingGrow({})},
 					},
-					backgroundColor = COLOR_BACKGROUND,
-					cornerRadius = clay.CornerRadiusAll(scaled(8)),
 				},
-				) {}
+				) {
+					login_action(
+						"login-search",
+						signed_in ? "Cancel" : "Search without signing in",
+						!login_retry_selected,
+					)
+					if login_failed() {
+						login_action("login-retry", "Try again", login_retry_selected)
+					}
+				}
+				label(
+					signed_in ? "Press Back to cancel" : "Press Back to search without an account",
+					.Caption,
+					COLOR_MUTED,
+				)
 			}
-			if login_code != "" {label(login_code, .Heading, COLOR_ACCENT)}
-			label("google.com/device", .Body, COLOR_MUTED)
-			if login_message != "" {label(login_message, .Small, COLOR_MUTED)}
+			if clay.UI(clay.ID("login-scan"))(
+			{
+				layout = {
+					sizing = {width = clay.SizingFixed(qr_size)},
+					layoutDirection = .TopToBottom,
+					childGap = spacing(24),
+					childAlignment = {x = .Center},
+				},
+			},
+			) {
+				if clay.UI(clay.ID("login-qr-frame"))(
+				{
+					layout = {
+						sizing = {
+							width = clay.SizingFixed(qr_size),
+							height = clay.SizingFixed(qr_size),
+						},
+						childAlignment = {x = .Center, y = .Center},
+						padding = clay.PaddingAll(spacing(16)),
+					},
+					backgroundColor = login_qr != nil ? clay.Color{255, 255, 255, 255} : COLOR_SURFACE,
+					cornerRadius = clay.CornerRadiusAll(scaled(24)),
+				},
+				) {
+					if login_qr != nil {
+						if clay.UI(clay.ID("login-qr"))(
+						{
+							layout = {
+								sizing = {
+									width = clay.SizingFixed(qr_size - scaled(32)),
+									height = clay.SizingFixed(qr_size - scaled(32)),
+								},
+							},
+							image = {imageData = rawptr(login_qr)},
+						},
+						) {}
+					} else if !login_failed() {
+						icon(.Spinner)
+					} else {icon(.Account, 64)}
+				}
+				if clay.UI(clay.ID("login-status"))(
+				{
+					layout = {
+						sizing = {
+							width = clay.SizingGrow({}),
+							height = clay.SizingFixed(scaled(64)),
+						},
+						childAlignment = {x = .Center, y = .Top},
+						childGap = spacing(12),
+					},
+				},
+				) {
+					if login_code != "" && !login_failed() {icon(.Spinner, 24)}
+					label(login_message, .Caption, COLOR_MUTED, .Words)
+				}
+			}
 		}
 	}
+}
+
+login_action :: proc(id, text: string, selected: bool) {
+	active := selected || clay.PointerOver(clay.ID(id))
+	if clay.UI(clay.ID(id))(
+	{
+		layout = {
+			sizing = {height = clay.SizingFixed(scaled(64))},
+			padding = padding(24, 24, 0, 0),
+			childAlignment = {x = .Center, y = .Center},
+		},
+		backgroundColor = active ? COLOR_TEXT : COLOR_SURFACE,
+		cornerRadius = clay.CornerRadiusAll(scaled(32)),
+	},
+	) {label(text, .Small, active ? COLOR_BACKGROUND : COLOR_TEXT)}
 }
 
 account_button :: proc(compact: bool = false) {

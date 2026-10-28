@@ -128,6 +128,7 @@ main :: proc() {
 		)
 	} else {
 		width, height: i32 = 1920, 1080
+		if os.args[1] == "720p" {width, height = 1280, 720}
 		if os.args[1] == "1440p" {width, height = 2560, 1440}
 		if os.args[1] == "4k" {width, height, ui_scale = 3840, 2160, 2}
 		if os.args[1] == "narrow" {width = 960}
@@ -143,6 +144,7 @@ main :: proc() {
 	defer close_icons()
 	defer clear_catalog()
 	defer {
+		close_login_screen()
 		stop_network(); delete(search_text); delete(sponsor_segments)
 		clear_browse_history()
 		delete(browse_id); delete(browse_params); delete(browse_filter)
@@ -364,6 +366,7 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	check_channel_ui(renderer, surface)
 	check_account_ui(renderer, surface)
 	check_search_flow(renderer, surface)
+	check_login_ui(renderer, surface)
 	fmt.println(
 		"scrolling, player return, search states, and image edges passed; screenshots: build/ui-test",
 	)
@@ -460,7 +463,8 @@ check_search_flow :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 		assert(!search_loading && browsing && running)
 		name := state == 0 ? "search-error" : state == 1 ? "search-empty" : "search-results"
 		snapshot(renderer, surface, name)
-		assert(state == 2 ? len(catalog.videos) == 1 && notice == "" : notice != "")
+		assert(state == 0 ? notice != "" : notice == "")
+		assert(len(catalog.videos) == (state == 2 ? 1 : 0))
 		if state < 2 {key(sdl.K_TAB)}
 	}
 }

@@ -43,7 +43,7 @@ label :: proc(
 }
 
 loading_active :: proc() -> bool {
-	if login_screen {return false}
+	if login_screen {return login_waiting || login_next_poll > 0}
 	return browsing ? search_loading || card_menu_waiting : !loaded
 }
 

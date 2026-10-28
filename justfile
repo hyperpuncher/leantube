@@ -6,7 +6,7 @@ default:
 	@just --list
 
 # Type-check the local preview, UI tests, and shared code.
-check:
+check: host-qr
 	odin check src -vet
 	odin check src -vet -define:UI_TEST=true
 	odin check tests/layout -vet
@@ -35,6 +35,13 @@ test-layout:
 # Check TLS safety and request recovery against a real local HTTPS server.
 test-http:
 	bun tests/http/run.ts
+
+# Build the shared QR encoder for local login and UI tests.
+[private]
+host-qr:
+	mkdir -p build/host-qr
+	cc -c vendor/qrcodegen/qrcodegen.c -std=c11 -O2 -o build/host-qr/qrcodegen.o
+	ar rcs build/host-qr/qrcodegen.a build/host-qr/qrcodegen.o
 
 # Render the real UI offscreen and save local regression screenshots.
 test-ui:
