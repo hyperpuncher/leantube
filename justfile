@@ -13,13 +13,13 @@ check: host-qr
 	odin check tests/http -vet
 	odin check tests/youtube -vet
 	odin check tests/sponsorblock -vet
-	bash -n scripts/*.sh tests/install.sh tests/capture.sh
-	shellcheck -x scripts/*.sh tests/install.sh tests/capture.sh
+	bash -n scripts/*.sh tests/install.sh tests/capture.sh tests/native/run.sh
+	shellcheck -x scripts/*.sh tests/install.sh tests/capture.sh tests/native/run.sh
 	bun fmt --check package.json tsconfig.json scripts/ui.ts tests/http/run.ts
 	bun check
 
 # Test metadata and installer completion handling without a TV.
-test: test-layout test-http test-ui
+test: test-layout test-http test-ui test-native
 	odin test src/model -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
 	odin test src/youtube -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
 	odin test src/sponsorblock -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
@@ -43,6 +43,10 @@ host-qr:
 	cc -c vendor/qrcodegen/qrcodegen.c -std=c11 -O2 -o build/host-qr/qrcodegen.o
 	ar rcs build/host-qr/qrcodegen.a build/host-qr/qrcodegen.o
 
+# Test deferred display metadata without a TV.
+test-native:
+	bash tests/native/run.sh
+
 # Render the real UI offscreen and save local regression screenshots.
 test-ui: host-qr
 	bun scripts/ui.ts
@@ -58,7 +62,7 @@ test-tv-http:
 fmt:
 	odinfmt src -w
 	odinfmt tests -w
-	clang-format -i src/native/bridge.c src/native/clay.c src/native/keyboard.c src/native/keyboard.h
+	clang-format -i src/native/bridge.c src/native/clay.c tests/native/fixture.c
 	bun fmt package.json tsconfig.json scripts/ui.ts tests/http/run.ts
 
 # Explicit TV library setup. Downloads source, but does not contact the TV.

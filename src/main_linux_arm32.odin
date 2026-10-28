@@ -4,6 +4,7 @@ import clay "../vendor/clay"
 import "./model"
 import yt "./youtube"
 import "base:runtime"
+import "core:c"
 import "core:encoding/json"
 import "core:fmt"
 import "core:os"
@@ -13,22 +14,9 @@ import sdl "vendor:sdl3"
 
 APP_ID :: "org.hyperpuncher.leantube"
 APP_VERSION :: #config(APP_VERSION, "dev")
-Callback :: #type proc "c" (_: rawptr, _: rawptr, _: rawptr) -> bool
 foreign import bridge "system:tv_bridge"
 foreign bridge {
-	tv_bus_start :: proc(app_id: cstring) -> bool ---
-	tv_send :: proc(uri, payload: cstring, callback: Callback, data: rawptr) -> bool ---
-	tv_payload :: proc(message: rawptr) -> cstring ---
-	tv_poll :: proc() ---
-	tv_attach_window :: proc(app_id: cstring, display, surface: rawptr) -> bool ---
-	tv_attach_media :: proc(app_id, media_id, video_data: cstring) -> bool ---
-	tv_update_media :: proc(video_data: cstring) ---
 	tv_clay_abi :: proc(command_size, config_size, error_size: u32) -> bool ---
-	tv_release_media :: proc() ---
-	tv_raise :: proc() ---
-	tv_closing :: proc() -> bool ---
-	tv_visible :: proc() -> bool ---
-	tv_shutdown :: proc() ---
 }
 registered: bool
 unloaded: bool
@@ -42,12 +30,15 @@ attach_pending: bool
 send :: proc(endpoint: cstring, payload: string, kind: Request_Kind) -> bool {
 	body := strings.clone_to_cstring(payload)
 	defer delete(body)
-	if !tv_send(
-		endpoint,
-		body,
-		reply,
-		rawptr(uintptr(kind)),
-	) {fmt.eprintln("request send failed; kind:", kind); return false}
+	error: LS_Error
+	LSErrorInit(&error)
+	defer LSErrorFree(&error)
+	token: c.ulong
+	if !LSCall(bus, endpoint, body, reply, rawptr(uintptr(kind)), &token, &error) {
+		fmt.eprintln("request send failed; kind:", kind)
+		return false
+	}
+	if kind == .Subscribe {media_subscription = token}
 	return true
 }
 command :: proc(endpoint: cstring, extra: string = "", kind: Request_Kind = .Control) -> bool {
@@ -63,7 +54,7 @@ foreground :: proc() {
 }
 reply :: proc "c" (bus, message, data: rawptr) -> bool {
 	context = runtime.default_context()
-	value, error := json.parse(string(tv_payload(message)))
+	value, error := json.parse(string(LSMessageGetPayload(message)))
 	if error != .None {fmt.eprintln("invalid service JSON"); return true}
 	defer json.destroy_value(value)
 	root, ok := value.(json.Object)
@@ -88,7 +79,7 @@ reply :: proc "c" (bus, message, data: rawptr) -> bool {
 		if event, found := root["event"].(json.String); found {
 			fmt.println("app lifecycle:", string(event))
 			if event == "close" {running = false}
-			if event == "relaunch" {tv_raise()}
+			if event == "relaunch" {raise_window()}
 		}
 	}
 	if kind == .Load && media_id == "" {
@@ -151,11 +142,7 @@ reply :: proc "c" (bus, message, data: rawptr) -> bool {
 				encoded, err := json.marshal(metadata)
 				if err == nil {
 					video_metadata = encoded
-					if loaded {
-						update := strings.clone_to_cstring(string(encoded))
-						tv_update_media(update)
-						delete(update)
-					}
+					if loaded {update_display(string(encoded))}
 				}
 			} else {fmt.eprintln("unsupported video metadata")}
 		}
@@ -199,11 +186,10 @@ reply :: proc "c" (bus, message, data: rawptr) -> bool {
 }
 attach_media :: proc() {
 	fmt.println("native load completed")
-	id := strings.clone_to_cstring(media_id)
-	metadata := strings.clone_to_cstring(string(video_metadata))
-	fmt.println("native display attached:", tv_attach_media(APP_ID, id, metadata))
-	delete(metadata)
-	delete(id)
+	fmt.println(
+		"native display attached:",
+		attach_display(APP_ID, media_id, string(video_metadata)),
+	)
 	foreground()
 	command("luna://com.webos.media/play")
 }
@@ -213,11 +199,12 @@ stop_playback :: proc() {
 		unloaded = false
 		command("luna://com.webos.media/unload", "", .Unload)
 		start := sdl.GetTicks()
-		for !unloaded && sdl.GetTicks() - start < 1500 {tv_poll(); sdl.Delay(10)}
+		for !unloaded && sdl.GetTicks() - start < 1500 {poll_services(); sdl.Delay(10)}
 		fmt.println("media unload acknowledged:", unloaded)
 		if !unloaded {running = false}
 	}
-	tv_release_media()
+	cancel_media_subscription()
+	release_display()
 	yt.remove_local_hls()
 	delete(media_id); media_id = ""
 	delete(video_metadata); video_metadata = nil
@@ -271,8 +258,8 @@ load_video :: proc(url: string, renderer: ^sdl.Renderer) {
 	// Serialize opening and closing. Do not start a second session while the
 	// first load response is pending. SDL keeps input queued during this wait.
 	start := sdl.GetTicks()
-	for !load_replied && running && !tv_closing() && sdl.GetTicks() - start < 3000 {
-		tv_poll()
+	for !load_replied && running && !window_closing && sdl.GetTicks() - start < 3000 {
+		poll_services()
 		if !render(renderer) {running = false; return}
 		sdl.Delay(10)
 	}
@@ -282,7 +269,8 @@ load_video :: proc(url: string, renderer: ^sdl.Renderer) {
 main :: proc() {
 	_ = sdl.SetHint(sdl.HINT_VIDEO_DRIVER, "wayland")
 	_ = sdl.SetAppMetadata("LeanTube", APP_VERSION, APP_ID)
-	if !tv_bus_start(APP_ID) {os.exit(1)}
+	setup_logging()
+	if !start_bus(APP_ID) {os.exit(1)}
 	window: ^sdl.Window
 	renderer: ^sdl.Renderer
 	clay_memory: []u8
@@ -299,7 +287,8 @@ main :: proc() {
 		close_tv_cursor()
 		close_text()
 		if renderer != nil {sdl.DestroyRenderer(renderer)}
-		tv_shutdown()
+		close_window()
+		close_bus()
 		if window != nil {sdl.DestroyWindow(window)}
 		sdl.Quit()
 		delete(clay_memory)
@@ -311,13 +300,13 @@ main :: proc() {
 		.Register,
 	)
 	start := sdl.GetTicks()
-	for !registered && sdl.GetTicks() - start < 3000 {tv_poll(); sdl.Delay(10)}
+	for !registered && sdl.GetTicks() - start < 3000 {poll_services(); sdl.Delay(10)}
 	if !registered {fmt.eprintln("registration failed"); return}
 	if !sdl.Init({.VIDEO}) {fmt.eprintln("SDL init failed:", sdl.GetError()); return}
 	window = create_window()
 	if window == nil {fmt.eprintln("window failed:", sdl.GetError()); return}
 	properties := sdl.GetWindowProperties(window)
-	if !tv_attach_window(
+	if !attach_window(
 		APP_ID,
 		sdl.GetPointerProperty(properties, sdl.PROP_WINDOW_WAYLAND_DISPLAY_POINTER, nil),
 		sdl.GetPointerProperty(properties, sdl.PROP_WINDOW_WAYLAND_SURFACE_POINTER, nil),
@@ -355,8 +344,8 @@ main :: proc() {
 	if !render(renderer) {fmt.eprintln("frame failed:", sdl.GetError()); return}
 	fmt.println("video grid presented")
 	previous_frame := sdl.GetTicks()
-	for running && !tv_closing() {
-		tv_poll()
+	for running && !window_closing {
+		poll_services()
 		if return_to_grid {stop_playback()}
 		wheel: f32
 		event: sdl.Event
@@ -379,7 +368,7 @@ main :: proc() {
 		}
 		frame_dt := f32(min(now - previous_frame, 50)) / 1000
 		previous_frame = now
-		if !tv_visible() {running = false}
+		if !window_visible {running = false}
 		if dirty || loading_active() {if !render(renderer, wheel, frame_dt) {break}; dirty = false}
 		if attach_pending {attach_pending = false; attach_media()}
 	}

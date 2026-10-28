@@ -31,7 +31,7 @@ read -r -a libs <<< "$("$pkg" --libs luna-service2 glib-2.0 wayland-client)"
 # The ELF loader expands $ORIGIN on the TV, not this shell.
 # shellcheck disable=SC2016
 "$cc" build/obj/leantube.o \
-	src/native/bridge.c src/native/keyboard.c src/native/clay.c \
+	src/native/bridge.c src/native/clay.c \
 	src/native/webos-shell-protocol.c build/obj/text-protocol.c vendor/qrcodegen/qrcodegen.c \
 	-std=c11 "${c_flags[@]}" "${cpu[@]}" "${cflags[@]}" \
 	-Isrc/native -Ibuild/obj -Ivendor/clay -Ivendor/qrcodegen \
