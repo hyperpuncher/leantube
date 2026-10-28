@@ -294,6 +294,20 @@ main :: proc() {
 		delete(clay_memory)
 		fmt.println("native cleanup completed")
 	}
+	path, path_error := os.get_executable_path(context.allocator)
+	if path_error != nil {return}
+	defer delete(path)
+	app_directory = filepath.dir(path)
+	// Use the firmware's EGL adapter, never a copied driver-specific binary.
+	legacy_egl := "/usr/lib/libwayland-egl.so.0"
+	egl_alias := fmt.aprintf("%s/lib/libwayland-egl.so.1", app_directory)
+	defer delete(egl_alias)
+	if os.exists(legacy_egl) && !os.exists(egl_alias) {
+		if error := os.symlink(legacy_egl, egl_alias); error != nil {
+			fmt.eprintln("EGL adapter alias failed:", error)
+			return
+		}
+	}
 	send(
 		"luna://com.webos.applicationManager/registerApp",
 		"{\"id\":\"" + APP_ID + "\"}",
@@ -330,10 +344,6 @@ main :: proc() {
 	)
 	clay.SetMeasureTextFunction(measure_text, nil)
 	if !sdl.SetRenderDrawBlendMode(renderer, sdl.BLENDMODE_BLEND) {return}
-	path, path_error := os.get_executable_path(context.allocator)
-	if path_error != nil {return}
-	defer delete(path)
-	app_directory = filepath.dir(path)
 	if !open_tv_cursor() {fmt.eprintln("cursor failed:", sdl.GetError())}
 	if !open_text(renderer) {fmt.eprintln("UI assets failed:", sdl.GetError()); return}
 	if start_network() {
