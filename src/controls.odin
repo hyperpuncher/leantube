@@ -279,7 +279,15 @@ player_layout :: proc(elapsed, total, speed, quality: string) {
 					) {label(speed, .Mono_Body, COLOR_MUTED)}
 					control_button(FASTER_BUTTON)
 				}
-				if quality != "" {label(quality, .Mono_Body, COLOR_MUTED)}
+				// Reserve the quality slot before the media service reports it.
+				if clay.UI()(
+				{
+					layout = {
+						sizing = {width = clay.SizingFixed(scaled(112))},
+						childAlignment = {x = .Right, y = .Center},
+					},
+				},
+				) {if quality != "" {label(quality, .Mono_Body, COLOR_MUTED)}}
 			}
 		}
 	}

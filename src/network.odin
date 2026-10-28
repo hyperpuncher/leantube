@@ -684,6 +684,7 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				notice =
 					result.error == .No_Direct_Stream ? "YouTube did not provide a supported direct stream" : "video resolution failed; try again"
 			} else {
+				stream_width, stream_height = result.stream.width, result.stream.height
 				playback_hdr = result.stream.hdr
 				load_video(result.stream.url, renderer)
 				show_player_controls()

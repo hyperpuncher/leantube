@@ -136,6 +136,9 @@ hls_attributes_and_resolution_are_parsed_without_urls :: proc(t: ^testing.T) {
 	line := `#EXT-X-STREAM-INF:BANDWIDTH=55873126,RESOLUTION=3840x1920,CODECS="vp09.00.50.08,mp4a.40.2"`
 	testing.expect_value(t, attribute(line, "RESOLUTION"), "3840x1920")
 	testing.expect_value(t, attribute(line, "CODECS"), "vp09.00.50.08,mp4a.40.2")
+	width, height := resolution_size("3840x1920")
+	testing.expect_value(t, width, 3840)
+	testing.expect_value(t, height, 1920)
 	testing.expect_value(t, resolution_height("3840x1920"), 1920)
 	testing.expect_value(t, resolution_height("bad"), 0)
 }

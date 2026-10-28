@@ -37,14 +37,22 @@ attribute :: proc(line, key: string) -> string {
 	return line[start:start + end]
 }
 
-resolution_height :: proc(resolution: string) -> int {
+resolution_size :: proc(resolution: string) -> (width, height: int) {
 	x := strings.index_byte(resolution, 'x')
-	if x <= 0 {return 0}
-	height: int
+	if x <= 0 {return}
+	for ch in resolution[:x] {
+		if ch < '0' || ch > '9' {break}
+		width = width * 10 + int(ch - '0')
+	}
 	for ch in resolution[x + 1:] {
 		if ch < '0' || ch > '9' {break}
 		height = height * 10 + int(ch - '0')
 	}
+	return
+}
+
+resolution_height :: proc(resolution: string) -> int {
+	_, height := resolution_size(resolution)
 	return height
 }
 
@@ -286,6 +294,8 @@ localize_hls :: proc(client: ^http.Client, stream: ^Stream) -> bool {
 	variant := lines[best]
 	variant_uri := strings.trim_space(lines[best + 1])
 	if !strings.has_prefix(variant_uri, "https://") {return false}
+	resolution := attribute(variant, "RESOLUTION")
+	stream.width, stream.height = resolution_size(resolution)
 	stream.hdr = hdr_from_range(attribute(variant, "VIDEO-RANGE"))
 	group := attribute(variant, "AUDIO")
 	audio_lines := audio_group_lines(lines, group)
@@ -376,7 +386,7 @@ localize_hls :: proc(client: ^http.Client, stream: ^Stream) -> bool {
 	if !write_private(LOCAL_HLS_PATH, strings.to_string(builder)) {return false}
 	fmt.printf(
 		"private HLS: resolution=%s codecs=%s audio=%v\n",
-		attribute(variant, "RESOLUTION"),
+		resolution,
 		attribute(variant, "CODECS"),
 		has_audio,
 	)

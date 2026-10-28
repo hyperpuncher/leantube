@@ -95,14 +95,15 @@ search_cards_read_views_and_the_relative_date :: proc(t: ^testing.T) {
 player_selects_the_best_direct_combined_h264_stream :: proc(t: ^testing.T) {
 	stream, error := parse_player(
 		`{"playabilityStatus":{"status":"OK"},"streamingData":{"formats":[
-		{"height":360,"mimeType":"video/mp4; codecs=\"avc1, mp4a\"","url":"https://media.example/low"},
-		{"height":1080,"mimeType":"video/mp4; codecs=\"avc1, mp4a\"","signatureCipher":"not supported"},
-		{"height":720,"mimeType":"video/mp4; codecs=\"avc1, mp4a\"","url":"https://media.example/high"},
-		{"height":2160,"mimeType":"video/mp4; codecs=\"avc1, mp4a\"","url":"http://media.example/insecure"}
+		{"width":640,"height":360,"mimeType":"video/mp4; codecs=\"avc1, mp4a\"","url":"https://media.example/low"},
+		{"width":1920,"height":1080,"mimeType":"video/mp4; codecs=\"avc1, mp4a\"","signatureCipher":"not supported"},
+		{"width":1280,"height":720,"mimeType":"video/mp4; codecs=\"avc1, mp4a\"","url":"https://media.example/high"},
+		{"width":3840,"height":2160,"mimeType":"video/mp4; codecs=\"avc1, mp4a\"","url":"http://media.example/insecure"}
 	]}}`,
 	)
 	defer delete(stream.url)
 	testing.expect_value(t, error, .None)
+	testing.expect_value(t, stream.width, 1280)
 	testing.expect_value(t, stream.height, 720)
 	testing.expect_value(t, stream.url, "https://media.example/high")
 }

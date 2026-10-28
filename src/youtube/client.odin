@@ -17,6 +17,7 @@ Error :: enum {
 }
 Stream :: struct {
 	url:                string,
+	width:              int,
 	height:             int,
 	audio_url:          string,
 	audio_init_end:     int,
@@ -387,6 +388,7 @@ parse_player :: proc(data: string, hls: bool = false) -> (stream: Stream, error:
 	for format in formats {
 		url, ok := field(format, "url").(json.String)
 		mime, _ := field(format, "mimeType").(json.String)
+		width, _ := model.number(field(format, "width"))
 		height, _ := model.number(field(format, "height"))
 		if !ok ||
 		   !strings.has_prefix(string(url), "https://") ||
@@ -397,6 +399,7 @@ parse_player :: proc(data: string, hls: bool = false) -> (stream: Stream, error:
 			delete(stream.url)
 			stream = {
 				url    = strings.clone(string(url)),
+				width  = int(width),
 				height = int(height),
 			}
 		}
