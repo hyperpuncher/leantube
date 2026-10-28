@@ -1,4 +1,5 @@
 # Preserve whitespace in upstream sources, generated code, and patch context.
 vendor/** -whitespace
+app/licenses/* -whitespace
 patches/*.patch -whitespace
 src/native/webos-shell-* -whitespace

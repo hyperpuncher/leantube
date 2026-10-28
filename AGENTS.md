@@ -5,12 +5,13 @@
 - use `just` for project tasks
 - run `just fmt`, `just check`, and `just test` after changes
 - use native Wayland, Odin, Clay, and SDL3
-- use Odin target-specific file names for Linux x86-64 development and B9 ARM32 code
+- use Odin target-specific file names for Linux x86-64 development and webOS ARM32 code
 - use neutral UI colors; use the logo color only for accents
-- keep B9 SDK and compiler inputs in the ignored toolchain cache, not in git
+- keep downloaded SDK and compiler inputs in the ignored toolchain cache; track their pins and build recipes
 - the B9 app ABI is ARM32 soft-float, even though the kernel reports aarch64
-- use the cached compiler with `patches/odin-arm32-softfp.patch`, not stock ARM32 Odin
-- keep the B9's original `libwayland-egl.so.0` under the app-private name `libwayland-egl.so.1`; the newer adapter is incompatible
+- use `just setup` to build the compiler with `patches/odin-arm32-softfp.patch`, not stock ARM32 Odin
+- use the TV's installed EGL adapter; older firmware needs an app-private `.so.1` symlink to its original `.so.0`
+- treat the B9 as a tested device, not a model restriction; select compatibility behavior by available APIs
 - keep the LeanTube app ID separate from both installed YouTube apps; preserve both YouTube apps
 - do not change TV firmware, system libraries, startup services, or remote bindings
 - announce any standby/wake test before interrupting the TV

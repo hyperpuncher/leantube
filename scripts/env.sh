@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Sourced by project scripts. Run them from the project root through just.
-: "${WEBOS_SDK:=$PWD/.cache/webos/sdk}"
-: "${WEBOS_ODIN:=$PWD/.cache/webos/odin/odin}"
-: "${WEBOS_PLATFORM:=$PWD/.cache/webos/platform}"
+: "${WEBOS_TOOLCHAIN:=$PWD/.cache/toolchain}"
+WEBOS_TOOLCHAIN=$(realpath -m "$WEBOS_TOOLCHAIN")
+export WEBOS_TOOLCHAIN
+export WEBOS_SDK="$WEBOS_TOOLCHAIN/sdk"
+export WEBOS_ODIN="$WEBOS_TOOLCHAIN/odin/odin"
+export WEBOS_PLATFORM="$WEBOS_TOOLCHAIN/platform"
 : "${TV_HOST:=tv}"
 app_id=$(jq -r .id app/appinfo.json)
 app_main=$(jq -r .main app/appinfo.json)

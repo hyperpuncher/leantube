@@ -65,15 +65,22 @@ fmt:
 	clang-format -i src/native/bridge.c src/native/clay.c tests/native/fixture.c
 	bun fmt package.json tsconfig.json scripts/ui.ts tests/http/run.ts
 
-# Explicit TV library setup. Downloads source, but does not contact the TV.
-setup-tv-images:
-	bash scripts/setup-tv-images.sh
+# Provision the toolchain, then build native libraries. No TV access.
+setup: setup-toolchain setup-libs
 
-# Build the B9 app for development, with debug information and no optimization.
+# Download pinned inputs and build the patched compiler. Explicit, not a build dependency.
+setup-toolchain:
+	bash scripts/setup-toolchain.sh
+
+# Build native libraries with upstream Meson, CMake, and Ninja tasks.
+setup-libs:
+	bash scripts/setup-libs.sh
+
+# Build the webOS ARM32 app for development, with debug information and no optimization.
 build:
 	bash scripts/build.sh dev
 
-# Build the optimized B9 app for release.
+# Build the optimized webOS ARM32 app for release.
 build-release:
 	bash scripts/build.sh release
 

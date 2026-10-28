@@ -19,7 +19,7 @@ pkg="$WEBOS_SDK/bin/pkg-config"
 sysroot="$WEBOS_SDK/arm-webos-linux-gnueabi/sysroot"
 for required in "$WEBOS_ODIN" "$cc" "$pkg" "$WEBOS_SDK/bin/wayland-scanner" "$sysroot/usr/lib/libcurl.so.4" "$sysroot/usr/lib/libssl.so.3" "$sysroot/usr/lib/libcrypto.so.3" "$WEBOS_PLATFORM/runtime/libSDL3.so.0" "$WEBOS_PLATFORM/runtime/libSDL3_ttf.so.0" "$WEBOS_PLATFORM/runtime/libSDL3_image.so.0"; do
 	if [[ ! -f "$required" ]]; then
-		printf 'missing toolchain input: %s\nconfigure the cache paths in .env; see .env.example\n' "$required" >&2
+		printf 'missing toolchain input: %s\nrun just setup to build the pinned toolchain\n' "$required" >&2
 		exit 1
 	fi
 done
@@ -37,7 +37,7 @@ for generated in build/obj/text-client-protocol.h build/obj/text-protocol.c; do
 		break
 	fi
 done
-cpu=(-mcpu=cortex-a9 -mfpu=neon -mfloat-abi=softfp)
+cpu=(-march=armv7-a -mfpu=neon -mfloat-abi=softfp)
 read -r -a cflags <<< "$("$pkg" --cflags luna-service2 glib-2.0 wayland-client)"
 read -r -a libs <<< "$("$pkg" --libs luna-service2 glib-2.0 wayland-client)"
 # Keep the C dependencies optimized in both modes. Ccache tracks their inputs.
@@ -53,8 +53,7 @@ done
 # The ELF loader expands $ORIGIN on the TV, not this shell.
 # shellcheck disable=SC2016
 "$cc" build/obj/leantube.o "${objects[@]}" "${cpu[@]}" \
-	-L"$WEBOS_PLATFORM/runtime" -L"$WEBOS_PLATFORM/device-link" \
-	-Wl,-rpath-link,"$WEBOS_PLATFORM/device-link" -Wl,-rpath-link,"$sysroot/usr/lib" \
+	-L"$WEBOS_PLATFORM/runtime" -Wl,-rpath-link,"$sysroot/usr/lib" \
 	-l:libSDL3.so.0 -l:libSDL3_ttf.so.0 -l:libSDL3_image.so.0 -lAcbAPI \
 	"${libs[@]}" -Wl,--allow-shlib-undefined \
 	-l:libcurl.so.4 -l:libssl.so.3 -l:libcrypto.so.3 -lz -lm -lpthread -ldl -lrt -latomic \
@@ -66,4 +65,4 @@ for library in libcurl.so.4 libssl.so.3 libcrypto.so.3; do
 	cp -L "$sysroot/usr/lib/$library" "build/app/lib/$library"
 	"$WEBOS_SDK/bin/arm-webos-linux-gnueabi-strip" --strip-unneeded "build/app/lib/$library"
 done
-printf 'built %s for B9 ARM32 soft-float (%s)\n' "build/app/$app_main" "$mode"
+printf 'built %s for webOS ARM32 soft-float (%s)\n' "build/app/$app_main" "$mode"

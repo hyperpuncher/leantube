@@ -1,0 +1,11 @@
+# destination sha256 url
+sdk-x86_64 2230a6351e5cce6fcb9d4fdcb4697335f223995401ef969c81744aaeb14c5344 https://github.com/openlgtv/buildroot-nc4/releases/download/2026.08-webos/arm-webos-linux-gnueabi_sdk-buildroot-x86_64.tar.gz
+sdk-aarch64 3a9330f3789f8008ece7c8a48f58c3a71d0307a9a1f81896db938b785524c3ce https://github.com/openlgtv/buildroot-nc4/releases/download/2026.08-webos/arm-webos-linux-gnueabi_sdk-buildroot-aarch64.tar.gz
+odin df52f2313b799d92262be29ced6ac6bfbf03158e3409ec80dfdececa4d91e786 https://codeload.github.com/odin-lang/Odin/tar.gz/1bc18e5bf4b200a606ce263762b5a789d0b52dd2
+src/wayland 864fb2a8399e2d0ec39d56e9d9b753c093775beadc6022ce81f441929a81e5ed https://gitlab.freedesktop.org/wayland/wayland/-/releases/1.23.1/downloads/wayland-1.23.1.tar.xz
+src/xkbcommon 65782f0a10a4b455af9c6baab7040e2f537520caa2ec2092805cdfd36863b247 https://xkbcommon.org/download/libxkbcommon-1.7.0.tar.xz
+src/SDL 9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3 https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz
+src/SDL_ttf 63547d58d0185c833213885b635a2c0548201cc8f301e6587c0be1a67e1e045d https://github.com/libsdl-org/SDL_ttf/releases/download/release-3.2.2/SDL3_ttf-3.2.2.tar.gz
+src/SDL_ttf/external/freetype 026a05a49d114a1235d2926f4c03a9330e4b1a6efe7c217ec9607904c32907d4 https://codeload.github.com/libsdl-org/freetype/tar.gz/9973564cfa63763a3e4ac67c09147899539b1e07
+src/SDL_image e8223b424bc7541cf84ffff5cf7e4f24ec3711c60462cb1bd6dc1d7bd7f25477 https://github.com/libsdl-org/SDL_image/releases/download/release-3.4.8/SDL3_image-3.4.8.tar.gz
+src/SDL_image/external/libwebp 9bd4faa68b113b5f6ca41884eee8ecec54eea46e730ecfd4d6a5f6473d6eb433 https://codeload.github.com/libsdl-org/libwebp/tar.gz/0b4545ee8210ff72ec47ab1ad56c2e7460663d11
