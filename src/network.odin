@@ -659,6 +659,7 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 					restore_selected = -1
 				}
 			}
+			if browse_id == "FEsubscriptions" {model.sort_latest(catalog.videos[:])}
 			catalog_revision += 1
 			resize(&textures, len(catalog.videos))
 			notice = len(catalog.videos) == 0 ? "no items found" : ""

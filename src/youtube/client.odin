@@ -97,6 +97,7 @@ text :: proc(value: json.Value) -> string {
 // flat labels YouTube serves on a card, in any order. The labels stay owned by
 // the caller.
 fill_card_labels :: proc(card: ^model.Video, labels: []string) {
+	card.published_age_s = -1
 	views: u64
 	relative: string
 	defer delete(relative)
@@ -106,6 +107,7 @@ fill_card_labels :: proc(card: ^model.Video, labels: []string) {
 			views = model.views_count(label)
 		case relative == "" && strings.has_suffix(label, "ago"):
 			relative = strings.clone(label)
+			if age, ok := model.relative_age(label); ok {card.published_age_s = age}
 		case card.channel == "" && label != "•":
 			card.channel = strings.clone(label)
 		}

@@ -1,6 +1,8 @@
 package model
 
 import "core:fmt"
+import "core:sort"
+import "core:strconv"
 import "core:strings"
 
 GRID_COLUMNS :: 3
@@ -8,6 +10,7 @@ Video :: struct {
 	duration_ms:                        f64,
 	id, title, channel, duration_label: string,
 	meta:                               string,
+	published_age_s:                    i64,
 	browse_id, thumbnail_url:           string,
 	actions:                            [dynamic]Card_Action,
 }
@@ -48,6 +51,39 @@ quality_label :: proc(width, height: int) -> string {
 	return index >= 0 ? QUALITY_TIERS[index].label : ""
 }
 
+
+// Convert a relative card label such as "Streamed 2 days ago" to seconds.
+// Unknown labels return false and sort after known dates.
+relative_age :: proc(text: string) -> (seconds: i64, ok: bool) {
+	trimmed := strings.trim_space(text)
+	if trimmed == "just now" {return 0, true}
+	if !strings.has_suffix(trimmed, "ago") {return}
+	fields := strings.fields(strings.trim_space(strings.trim_suffix(trimmed, "ago")))
+	defer delete(fields)
+	if len(fields) < 2 {return}
+	count, parsed := strconv.parse_i64(fields[len(fields) - 2])
+	if !parsed || count < 0 {return}
+	multiplier: i64
+	switch {
+	case strings.has_prefix(fields[len(fields) - 1], "second"):
+		multiplier = 1
+	case strings.has_prefix(fields[len(fields) - 1], "minute"):
+		multiplier = 60
+	case strings.has_prefix(fields[len(fields) - 1], "hour"):
+		multiplier = 60 * 60
+	case strings.has_prefix(fields[len(fields) - 1], "day"):
+		multiplier = 24 * 60 * 60
+	case strings.has_prefix(fields[len(fields) - 1], "week"):
+		multiplier = 7 * 24 * 60 * 60
+	case strings.has_prefix(fields[len(fields) - 1], "month"):
+		multiplier = 30 * 24 * 60 * 60
+	case strings.has_prefix(fields[len(fields) - 1], "year"):
+		multiplier = 365 * 24 * 60 * 60
+	case:
+		return
+	}
+	return count * multiplier, true
+}
 
 // Views arrive as text such as "179K views", "1,234,567 views" or "1.1M views".
 // Return 0 for "No views" and for anything unreadable.
@@ -116,6 +152,26 @@ video_meta :: proc(views: u64, published: string) -> string {
 	if views_text == "" {return strings.clone(published)}
 	if relative == "" {return strings.clone(views_text)}
 	return fmt.aprintf("%s · %s", views_text, relative)
+}
+
+// Newest video first. Unknown dates stay after dated cards. Equal ages keep
+// their incoming order, so a tie is not reordered.
+sort_latest :: proc(videos: []Video) {
+	sort.merge_sort_proc(videos, proc(a, b: Video) -> int {
+		a_known := a.published_age_s >= 0
+		b_known := b.published_age_s >= 0
+		switch {
+		case a_known && !b_known:
+			return -1
+		case !a_known && b_known:
+			return 1
+		case !a_known:
+			return 0
+		}
+		if a.published_age_s < b.published_age_s {return -1}
+		if a.published_age_s > b.published_age_s {return 1}
+		return 0
+	})
 }
 
 time_label :: proc(ms: f64, zero: string = "00:00") -> string {

@@ -62,6 +62,34 @@ served_view_text_becomes_a_count :: proc(t: ^testing.T) {
 }
 
 @(test)
+relative_dates_become_sortable_ages :: proc(t: ^testing.T) {
+	for c in ([]struct {
+			text:    string,
+			seconds: i64,
+			ok:      bool,
+		}{{"just now", 0, true}, {"1 minute ago", 60, true}, {"2 hours ago", 2 * 60 * 60, true}, {"3 days ago", 3 * 24 * 60 * 60, true}, {"4 weeks ago", 4 * 7 * 24 * 60 * 60, true}, {"Streamed 5 months ago", 5 * 30 * 24 * 60 * 60, true}, {"6 years ago", 6 * 365 * 24 * 60 * 60, true}, {"yesterday", 0, false}}) {
+		seconds, ok := relative_age(c.text)
+		testing.expect_value(t, ok, c.ok)
+		if c.ok {testing.expect_value(t, seconds, c.seconds)}
+	}
+}
+
+@(test)
+latest_sort_puts_newest_first_and_unknown_dates_last :: proc(t: ^testing.T) {
+	videos := []Video {
+		{id = "3 days", published_age_s = 3 * 24 * 60 * 60},
+		{id = "unknown", published_age_s = -1},
+		{id = "1 hour", published_age_s = 60 * 60},
+		{id = "2 days", published_age_s = 2 * 24 * 60 * 60},
+	}
+	sort_latest(videos)
+	testing.expect_value(t, videos[0].id, "1 hour")
+	testing.expect_value(t, videos[1].id, "2 days")
+	testing.expect_value(t, videos[2].id, "3 days")
+	testing.expect_value(t, videos[3].id, "unknown")
+}
+
+@(test)
 card_meta_joins_views_and_the_relative_date :: proc(t: ^testing.T) {
 	joined := video_meta(1_234_567, " Streamed 2 years ago ")
 	defer delete(joined)

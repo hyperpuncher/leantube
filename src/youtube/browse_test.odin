@@ -68,4 +68,5 @@ browse_cards_read_views_and_the_relative_date :: proc(t: ^testing.T) {
 	if !testing.expect_value(t, len(catalog.videos), 1) {return}
 	testing.expect_value(t, catalog.videos[0].channel, "Linus Tech Tips")
 	testing.expect_value(t, catalog.videos[0].meta, "179K views · Streamed 5 months ago")
+	testing.expect_value(t, catalog.videos[0].published_age_s, i64(5 * 30 * 24 * 60 * 60))
 }
