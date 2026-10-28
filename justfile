@@ -40,7 +40,7 @@ test-http:
 [private]
 host-qr:
 	mkdir -p build/host-qr
-	cc -c vendor/qrcodegen/qrcodegen.c -std=c11 -O2 -o build/host-qr/qrcodegen.o
+	CCACHE_DIR="$PWD/.cache/ccache" ccache cc -c vendor/qrcodegen/qrcodegen.c -std=c11 -O2 -o build/host-qr/qrcodegen.o
 	ar rcs build/host-qr/qrcodegen.a build/host-qr/qrcodegen.o
 
 # Test deferred display metadata without a TV.
@@ -69,19 +69,19 @@ fmt:
 setup-tv-images:
 	bash scripts/setup-tv-images.sh
 
-# Build the B9 ARM32 executable with the cached toolchain and libraries.
+# Build the B9 app for development, with debug information and no optimization.
 build:
-	bash scripts/build.sh
+	bash scripts/build.sh dev
 
-# Build with debug information and minimal optimization.
-build-debug:
-	LEANTUBE_DEBUG=1 bash scripts/build.sh
+# Build the optimized B9 app for release.
+build-release:
+	bash scripts/build.sh release
 
 # Run the headless ABI/layout regression on the TV, without opening an app.
 test-tv-layout:
 	bash scripts/test-tv-layout.sh
 
-package: build
+package: build-release
 	bun run ares-package build/app -o build
 
 # Check live search, cover download, resolution, and CDN access locally.
