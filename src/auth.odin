@@ -40,6 +40,7 @@ MAX_ACCOUNTS :: 5
 
 auth_accounts: [dynamic]Auth_Token
 auth_active := -1
+auth_directory: string
 
 Auth_Store :: struct {
 	active:   int,
@@ -52,7 +53,9 @@ current_auth :: proc() -> ^Auth_Token {
 }
 
 auth_path :: proc() -> string {
-	return fmt.aprintf("%s/.auth.json", app_directory)
+	directory := auth_directory
+	if directory == "" {directory = app_directory}
+	return fmt.aprintf("%s/.auth.json", directory)
 }
 
 save_auth :: proc() -> bool {

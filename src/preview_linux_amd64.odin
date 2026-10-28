@@ -100,6 +100,7 @@ check_cover_fill :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 
 main :: proc() {
 	app_directory = "app"
+	auth_directory = "build/dev"
 	window: ^sdl.Window
 	surface: ^sdl.Surface
 	renderer: ^sdl.Renderer
