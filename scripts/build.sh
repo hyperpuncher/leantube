@@ -12,11 +12,8 @@ for required in "$WEBOS_ODIN" "$cc" "$pkg" "$WEBOS_SDK/bin/wayland-scanner" "$sy
 		exit 1
 	fi
 done
-# Odin's object filenames can change when reachable procedures change.
-# Clear objects and package staging, but keep private requests and captures.
-for directory in build/obj build/app; do
-	if [[ -d "$directory" ]]; then trash -- "$directory"; fi
-done
+# Recreate package staging, but keep local credentials, requests, and captures.
+if [[ -d build/app ]]; then trash -- build/app; fi
 mkdir -p build/obj build/app
 odin_flags=(-o:speed)
 c_flags=(-O2)
@@ -25,27 +22,20 @@ if [[ ${LEANTUBE_DEBUG:-0} == 1 ]]; then
 	c_flags=(-Og -g)
 fi
 "$WEBOS_ODIN" build src -target:linux_arm32 -microarch:cortex-a9 \
-	-build-mode:obj -out:build/obj/leantube.o "${odin_flags[@]}" -define:APP_VERSION="$app_version"
+	-build-mode:obj -use-single-module -out:build/obj/leantube.o "${odin_flags[@]}" -define:APP_VERSION="$app_version"
 "$WEBOS_SDK/bin/wayland-scanner" client-header vendor/webos-text/text.xml build/obj/text-client-protocol.h
 "$WEBOS_SDK/bin/wayland-scanner" private-code vendor/webos-text/text.xml build/obj/text-protocol.c
 cpu=(-mcpu=cortex-a9 -mfpu=neon -mfloat-abi=softfp)
 read -r -a cflags <<< "$("$pkg" --cflags luna-service2 glib-2.0 wayland-client)"
 read -r -a libs <<< "$("$pkg" --libs luna-service2 glib-2.0 wayland-client)"
-"$cc" -c vendor/qrcodegen/qrcodegen.c -o build/obj/qrcodegen.o -std=c11 "${c_flags[@]}" \
-	"${cpu[@]}"
-"$cc" -c src/native/bridge.c -o build/obj/bridge.o -std=c11 "${c_flags[@]}" \
-	"${cpu[@]}" -Isrc/native -Ivendor/qrcodegen "${cflags[@]}"
-"$cc" -c src/native/keyboard.c -o build/obj/keyboard.o -std=c11 "${c_flags[@]}" \
-	"${cpu[@]}" -Ibuild/obj "${cflags[@]}"
-"$cc" -c build/obj/text-protocol.c -o build/obj/text-protocol.o "${c_flags[@]}" \
-	"${cpu[@]}" "${cflags[@]}"
-"$cc" -c src/native/webos-shell-protocol.c -o build/obj/protocol.o "${c_flags[@]}" \
-	"${cpu[@]}" "${cflags[@]}"
-"$cc" -c src/native/clay.c -o build/obj/clay.o -std=c11 "${c_flags[@]}" \
-	"${cpu[@]}" -Ivendor/clay
 # The ELF loader expands $ORIGIN on the TV, not this shell.
 # shellcheck disable=SC2016
-"$cc" build/obj/*.o -L"$WEBOS_PLATFORM/runtime" -L"$WEBOS_PLATFORM/device-link" \
+"$cc" build/obj/leantube.o \
+	src/native/bridge.c src/native/keyboard.c src/native/clay.c \
+	src/native/webos-shell-protocol.c build/obj/text-protocol.c vendor/qrcodegen/qrcodegen.c \
+	-std=c11 "${c_flags[@]}" "${cpu[@]}" "${cflags[@]}" \
+	-Isrc/native -Ibuild/obj -Ivendor/clay -Ivendor/qrcodegen \
+	-L"$WEBOS_PLATFORM/runtime" -L"$WEBOS_PLATFORM/device-link" \
 	-Wl,-rpath-link,"$WEBOS_PLATFORM/device-link" -Wl,-rpath-link,"$sysroot/usr/lib" \
 	-l:libSDL3.so.0 -l:libSDL3_ttf.so.0 -l:libSDL3_image.so.0 -lAcbAPI \
 	"${libs[@]}" -Wl,--allow-shlib-undefined \
@@ -54,13 +44,8 @@ read -r -a libs <<< "$("$pkg" --libs luna-service2 glib-2.0 wayland-client)"
 cp -a app/. build/app/
 mkdir -p build/app/lib
 cp -a "$WEBOS_PLATFORM/runtime/." build/app/lib/
-for entry in \
-	"$sysroot/usr/lib/libcurl.so.4.8.0:libcurl.so.4" \
-	"$sysroot/usr/lib/libssl.so.3:libssl.so.3" \
-	"$sysroot/usr/lib/libcrypto.so.3:libcrypto.so.3"; do
-	src=${entry%%:*}
-	dst="build/app/lib/${entry##*:}"
-	cp -a "$src" "$dst"
-	"$WEBOS_SDK/bin/arm-webos-linux-gnueabi-strip" --strip-unneeded "$dst"
+for library in libcurl.so.4 libssl.so.3 libcrypto.so.3; do
+	cp -L "$sysroot/usr/lib/$library" "build/app/lib/$library"
+	"$WEBOS_SDK/bin/arm-webos-linux-gnueabi-strip" --strip-unneeded "build/app/lib/$library"
 done
 printf 'built %s for B9 ARM32 soft-float\n' "build/app/$app_main"

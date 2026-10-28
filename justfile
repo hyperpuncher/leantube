@@ -44,11 +44,11 @@ host-qr:
 	ar rcs build/host-qr/qrcodegen.a build/host-qr/qrcodegen.o
 
 # Render the real UI offscreen and save local regression screenshots.
-test-ui:
+test-ui: host-qr
 	bun scripts/ui.ts
 
 # Open a local Wayland UI preview. No TV commands or media playback.
-dev *args:
+dev *args: host-qr
 	@bun scripts/ui.ts --dev {{args}}
 
 # Check native YouTube and SponsorBlock HTTPS on the B9 without opening an app.
@@ -74,7 +74,7 @@ build-debug:
 	LEANTUBE_DEBUG=1 bash scripts/build.sh
 
 # Run the headless ABI/layout regression on the TV, without opening an app.
-test-tv-layout: build
+test-tv-layout:
 	bash scripts/test-tv-layout.sh
 
 package: build
