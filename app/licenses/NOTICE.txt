@@ -3,10 +3,13 @@ It is modified for LeanTube. See SDL-webOS.txt for its license.
 
 LeanTube uses SDL_ttf for text rendering.
 This software is based in part on the work of the FreeType Team.
-Portions of this software are copyright 2023 The FreeType Project
+Portions of this software are copyright 2026 The FreeType Project
 (https://freetype.org). All rights reserved.
 
 SDL3, Wayland, libffi, and xkbcommon use the licenses in this directory.
+The app includes private curl, OpenSSL, zlib, nghttp3, and ngtcp2 libraries.
+Their licenses are curl.txt, OpenSSL.txt, zlib.txt, nghttp3.txt, sfparse.txt,
+and ngtcp2.txt in the packaged licenses directory.
 GCC runtime libraries use GPL version 3 with the GCC Runtime Library
 Exception version 3.1. See GPL-3.0.txt and GCC-runtime.txt.
 

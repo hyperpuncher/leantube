@@ -21,13 +21,13 @@ Response :: struct {
 	body:   [dynamic]u8,
 }
 
-// CURLOPT_REDIR_PROTOCOLS is 182 in curl's ABI. The B9's curl 7.53 predates
-// REDIR_PROTOCOLS_STR; current Odin bindings omit this deprecated enum member.
+// CURLOPT_REDIR_PROTOCOLS is 182 in curl's ABI. The current Odin bindings
+// omit this enum member.
 @(private)
 CURL_REDIR_PROTOCOLS :: curl.option(182)
 
-// Open before starting the network worker; close after joining it. Keep HTTPS
-// on one worker for the B9's OpenSSL 1.0.2. Requests must stay off the UI thread.
+// Open before starting the network worker; close after joining it.
+// Each client belongs to one worker. Requests must stay off the UI thread.
 open :: proc(ca_file: string = "") -> (client: Client, error: Error) {
 	curl.global_init(c.long(curl.GLOBAL_DEFAULT)) or_return
 	client.handle = curl.easy_init()

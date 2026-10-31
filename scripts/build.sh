@@ -17,7 +17,7 @@ source scripts/env.sh
 cc="$WEBOS_SDK/bin/arm-webos-linux-gnueabi-gcc"
 pkg="$WEBOS_SDK/bin/pkg-config"
 sysroot="$WEBOS_SDK/arm-webos-linux-gnueabi/sysroot"
-for required in "$WEBOS_ODIN" "$cc" "$pkg" "$WEBOS_SDK/bin/wayland-scanner" "$sysroot/usr/lib/libcurl.so.4" "$sysroot/usr/lib/libssl.so.3" "$sysroot/usr/lib/libcrypto.so.3" "$WEBOS_PLATFORM/runtime/libSDL3.so.0" "$WEBOS_PLATFORM/runtime/libSDL3_ttf.so.0" "$WEBOS_PLATFORM/runtime/libSDL3_image.so.0"; do
+for required in "$WEBOS_ODIN" "$cc" "$pkg" "$WEBOS_SDK/bin/wayland-scanner" "$sysroot/usr/lib/libcurl.so.4" "$WEBOS_PLATFORM/runtime/libssl.so.4" "$WEBOS_PLATFORM/runtime/libcrypto.so.4" "$WEBOS_PLATFORM/runtime/libSDL3.so.0" "$WEBOS_PLATFORM/runtime/libSDL3_ttf.so.0" "$WEBOS_PLATFORM/runtime/libSDL3_image.so.0"; do
 	if [[ ! -f "$required" ]]; then
 		printf 'missing toolchain input: %s\nrun just setup to build the pinned toolchain\n' "$required" >&2
 		exit 1
@@ -56,13 +56,10 @@ done
 	-L"$WEBOS_PLATFORM/runtime" -Wl,-rpath-link,"$sysroot/usr/lib" \
 	-l:libSDL3.so.0 -l:libSDL3_ttf.so.0 -l:libSDL3_image.so.0 -lAcbAPI \
 	"${libs[@]}" -Wl,--allow-shlib-undefined \
-	-l:libcurl.so.4 -l:libssl.so.3 -l:libcrypto.so.3 -lz -lm -lpthread -ldl -lrt -latomic \
+	-l:libcurl.so.4 -l:libssl.so.4 -l:libcrypto.so.4 -lz -lm -lpthread -ldl -lrt -latomic \
 	-Wl,--disable-new-dtags,-rpath,'$ORIGIN/lib' -o "build/app/$app_main"
 cp -a app/. build/app/
 mkdir -p build/app/lib
 cp -a "$WEBOS_PLATFORM/runtime/." build/app/lib/
-for library in libcurl.so.4 libssl.so.3 libcrypto.so.3; do
-	cp -L "$sysroot/usr/lib/$library" "build/app/lib/$library"
-	"$WEBOS_SDK/bin/arm-webos-linux-gnueabi-strip" --strip-unneeded "build/app/lib/$library"
-done
+cp -a "$WEBOS_PLATFORM/licenses/." build/app/licenses/
 printf 'built %s for webOS ARM32 soft-float (%s)\n' "build/app/$app_main" "$mode"

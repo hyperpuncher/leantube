@@ -11,7 +11,7 @@ case "$host" in x86_64 | aarch64) ;; *) printf 'unsupported build host: %s\n' "$
 mkdir -p "$root/downloads"
 while read -r destination checksum url; do
 	[[ -n "$destination" && "$destination" != \#* ]] || continue
-	archive="$root/downloads/${destination//\//_}.tar"
+	archive="$root/downloads/$checksum.tar"
 	if [[ "$destination" == sdk-* ]]; then
 		[[ "$destination" == "sdk-$host" ]] || continue
 		destination=sdk
