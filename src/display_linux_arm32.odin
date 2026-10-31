@@ -23,6 +23,7 @@ foreign acb {
 	AcbAPI_create :: proc() -> c.long ---
 	AcbAPI_initialize :: proc(id: c.long, player_type: c.int, app_id: cstring, callback: Acb_Callback) -> bool ---
 	AcbAPI_setMediaId :: proc(id: c.long, media_id: cstring) -> bool ---
+	AcbAPI_setSinkType :: proc(id: c.long, sink_type: c.int) -> bool ---
 	// The B9 ABI includes the task output pointer omitted by the SDK header.
 	AcbAPI_setMediaVideoData :: proc(id: c.long, payload: cstring, task: ^c.long) -> c.int ---
 	AcbAPI_setState :: proc(id: c.long, app_state: Acb_App_State, play_state: Acb_Play_State, task: ^c.long) -> c.int ---
@@ -57,11 +58,16 @@ update_display :: proc(video_data: string) {
 	pending_video_data = strings.clone_to_cstring(video_data)
 }
 
-attach_display :: proc(app_id: cstring, media_id, video_data: string) -> bool {
+attach_display :: proc(
+	app_id: cstring,
+	media_id, video_data: string,
+	player_type: c.int = 0,
+	defer_loaded: bool = false,
+) -> bool {
 	update_display(video_data)
 	acb_id = AcbAPI_create()
 	fmt.eprintln("display control created id:", acb_id)
-	if acb_id < 0 || !AcbAPI_initialize(acb_id, 0, app_id, display_event) {
+	if acb_id < 0 || !AcbAPI_initialize(acb_id, player_type, app_id, display_event) {
 		fmt.eprintln("display control initialization failed")
 		return false
 	}
@@ -69,7 +75,8 @@ attach_display :: proc(app_id: cstring, media_id, video_data: string) -> bool {
 	defer delete(id)
 	bound := AcbAPI_setMediaId(acb_id, id)
 	task: c.long
-	loaded := AcbAPI_setState(acb_id, .Foreground, .Loaded, &task)
+	loaded := c.int(0)
+	if !defer_loaded {loaded = AcbAPI_setState(acb_id, .Foreground, .Loaded, &task)}
 	window := AcbAPI_setDisplayWindow(acb_id, 0, 0, 1920, 1080, true, &task)
 	fmt.eprintf("display bind=%v loaded=%d window=%d\n", bound, loaded, window)
 	return bound

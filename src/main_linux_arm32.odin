@@ -267,6 +267,7 @@ load_video :: proc(url: string, renderer: ^sdl.Renderer) {
 }
 
 main :: proc() {
+	benchmark_reader_entry()
 	_ = sdl.SetHint(sdl.HINT_VIDEO_DRIVER, "wayland")
 	_ = sdl.SetAppMetadata("LeanTube", APP_VERSION, APP_ID)
 	setup_logging()

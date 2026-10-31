@@ -12,14 +12,17 @@ check: host-qr
 	odin check tests/layout -vet
 	odin check tests/http -vet
 	odin check tests/youtube -vet
+	odin check tests/playback/resolve -vet
+	odin check src/playback -no-entry-point -vet
+	odin check tests/playback/host -vet
 	odin check tests/sponsorblock -vet
 	bash -n scripts/*.sh tests/install.sh tests/capture.sh tests/native/run.sh
 	shellcheck -x scripts/*.sh tests/install.sh tests/capture.sh tests/native/run.sh
-	bun fmt --check package.json tsconfig.json scripts/ui.ts tests/http/run.ts
+	bun fmt --check package.json tsconfig.json scripts/ui.ts tests/http/run.ts tests/playback/reference.ts tests/playback/reader.ts tests/playback/fixture.ts tests/playback/http-retry.ts
 	bun check
 
 # Test metadata and installer completion handling without a TV.
-test: test-layout test-http test-ui test-native
+test: test-layout test-http test-ui test-native test-reader-http
 	odin test src/model -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
 	odin test src/youtube -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
 	odin test src/sponsorblock -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
@@ -35,6 +38,10 @@ test-layout:
 # Check TLS safety and request recovery against a real local HTTPS server.
 test-http:
 	bun tests/http/run.ts
+
+# Check partial-range recovery and its retry limit against a real local server.
+test-reader-http:
+	bun tests/playback/http-retry.ts
 
 # Build the shared QR encoder for local login and UI tests.
 [private]
@@ -63,7 +70,7 @@ fmt:
 	odinfmt src -w
 	odinfmt tests -w
 	clang-format -i src/native/bridge.c src/native/clay.c tests/native/fixture.c
-	bun fmt package.json tsconfig.json scripts/ui.ts tests/http/run.ts
+	bun fmt package.json tsconfig.json scripts/ui.ts tests/http/run.ts tests/playback/reference.ts tests/playback/reader.ts tests/playback/fixture.ts tests/playback/http-retry.ts
 
 # Provision the toolchain, then build native libraries. No TV access.
 setup: setup-toolchain setup-libs
@@ -75,6 +82,48 @@ setup-toolchain:
 # Build native libraries with upstream Meson, CMake, and Ninja tasks.
 setup-libs:
 	bash scripts/setup-libs.sh
+
+# Build pinned FFmpeg inputs for explicit network/demux benchmarks only.
+setup-reader:
+	bash scripts/setup-reader.sh
+
+# Build the same reader against host libraries to isolate device/library differences.
+bench-host:
+	mkdir -p build/playback-bench
+	odin build tests/playback/host -o:speed -out:build/playback-bench/reader-host
+
+# Build the optional reader test. Normal app playback is unchanged.
+bench-build:
+	bash scripts/build.sh bench
+
+# Install benchmark code, not media fixtures or request files.
+bench-install: bench-build
+	bun run ares-package build/app -o build
+	bash scripts/install.sh
+	ssh "${TV_HOST:-tv}" 'node -e '\''require("fs").unlinkSync("/tmp/leantube.ipk")'\'''
+
+# Serve a remux-only fixture from this computer, not from TV storage.
+bench-fixture player_json:
+	exec bun tests/playback/fixture.ts {{quote(player_json)}}
+
+# Compare readers with a paced consumer. This is not a displayed-video test.
+bench-reader player_json output mode="ffmpeg" seconds="90" start="0" seek_after="-1" seek_to="0":
+	bun tests/playback/reader.ts {{quote(player_json)}} {{quote(output)}} {{quote(mode)}} {{quote(seconds)}} {{quote(start)}} {{quote(seek_after)}} {{quote(seek_to)}}
+
+# Feed the LG decoder through the small C interface. Requires a free, active TV.
+bench-decoder player_json output mode="curl-h3" seconds="60" start="0" seek_after="-1" seek_to="0":
+	bun tests/playback/reader.ts --decode {{quote(player_json)}} {{quote(output)}} {{quote(mode)}} {{quote(seconds)}} {{quote(start)}} {{quote(seek_after)}} {{quote(seek_to)}}
+
+# Run the same input selection and queue checks on the host, without TV access.
+bench-reader-host player_json output mode="ffmpeg" seconds="90" start="0" seek_after="-1" seek_to="0": bench-host
+	bun tests/playback/reader.ts --host {{quote(player_json)}} {{quote(output)}} {{quote(mode)}} {{quote(seconds)}} {{quote(start)}} {{quote(seek_after)}} {{quote(seek_to)}}
+
+# Read bounded ranges without FFmpeg, audio, playback pacing, or media files.
+bench-transport player_json output mode="curl-h3" mib="64" byte_offset="0":
+	bun tests/playback/reader.ts --transport {{quote(player_json)}} {{quote(output)}} {{quote(mode)}} {{quote(mib)}} {{quote(byte_offset)}}
+
+bench-transport-host player_json output mode="curl-h3" mib="64" byte_offset="0": bench-host
+	bun tests/playback/reader.ts --host --transport {{quote(player_json)}} {{quote(output)}} {{quote(mode)}} {{quote(mib)}} {{quote(byte_offset)}}
 
 # Build the webOS ARM32 app for development, with debug information and no optimization.
 build:
@@ -94,6 +143,14 @@ package: build-release
 # Check live search, cover download, resolution, and CDN access locally.
 test-youtube:
 	odin run tests/youtube -out:build/youtube-check
+
+# Save private playback inputs on the host. No TV access.
+bench-resolve id_file output_file:
+	odin run tests/playback/resolve -out:build/playback-resolve -- {{quote(id_file)}} {{quote(output_file)}}
+
+# Build a host reference or compare a captured picture. No TV access.
+bench-reference *args:
+	bun tests/playback/reference.ts {{args}}
 
 # Check real Linus Tech Tips sponsor segments locally, without playback.
 test-sponsorblock:

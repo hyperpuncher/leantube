@@ -6,7 +6,8 @@ mode=${1:-dev}
 case "$mode" in
 	dev) odin_flags=(-debug) ;;
 	release) odin_flags=(-o:speed) ;;
-	*) printf 'usage: %s [dev|release]\n' "$0" >&2; exit 2 ;;
+	bench) odin_flags=(-o:speed -define:PLAYBACK_BENCH=true) ;;
+	*) printf 'usage: %s [dev|release|bench]\n' "$0" >&2; exit 2 ;;
 esac
 if ! command -v ccache >/dev/null; then
 	printf 'ccache is required for cached native builds\n' >&2
@@ -50,9 +51,22 @@ for source in src/native/bridge.c src/native/clay.c src/native/webos-shell-proto
 		-Isrc/native -Ibuild/obj -Ivendor/clay -Ivendor/qrcodegen -o "$object"
 	objects+=("$object")
 done
+reader_libraries=()
+if [[ "$mode" == bench ]]; then
+	prefix="$WEBOS_PLATFORM/reader-ffmpeg"
+	if [[ ! -f "$prefix/lib/libavformat.so.63" ]]; then
+		printf 'run just setup-reader before building the reader benchmark\n' >&2
+		exit 1
+	fi
+	# Upstream C ABI adapter only. All playback code remains in Odin.
+	ccache "$WEBOS_SDK/bin/arm-webos-linux-gnueabi-g++" -shared -fPIC -std=c++11 -O2 "${cpu[@]}" \
+		-I"$sysroot/usr/include/starfish-media-pipeline" vendor/starfish/StarfishMediaAPIs_C.cpp \
+		-lplayerAPIs -Wl,-soname,libplayerAPIs_C.so -o build/obj/libplayerAPIs_C.so
+	reader_libraries=(-L"$prefix/lib" -lavformat -lavcodec -lavutil -Lbuild/obj -lplayerAPIs_C)
+fi
 # The ELF loader expands $ORIGIN on the TV, not this shell.
 # shellcheck disable=SC2016
-"$cc" build/obj/leantube.o "${objects[@]}" "${cpu[@]}" \
+"$cc" build/obj/leantube.o "${objects[@]}" "${cpu[@]}" "${reader_libraries[@]}" \
 	-L"$WEBOS_PLATFORM/runtime" -Wl,-rpath-link,"$sysroot/usr/lib" \
 	-l:libSDL3.so.0 -l:libSDL3_ttf.so.0 -l:libSDL3_image.so.0 -lAcbAPI \
 	"${libs[@]}" -Wl,--allow-shlib-undefined \
@@ -62,4 +76,11 @@ cp -a app/. build/app/
 mkdir -p build/app/lib
 cp -a "$WEBOS_PLATFORM/runtime/." build/app/lib/
 cp -a "$WEBOS_PLATFORM/licenses/." build/app/licenses/
+if [[ "$mode" == bench ]]; then
+	cp build/obj/libplayerAPIs_C.so build/app/lib/
+	for library in libavformat.so.63 libavcodec.so.63 libavutil.so.61; do
+		cp -L "$prefix/lib/$library" "build/app/lib/$library"
+	done
+	cp "$prefix/share/licenses/FFmpeg.txt" build/app/licenses/FFmpeg.txt
+fi
 printf 'built %s for webOS ARM32 soft-float (%s)\n' "build/app/$app_main" "$mode"

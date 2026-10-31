@@ -1,0 +1,28 @@
+# playback reader
+
+this Odin package reads encoded video and audio packets. FFmpeg reads the media containers. curl supplies bounded HTTP byte ranges. FFmpeg adds ADTS framing to AAC packets when decoder pre-roll is enabled. it does not re-encode audio or video.
+
+## session ownership
+
+- initialize curl before opening a session. keep curl initialized until all sessions are closed.
+- `open` copies both source URLs and starts one worker for each track. it returns a session pointer or `nil` on setup failure.
+- do not copy a session. its workers keep pointers to its state and tracks.
+- use `seek` from the consumer thread without holding either track mutex. it clears both queues and changes the cancellation generation. workers seek their existing FFmpeg inputs.
+- `stop` cancels requests, wakes workers, and joins them. it keeps queues and statistics available for inspection. it can be called more than once.
+- `close` stops the workers, frees queued packets and URLs, and frees the session. do not use the pointer after this call.
+
+lock a track mutex before reading or changing its queue or metadata while workers run. when both locks are needed, lock video first, then audio. use atomic operations for shared session state. after changing the playback position, signal each track condition so a worker can continue.
+
+## limits
+
+the reader requires FFmpeg library majors 63, 63, and 61. opening a session checks these versions before workers use the bound C structure prefixes. it also sets a log callback that rejects URL-bearing messages before formatting.
+
+each packet queue is limited to 20 seconds. consumers use the shared 3-second startup and rebuffer threshold. curl keeps at most 1 MiB of response data per track. packet queues, curl buffers, socket buffers, and native decoder memory are separate limits.
+
+transport controls are `ffmpeg`, `curl-reuse` for HTTP/1.1, and `curl-h3` for HTTP/3 only. HTTP/3 failure does not silently select another protocol. partial transfers can retry once on a fresh connection. temporary redirects do not replace the source URL for later ranges.
+
+with decoder pre-roll enabled, the current reader accepts VP9 video and AAC-LC audio. it retains video packets needed after a seek. this is not a complete replacement for the normal application's format selection or decoder lifecycle.
+
+## tests
+
+run `just test-reader-http`. the local server supplies real VP9 and AAC data in host memory, partial responses, and redirects. tests check packet framing, queue limits, seek cancellation, URL ownership, retry limits, and worker cleanup. command-line test programs are in the separate `diagnostics` package. these tests do not prove displayed video, audible audio, or HDR output.

@@ -27,3 +27,10 @@ CC BY-NC-SA 4.0: https://creativecommons.org/licenses/by-nc-sa/4.0/.
 
 QR Code generation uses Project Nayuki's qrcodegen under the MIT License.
 See qrcodegen.txt.
+
+The optional decoder diagnostic uses the Starfish C interface from SS4S
+by Mariotaku, revision dfba721b85420ccabf91dac65be73984bf1865f9,
+under LGPL version 3. See Starfish-wrapper.txt and GPL-3.0.txt.
+Its source and build instructions are in vendor/starfish. The adapter
+is a separate, replaceable shared library. It is not a playback engine.
+The installed LG library and system C++ runtime are not redistributed.
