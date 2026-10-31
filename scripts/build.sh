@@ -51,19 +51,16 @@ for source in src/native/bridge.c src/native/clay.c src/native/webos-shell-proto
 		-Isrc/native -Ibuild/obj -Ivendor/clay -Ivendor/qrcodegen -o "$object"
 	objects+=("$object")
 done
-reader_libraries=()
-if [[ "$mode" == bench ]]; then
-	prefix="$WEBOS_PLATFORM/reader-ffmpeg"
-	if [[ ! -f "$prefix/lib/libavformat.so.63" ]]; then
-		printf 'run just setup-reader before building the reader benchmark\n' >&2
-		exit 1
-	fi
-	# Upstream C ABI adapter only. All playback code remains in Odin.
-	ccache "$WEBOS_SDK/bin/arm-webos-linux-gnueabi-g++" -shared -fPIC -std=c++11 -O2 "${cpu[@]}" \
-		-I"$sysroot/usr/include/starfish-media-pipeline" vendor/starfish/StarfishMediaAPIs_C.cpp \
-		-lplayerAPIs -Wl,-soname,libplayerAPIs_C.so -o build/obj/libplayerAPIs_C.so
-	reader_libraries=(-L"$prefix/lib" -lavformat -lavcodec -lavutil -Lbuild/obj -lplayerAPIs_C)
+prefix="$WEBOS_PLATFORM/reader-ffmpeg"
+if [[ ! -f "$prefix/lib/libavformat.so.63" ]]; then
+	printf 'run just setup to build the native playback libraries\n' >&2
+	exit 1
 fi
+# Upstream C ABI adapter only. All playback code remains in Odin.
+ccache "$WEBOS_SDK/bin/arm-webos-linux-gnueabi-g++" -shared -fPIC -std=c++11 -O2 "${cpu[@]}" \
+	-I"$sysroot/usr/include/starfish-media-pipeline" vendor/starfish/StarfishMediaAPIs_C.cpp \
+	-lplayerAPIs -Wl,-soname,libplayerAPIs_C.so -o build/obj/libplayerAPIs_C.so
+reader_libraries=(-L"$prefix/lib" -lavformat -lavcodec -lavutil -Lbuild/obj -lplayerAPIs_C)
 # The ELF loader expands $ORIGIN on the TV, not this shell.
 # shellcheck disable=SC2016
 "$cc" build/obj/leantube.o "${objects[@]}" "${cpu[@]}" "${reader_libraries[@]}" \
@@ -76,11 +73,9 @@ cp -a app/. build/app/
 mkdir -p build/app/lib
 cp -a "$WEBOS_PLATFORM/runtime/." build/app/lib/
 cp -a "$WEBOS_PLATFORM/licenses/." build/app/licenses/
-if [[ "$mode" == bench ]]; then
-	cp build/obj/libplayerAPIs_C.so build/app/lib/
-	for library in libavformat.so.63 libavcodec.so.63 libavutil.so.61; do
-		cp -L "$prefix/lib/$library" "build/app/lib/$library"
-	done
-	cp "$prefix/share/licenses/FFmpeg.txt" build/app/licenses/FFmpeg.txt
-fi
+cp build/obj/libplayerAPIs_C.so build/app/lib/
+for library in libavformat.so.63 libavcodec.so.63 libavutil.so.61; do
+	cp -L "$prefix/lib/$library" "build/app/lib/$library"
+done
+cp "$prefix/share/licenses/FFmpeg.txt" build/app/licenses/FFmpeg.txt
 printf 'built %s for webOS ARM32 soft-float (%s)\n' "build/app/$app_main" "$mode"

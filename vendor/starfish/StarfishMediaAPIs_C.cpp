@@ -2,12 +2,19 @@
 
 #include <StarfishMediaAPIs.h>
 
+// Added for LeanTube: query the installed capabilities without exporting C++ types.
+namespace smp { namespace util {
+bool getMaxVideoResolution(std::string, int32_t *, int32_t *, int32_t *) __attribute__((weak));
+} }
+
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "bugprone-reserved-identifier"
 extern "C" bool
 _ZN17StarfishMediaAPIs10setHdrInfoEPKc(StarfishMediaAPIs *api, const char *message) __attribute__((weak));
 extern "C" bool
 _ZN17StarfishMediaAPIs18getAudioBufferSizeERiS0_(StarfishMediaAPIs *api, int *total, int *used) __attribute__((weak));
+extern "C" bool
+_ZN17StarfishMediaAPIs11SetPlayRateEPKc(StarfishMediaAPIs *api, const char *message) __attribute__((weak));
 #pragma clang diagnostic pop
 
 extern "C" {
@@ -51,6 +58,17 @@ bool StarfishMediaAPIs_pause(StarfishMediaAPIs_C *api) {
 
 bool StarfishMediaAPIs_play(StarfishMediaAPIs_C *api) {
     return api->inner.Play();
+}
+
+bool StarfishMediaAPIs_setPlayRate(StarfishMediaAPIs_C *api, const char *message) {
+    if (_ZN17StarfishMediaAPIs11SetPlayRateEPKc == nullptr) return false;
+    return _ZN17StarfishMediaAPIs11SetPlayRateEPKc(&api->inner, message);
+}
+
+bool StarfishMediaAPIs_videoLimits(const char *codec, int32_t *width, int32_t *height, int32_t *fps) {
+    using Query = bool (*)(std::string, int32_t *, int32_t *, int32_t *);
+    auto query = static_cast<Query>(smp::util::getMaxVideoResolution);
+    return query != nullptr && query(codec, width, height, fps);
 }
 
 bool StarfishMediaAPIs_pushEOS(StarfishMediaAPIs_C *api) {

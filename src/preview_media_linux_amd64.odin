@@ -1,6 +1,7 @@
 package main
 
 import "./model"
+import yt "./youtube"
 import "core:fmt"
 import sdl "vendor:sdl3"
 
@@ -14,17 +15,11 @@ stop_text_input :: proc(window: ^sdl.Window) {if window != nil {_ = sdl.StopText
 
 // The host has no LG media service. These are UI-only responses; no stream
 // request is read and no audio or video playback is started.
-command :: proc(endpoint: cstring, _: string = "", _: Request_Kind = .Control) -> bool {
-	switch string(endpoint) {
-	case "luna://com.webos.media/play":
-		paused = false
-	case "luna://com.webos.media/pause":
-		paused = true
-	}
-	return true
-}
+player_pause :: proc(value: bool) -> bool {paused = value; return true}
+player_rate :: proc(_: f64) -> bool {return true}
+player_seek :: proc(_: f64) -> bool {return true}
 
-load_video :: proc(_: string, _: ^sdl.Renderer) {start_video()}
+load_video :: proc(_: yt.Stream, _: ^sdl.Renderer) {start_video()}
 
 start_video :: proc() {
 	if selected < 0 || selected >= len(catalog.videos) {return}

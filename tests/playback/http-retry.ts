@@ -49,14 +49,55 @@ const videoEncoder = Bun.spawn(
 const video = await new Response(videoEncoder.stdout).arrayBuffer();
 await new Response(videoEncoder.stderr).arrayBuffer();
 if (await videoEncoder.exited) throw Error("could not create the host VP9 fixture");
+const sources: Record<string, ArrayBuffer> = { "/audio": audio, "/video": video };
+for (const [codec, encoderName, muxer] of [
+	["h264", "libx264", "h264"],
+	["hevc", "libx265", "hevc"],
+	["av1", "libaom-av1", "obu"],
+]) {
+	const extra =
+		codec === "hevc"
+			? ["-x265-params", "pools=1:frame-threads=1:log-level=error"]
+			: [];
+	const child = Bun.spawn(
+		[
+			"ffmpeg",
+			"-v",
+			"error",
+			"-f",
+			"lavfi",
+			"-i",
+			"color=s=32x32:r=5",
+			"-t",
+			"1",
+			"-c:v",
+			encoderName!,
+			...extra,
+			"-g",
+			"5",
+			"-movflags",
+			"frag_keyframe+empty_moov",
+			"-f",
+			"mp4",
+			"pipe:1",
+		],
+		{ stdout: "pipe", stderr: "pipe" },
+	);
+	const [data] = await Promise.all([
+		new Response(child.stdout).arrayBuffer(),
+		new Response(child.stderr).arrayBuffer(),
+	]);
+	if (await child.exited) throw Error(`could not create the host ${muxer} fixture`);
+	sources[`/${codec}`] = data;
+}
 const counts: Record<string, number> = {};
 const server = Bun.serve({
 	hostname: "127.0.0.1",
 	port: 0,
 	fetch(request) {
 		const path = new URL(request.url).pathname;
-		if (path === "/audio" || path === "/video") {
-			const data = path === "/audio" ? audio : video;
+		if (sources[path]) {
+			const data = sources[path];
 			const range = request.headers.get("range");
 			if (!range) return new Response(data);
 			const match = /^bytes=(\d+)-(\d*)$/.exec(range);

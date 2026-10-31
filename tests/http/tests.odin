@@ -96,10 +96,16 @@ media_ranges_follow_https_redirects_without_allowing_downgrades_or_credentials :
 	client, error := http.open(ca_file)
 	if !testing.expect_value(t, error, nil) {return}
 	defer http.close(&client)
-	bytes, ok := yt.fetch_range(&client, fmt.tprintf("%s/range-redirect", base), 3, 5)
-	defer delete(bytes)
-	testing.expect(t, ok)
-	testing.expect_value(t, string(bytes), "def")
+	ranged, range_error := http.request(
+		&client,
+		fmt.tprintf("%s/range-redirect", base),
+		headers = {"Range: bytes=3-5"},
+		follow_redirects = true,
+	)
+	defer delete(ranged.body)
+	testing.expect_value(t, range_error, nil)
+	testing.expect_value(t, ranged.status, c.long(206))
+	testing.expect_value(t, string(ranged.body[:]), "def")
 	for endpoint, i in ([]string{"redirect", "redirect-loop", "redirect-wrong-host"}) {
 		response, request_error := http.request(
 			&client,

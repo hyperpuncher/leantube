@@ -15,8 +15,6 @@ import curl "vendor:curl"
 import sdl "vendor:sdl3"
 
 when PLAYBACK_BENCH {
-	decoder_interrupted: i32
-	decoder_signal :: proc "c" (_: posix.Signal) {sync.atomic_store(&decoder_interrupted, 1)}
 	decoder_entry :: proc(args: []string) -> (result: int) {
 		stage := 0
 		defer fmt.eprintf("reader decoder initialization_stage=%d exit=%d\n", stage, result)
@@ -37,7 +35,7 @@ when PLAYBACK_BENCH {
 		if curl.global_init(c.long(curl.GLOBAL_DEFAULT)) != .E_OK {return 3}
 		defer curl.global_cleanup()
 		action := posix.sigaction_t {
-			sa_handler = decoder_signal,
+			sa_handler = stop_signal,
 		}
 		if posix.sigaction(.SIGTERM, &action, nil) != .OK ||
 		   posix.sigaction(.SIGINT, &action, nil) != .OK {return 3}
@@ -100,19 +98,18 @@ when PLAYBACK_BENCH {
 		max_video, max_audio := f64(0), f64(0)
 		failure := false
 		for reader.seconds_since(begun) < f64(o.seconds) + 90 &&
-		    sync.atomic_load(&decoder_interrupted) == 0 &&
+		    sync.atomic_load(&interrupted) == 0 &&
 		    running &&
 		    !window_closing {
 			poll_services()
 			event: sdl.Event
 			for sdl.PollEvent(&event) {
 				if event.type == .QUIT ||
-				   event.type ==
-					   .WINDOW_CLOSE_REQUESTED {sync.atomic_store(&decoder_interrupted, 1)}
+				   event.type == .WINDOW_CLOSE_REQUESTED {sync.atomic_store(&interrupted, 1)}
 				if event.type == .KEY_DOWN && !event.key.repeat {
 					code := input_key(event.key.raw, event.key.key)
 					if code == sdl.K_ESCAPE ||
-					   code == sdl.K_AC_BACK {sync.atomic_store(&decoder_interrupted, 1)}
+					   code == sdl.K_AC_BACK {sync.atomic_store(&interrupted, 1)}
 					if code == sdl.K_SPACE ||
 					   code == sdl.K_MEDIA_PLAY ||
 					   code == sdl.K_MEDIA_PAUSE {

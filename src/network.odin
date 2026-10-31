@@ -73,7 +73,7 @@ search_loading: bool
 resolving: bool
 stream_width, stream_height: int
 playback_requested_at: u64
-playback_hdr: yt.Hdr
+playback_limits: [4]yt.Video_Limit
 // Bumped whenever the catalog contents change, so fitted card labels rebuild.
 catalog_revision: int
 
@@ -346,6 +346,7 @@ network_main :: proc(_: ^thread.Thread) {
 				request.text,
 				visitor_data,
 				network_stopping,
+				limits = playback_limits[:],
 			)
 			if !post_network_result(
 				{
@@ -534,11 +535,9 @@ start_search :: proc(query: string = "Linus Tech Tips", keep_history: bool = fal
 resolve_selected :: proc() {
 	if selected < 0 || selected >= len(catalog.videos) {return}
 	playback += 1
-	yt.remove_local_hls()
 	playback_requested_at = sdl.GetTicks()
 	resolving = true
 	browsing = false
-	playback_hdr = .None
 	loaded = false
 	stream_width, stream_height = 0, 0
 	notice = ""
@@ -708,8 +707,7 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 					result.error == .No_Direct_Stream ? "YouTube did not provide a supported direct stream" : "video resolution failed; try again"
 			} else {
 				stream_width, stream_height = result.stream.width, result.stream.height
-				playback_hdr = result.stream.hdr
-				load_video(result.stream.url, renderer)
+				load_video(result.stream, renderer)
 				show_player_controls()
 			}
 		case .Segments:

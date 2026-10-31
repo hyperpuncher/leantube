@@ -16,13 +16,13 @@ check: host-qr
 	odin check src/playback -no-entry-point -vet
 	odin check tests/playback/host -vet
 	odin check tests/sponsorblock -vet
-	bash -n scripts/*.sh tests/install.sh tests/capture.sh tests/native/run.sh
-	shellcheck -x scripts/*.sh tests/install.sh tests/capture.sh tests/native/run.sh
+	bash -n scripts/*.sh tests/install.sh tests/capture.sh tests/native/run.sh tests/player/run.sh
+	shellcheck -x scripts/*.sh tests/install.sh tests/capture.sh tests/native/run.sh tests/player/run.sh
 	bun fmt --check package.json tsconfig.json scripts/ui.ts tests/http/run.ts tests/playback/reference.ts tests/playback/reader.ts tests/playback/fixture.ts tests/playback/http-retry.ts
 	bun check
 
 # Test metadata and installer completion handling without a TV.
-test: test-layout test-http test-ui test-native test-reader-http
+test: test-layout test-http test-ui test-native test-player test-reader-http
 	odin test src/model -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
 	odin test src/youtube -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
 	odin test src/sponsorblock -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
@@ -54,6 +54,10 @@ host-qr:
 test-native:
 	bash tests/native/run.sh
 
+# Test native player controls and lifecycle with only the LG boundary replaced.
+test-player:
+	bash tests/player/run.sh
+
 # Render the real UI offscreen and save local regression screenshots.
 test-ui: host-qr
 	bun scripts/ui.ts
@@ -73,7 +77,7 @@ fmt:
 	bun fmt package.json tsconfig.json scripts/ui.ts tests/http/run.ts tests/playback/reference.ts tests/playback/reader.ts tests/playback/fixture.ts tests/playback/http-retry.ts
 
 # Provision the toolchain, then build native libraries. No TV access.
-setup: setup-toolchain setup-libs
+setup: setup-toolchain setup-libs setup-reader
 
 # Download pinned inputs and build the patched compiler. Explicit, not a build dependency.
 setup-toolchain:
@@ -83,7 +87,7 @@ setup-toolchain:
 setup-libs:
 	bash scripts/setup-libs.sh
 
-# Build pinned FFmpeg inputs for explicit network/demux benchmarks only.
+# Build pinned FFmpeg inputs for native playback and diagnostics.
 setup-reader:
 	bash scripts/setup-reader.sh
 
@@ -92,7 +96,7 @@ bench-host:
 	mkdir -p build/playback-bench
 	odin build tests/playback/host -o:speed -out:build/playback-bench/reader-host
 
-# Build the optional reader test. Normal app playback is unchanged.
+# Build the app with explicit playback test entry points.
 bench-build:
 	bash scripts/build.sh bench
 

@@ -2,8 +2,10 @@ package youtube
 
 import "../http"
 import "../model"
+import "core:encoding/base64"
 import "core:encoding/json"
 import "core:fmt"
+import "core:net"
 import "core:strconv"
 import "core:strings"
 
@@ -16,15 +18,10 @@ Error :: enum {
 	No_Direct_Stream,
 }
 Stream :: struct {
-	url:                string,
-	width:              int,
-	height:             int,
-	audio_url:          string,
-	audio_init_end:     int,
-	audio_index_end:    int,
-	audio_content_size: int,
-	audio_duration_ms:  f64,
-	hdr:                Hdr,
+	url:       string,
+	width:     int,
+	height:    int,
+	audio_url: string,
 }
 
 // Client profiles follow yt-dlp's YouTube extractor. No account cookies or
@@ -307,12 +304,8 @@ parse_search_tv :: proc(
 }
 
 Audio_Format :: struct {
-	url:          string,
-	init_end:     int,
-	index_end:    int,
-	content_size: int,
-	duration_ms:  f64,
-	bitrate:      int,
+	url:     string,
+	bitrate: int,
 }
 
 numeric :: proc(value: json.Value) -> (f64, bool) {
@@ -324,89 +317,45 @@ numeric :: proc(value: json.Value) -> (f64, bool) {
 }
 
 // Prefer the default AAC-LC rendition. When the response has no audioTrack
-// metadata, the original rendition is the one without xtags; dubbed tracks
-// carry xtags. Its byte ranges let HLS serve the AAC track as a rendition.
+// metadata, accept a rendition unless its content tags mark a dub or DRC. Signed source URLs are not logged or written to disk.
 original_audio :: proc(formats: json.Array) -> (audio: Audio_Format) {
 	for format in formats {
 		mime, mime_ok := field(format, "mimeType").(json.String)
 		if !mime_ok ||
 		   !strings.has_prefix(string(mime), "audio/mp4;") ||
 		   !strings.contains(string(mime), "mp4a.40.2") {continue}
-		track := field(format, "audioTrack")
-		default, marked := field(track, "audioIsDefault").(json.Boolean)
-		if marked && !bool(default) {continue}
-		if !marked {
-			if xtags, dubbed := field(format, "xtags").(json.String); dubbed && len(xtags) > 0 {
-				continue
-			}
+		original := false
+		if tags, tagged := field(format, "xtags").(json.String); tagged && tags != "" {
+			encoded, valid := net.percent_decode(string(tags))
+			if !valid {continue}
+			decoded, err := base64.decode(encoded, base64.DEC_URL_TABLE)
+			delete(encoded)
+			if err != nil {continue}
+			// Canonical FormatXTags key/value pairs. Keep explicit original
+			// audio even when a translated track is the account default.
+			data := string(decoded)
+			original = strings.contains(data, "\x0a\x05acont\x12\x08original")
+			other := strings.contains(data, "\x0a\x05acont") && !original
+			drc := strings.contains(data, "\x0a\x03drc\x12\x011")
+			delete(decoded)
+			if other || drc {continue}
 		}
+		default, marked := field(field(format, "audioTrack"), "audioIsDefault").(json.Boolean)
+		if !original && marked && !bool(default) {continue}
 		url, linked := field(format, "url").(json.String)
-		init_range := field(format, "initRange")
-		index_range := field(format, "indexRange")
-		init_end, has_init := numeric(field(init_range, "end"))
-		index_end, has_index := numeric(field(index_range, "end"))
-		content_size, has_size := numeric(field(format, "contentLength"))
-		duration, has_duration := numeric(field(format, "approxDurationMs"))
 		bitrate, has_bitrate := numeric(field(format, "bitrate"))
-		if !linked || !has_init || !has_index || !has_size || !has_duration || !has_bitrate {
-			continue
-		}
+		drc, _ := field(format, "isDrc").(json.Boolean)
+		if !linked ||
+		   !strings.has_prefix(string(url), "https://") ||
+		   !has_bitrate ||
+		   bool(drc) {continue}
 		if audio.url != "" && int(bitrate) <= audio.bitrate {continue}
 		delete(audio.url)
 		audio = {
-			url          = strings.clone(string(url)),
-			init_end     = int(init_end),
-			index_end    = int(index_end),
-			content_size = int(content_size),
-			duration_ms  = duration,
-			bitrate      = int(bitrate),
+			url     = strings.clone(string(url)),
+			bitrate = int(bitrate),
 		}
 	}
-	return
-}
-
-parse_player :: proc(data: string, hls: bool = false) -> (stream: Stream, error: Error) {
-	value, err := json.parse(data)
-	if err != .None {return {}, .Invalid_Response}
-	defer json.destroy_value(value)
-	status, _ := field(field(value, "playabilityStatus"), "status").(json.String)
-	if status != "OK" {return {}, .Unavailable}
-	if hls {
-		url, _ := field(field(value, "streamingData"), "hlsManifestUrl").(json.String)
-		if !strings.has_prefix(string(url), "https://") {return {}, .No_Direct_Stream}
-		formats, _ := field(field(value, "streamingData"), "adaptiveFormats").(json.Array)
-		audio := original_audio(formats)
-		stream = {
-			url                = strings.clone(string(url)),
-			audio_url          = audio.url,
-			audio_init_end     = audio.init_end,
-			audio_index_end    = audio.index_end,
-			audio_content_size = audio.content_size,
-			audio_duration_ms  = audio.duration_ms,
-		}
-		return stream, .None
-	}
-	formats, _ := field(field(value, "streamingData"), "formats").(json.Array)
-	for format in formats {
-		url, ok := field(format, "url").(json.String)
-		mime, _ := field(format, "mimeType").(json.String)
-		width, _ := model.number(field(format, "width"))
-		height, _ := model.number(field(format, "height"))
-		if !ok ||
-		   !strings.has_prefix(string(url), "https://") ||
-		   !strings.has_prefix(string(mime), "video/mp4;") ||
-		   !strings.contains(string(mime), "avc1") ||
-		   !strings.contains(string(mime), "mp4a") {continue}
-		if height > f64(stream.height) {
-			delete(stream.url)
-			stream = {
-				url    = strings.clone(string(url)),
-				width  = int(width),
-				height = int(height),
-			}
-		}
-	}
-	if stream.url == "" {return {}, .No_Direct_Stream}
 	return
 }
 
@@ -566,6 +515,7 @@ Player_Request :: #type proc(
 	id: string,
 	profile: Profile,
 	visitor_data: string,
+	limits: []Video_Limit,
 ) -> (
 	Stream,
 	Error,
@@ -577,6 +527,7 @@ resolve :: proc(
 	visitor_data: string = "",
 	stop_when: proc() -> bool = nil,
 	request: Player_Request = player_request,
+	limits: []Video_Limit = nil,
 ) -> (
 	Stream,
 	Error,
@@ -584,11 +535,11 @@ resolve :: proc(
 	if !video_id_valid(id) {return {}, .Invalid_Response}
 	if stop_when != nil && stop_when() {return {}, .Unavailable}
 	if visitor_data != "" {
-		stream, error := request(client, id, .VisionOS, visitor_data)
+		stream, error := request(client, id, .VisionOS, visitor_data, limits)
 		if error == .None {return stream, error}
 		if stop_when != nil && stop_when() {return {}, .Unavailable}
 	}
-	return request(client, id, .Android, "")
+	return request(client, id, .Android, "", limits)
 }
 
 player_request :: proc(
@@ -596,6 +547,7 @@ player_request :: proc(
 	id: string,
 	profile: Profile,
 	visitor_data: string = "",
+	limits: []Video_Limit = nil,
 ) -> (
 	Stream,
 	Error,
@@ -643,9 +595,7 @@ player_request :: proc(
 	response, error := api_post(client, "player", body, profile)
 	if error != .None {return {}, error}
 	defer delete(response.body)
-	stream, parse_error := parse_player(string(response.body[:]), profile == .VisionOS)
-	if parse_error == .None && profile == .VisionOS {_ = localize_hls(client, &stream)}
-	return stream, parse_error
+	return parse_player(string(response.body[:]), limits)
 }
 
 fetch_thumbnail :: proc(client: ^http.Client, url: string) -> (http.Response, http.Error) {

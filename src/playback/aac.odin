@@ -24,11 +24,11 @@ aac_config :: proc(asc: [2]u8) -> (config: Aac_Config, ok: bool) {
 		7350,
 	}
 	if object != 2 || frequency >= 13 || channels == 0 || channels > 7 || asc[1] & 7 != 0 {return}
-	return {rates[frequency], int(channels)}, true
+	return {rates[frequency], channels == 7 ? 8 : int(channels)}, true
 }
-aac_muxer :: proc(parameters: ^Codec_Parameters) -> ^AVFormatContext {
+framing_muxer :: proc(parameters: ^Codec_Parameters, name: cstring) -> ^AVFormatContext {
 	mux: ^AVFormatContext
-	if avformat_alloc_output_context2(&mux, nil, "adts", nil) < 0 {return nil}
+	if avformat_alloc_output_context2(&mux, nil, name, nil) < 0 {return nil}
 	stream := avformat_new_stream(mux, nil)
 	if stream == nil ||
 	   avcodec_parameters_copy(stream.codecpar, parameters) < 0 ||
@@ -44,7 +44,7 @@ aac_muxer :: proc(parameters: ^Codec_Parameters) -> ^AVFormatContext {
 	if result < 0 {avformat_free_context(mux); return nil}
 	return mux
 }
-aac_frame :: proc(mux: ^AVFormatContext, packet: ^^AVPacket) -> bool {
+framing_frame :: proc(mux: ^AVFormatContext, packet: ^^AVPacket) -> bool {
 	if avio_open_dyn_buf(&mux.pb) < 0 {return false}
 	result := av_write_frame(mux, packet^)
 	data: [^]u8

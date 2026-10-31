@@ -1,6 +1,6 @@
 # playback reader
 
-this Odin package reads encoded video and audio packets. FFmpeg reads the media containers. curl supplies bounded HTTP byte ranges. FFmpeg adds ADTS framing to AAC packets when decoder pre-roll is enabled. it does not re-encode audio or video.
+this Odin package reads encoded video and audio packets. FFmpeg reads the media containers. curl supplies bounded HTTP byte ranges. with decoder pre-roll enabled, FFmpeg adds ADTS framing to AAC packets and native framing to H.264, HEVC, and AV1 packets. raw video muxers use upstream bitstream filters to add the required headers. it does not re-encode audio or video.
 
 ## session ownership
 
@@ -21,8 +21,14 @@ each packet queue is limited to 20 seconds. consumers use the shared 3-second st
 
 transport controls are `ffmpeg`, `curl-reuse` for HTTP/1.1, and `curl-h3` for HTTP/3 only. HTTP/3 failure does not silently select another protocol. partial transfers can retry once on a fresh connection. temporary redirects do not replace the source URL for later ranges.
 
-with decoder pre-roll enabled, the current reader accepts VP9 video and AAC-LC audio. it retains video packets needed after a seek. this is not a complete replacement for the normal application's format selection or decoder lifecycle.
+with decoder pre-roll enabled, the reader accepts H.264, HEVC, VP9, or AV1 video and AAC-LC audio. it retains video packets needed after a seek and resets framing so a new decoder gets the required parameter sets. the app selects formats within the installed decoder capability limits. AV1 was reported unavailable on the tested B9.
+
+the normal app uses this reader and native decoder through managed app startup. it does not write HLS playlists or run a local media server. playback at 1× has displayed 4K SDR and 4K60 PQ HDR on the TV, with user confirmation of video and audio. pause, resume, and forward/backward seeks have also been checked.
+
+known issue: changing speed can stop native timestamp reports. the reader then stops feeding beyond its lookahead and playback can stall after a short period of smooth motion. this also occurs on 25 fps video. the cause is not established as a hardware limit. this is a known limitation of the current integration. do not treat a successful rate reply or a displayed speed label as proof of playback speed.
+
+curl uses its OpenSSL QUIC backend, which upstream marks experimental. delivery success on one source does not prove reliability on every network.
 
 ## tests
 
-run `just test-reader-http`. the local server supplies real VP9 and AAC data in host memory, partial responses, and redirects. tests check packet framing, queue limits, seek cancellation, URL ownership, retry limits, and worker cleanup. command-line test programs are in the separate `diagnostics` package. these tests do not prove displayed video, audible audio, or HDR output.
+run `just test-reader-http`. the local server supplies real H.264, HEVC, VP9, AV1, and AAC data in host memory, partial responses, and redirects. tests check packet framing, queue limits, seek cancellation, URL ownership, retry limits, and worker cleanup. command-line test programs are in the separate `diagnostics` package. these tests do not prove displayed video, audible audio, or HDR output.

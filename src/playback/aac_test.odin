@@ -12,6 +12,8 @@ aac_configuration_rejects_unsupported_framing :: proc(t: ^testing.T) {
 	testing.expect(t, ok)
 	testing.expect_value(t, config.rate, 44100)
 	testing.expect_value(t, config.channels, 2)
+	eight, eight_ok := aac_config({0x12, 0x38})
+	testing.expect(t, eight_ok && eight.channels == 8)
 	for asc in ([][2]u8{{0x2a, 0x10}, {0x17, 0x90}, {0x12, 0x00}, {0x12, 0x11}}) {
 		_, valid := aac_config(asc)
 		testing.expect(t, !valid)
@@ -29,7 +31,7 @@ adts_mux_preserves_aac_payload_and_timestamps :: proc(t: ^testing.T) {
 	index := av_find_best_stream(input, 1, -1, -1, nil, 0)
 	testing.expect(t, index >= 0)
 	if index < 0 {return}
-	mux := aac_muxer(input.streams[index].codecpar)
+	mux := framing_muxer(input.streams[index].codecpar, "adts")
 	testing.expect(t, mux != nil)
 	if mux == nil {return}
 	defer avformat_free_context(mux)
@@ -40,7 +42,7 @@ adts_mux_preserves_aac_payload_and_timestamps :: proc(t: ^testing.T) {
 	copy(original, packet.data[:packet.size])
 	defer delete(original)
 	pts, dts, duration := packet.pts, packet.dts, packet.duration
-	testing.expect(t, aac_frame(mux, &packet))
+	testing.expect(t, framing_frame(mux, &packet))
 	testing.expect_value(t, packet.size, c.int(len(original) + 7))
 	testing.expect_value(t, packet.pts, pts)
 	testing.expect_value(t, packet.dts, dts)

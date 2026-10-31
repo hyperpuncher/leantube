@@ -41,6 +41,7 @@ Track :: struct {
 	queued_bytes, read_bytes, io_bytes, discarded:                 i64,
 	end:                                                           f64,
 	width, height:                                                 c.int,
+	codec:                                                         string,
 	frame_rate:                                                    Rational,
 	color_transfer:                                                c.int,
 	audio_config:                                                  [2]u8,
@@ -160,13 +161,30 @@ read_track :: proc(worker: ^thread.Thread) {
 		if index < 0 {result = index}
 	}
 	mux: ^AVFormatContext
-	if result >= 0 && t.options.decoder_preroll {
+	framing: cstring
+	if result >= 0 {
 		parameters := format.streams[index].codecpar
-		if string(avcodec_get_name(parameters.codec_id)) !=
-		   (t.media_type == 0 ? "vp9" : "aac") {result = ERROR_INVALID_DATA}
-		if result >= 0 && t.media_type == 1 {
-			mux = aac_muxer(parameters)
-			if mux == nil {result = ERROR_INVALID_DATA}
+		t.codec = string(avcodec_get_name(parameters.codec_id))
+		if t.options.decoder_preroll {
+			if t.media_type == 1 {
+				if t.codec == "aac" {framing = "adts"} else {result = ERROR_INVALID_DATA}
+			} else {
+				switch t.codec {
+				case "vp9":
+				case "h264":
+					framing = "h264"
+				case "hevc":
+					framing = "hevc"
+				case "av1":
+					framing = "obu"
+				case:
+					result = ERROR_INVALID_DATA
+				}
+			}
+			if framing != nil {
+				mux = framing_muxer(parameters, framing)
+				if mux == nil {result = ERROR_INVALID_DATA}
+			}
 		}
 	}
 	defer if mux != nil {avformat_free_context(mux)}
@@ -193,7 +211,16 @@ read_track :: proc(worker: ^thread.Thread) {
 			at := time.tick_now()
 			result = av_seek_frame(format, -1, i64(start * 1e6), 1)
 			t.hot_seek_s = seconds_since(at)
-			if result < 0 {break}
+			if result < 0 {
+				if h.cancel.generation != sync.atomic_load(&s.generation) {result = 0; continue}
+				break
+			}
+			// A new decoder needs the parameter sets again after a seek.
+			if mux != nil {
+				avformat_free_context(mux)
+				mux = framing_muxer(format.streams[index].codecpar, framing)
+				if mux == nil {result = ERROR_INVALID_DATA; break}
+			}
 		}
 		p := av_packet_alloc()
 		if p == nil {result = ERROR_MEMORY; break}
@@ -230,7 +257,7 @@ read_track :: proc(worker: ^thread.Thread) {
 		   !(t.options.decoder_preroll &&
 				   t.media_type == 0) {t.discarded += 1; av_packet_free(&p); continue}
 		if mux != nil &&
-		   !aac_frame(mux, &p) {av_packet_free(&p); result = ERROR_INVALID_DATA; break}
+		   !framing_frame(mux, &p) {av_packet_free(&p); result = ERROR_INVALID_DATA; break}
 		sync.mutex_lock(&t.mutex)
 		for !cancelled(&h.cancel) &&
 		    (end - sync.atomic_load(&s.position) > MAXIMUM_SECONDS ||

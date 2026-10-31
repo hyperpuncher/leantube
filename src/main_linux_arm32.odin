@@ -1,8 +1,6 @@
 package main
 
 import clay "../vendor/clay"
-import "./model"
-import yt "./youtube"
 import "base:runtime"
 import "core:c"
 import "core:encoding/json"
@@ -10,6 +8,8 @@ import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
+import "core:sync"
+import "core:sys/posix"
 import sdl "vendor:sdl3"
 
 APP_ID :: "org.hyperpuncher.leantube"
@@ -19,251 +19,39 @@ foreign bridge {
 	tv_clay_abi :: proc(command_size, config_size, error_size: u32) -> bool ---
 }
 registered: bool
-unloaded: bool
-media_id: string
-video_metadata: []u8
-video_frame_rate: f64
-video_seen: bool
-load_replied: bool
-attach_pending: bool
+interrupted: i32
+stop_signal :: proc "c" (_: posix.Signal) {sync.atomic_store(&interrupted, 1)}
 
-send :: proc(endpoint: cstring, payload: string, kind: Request_Kind) -> bool {
-	body := strings.clone_to_cstring(payload)
-	defer delete(body)
+register_application :: proc() -> bool {
 	error: LS_Error
 	LSErrorInit(&error)
 	defer LSErrorFree(&error)
 	token: c.ulong
-	if !LSCall(bus, endpoint, body, reply, rawptr(uintptr(kind)), &token, &error) {
-		fmt.eprintln("request send failed; kind:", kind)
-		return false
-	}
-	if kind == .Subscribe {media_subscription = token}
-	return true
+	return LSCall(
+		bus,
+		"luna://com.webos.applicationManager/registerApp",
+		"{\"id\":\"" + APP_ID + "\"}",
+		reply,
+		nil,
+		&token,
+		&error,
+	)
 }
-command :: proc(endpoint: cstring, extra: string = "", kind: Request_Kind = .Control) -> bool {
-	if media_id == "" {return false}
-	body := fmt.aprintf("{{\"mediaId\":\"%s\"%s}}", media_id, extra)
-	defer delete(body)
-	return send(endpoint, body, kind)
-}
-foreground :: proc() {
-	body := fmt.aprintf("{{\"connectionId\":\"%s\"}}", media_id)
-	defer delete(body)
-	send("luna://com.webos.media/notifyForeground", body, .Foreground)
-}
-reply :: proc "c" (bus, message, data: rawptr) -> bool {
+
+reply :: proc "c" (_: rawptr, message: rawptr, _: rawptr) -> bool {
 	context = runtime.default_context()
 	value, error := json.parse(string(LSMessageGetPayload(message)))
-	if error != .None {fmt.eprintln("invalid service JSON"); return true}
+	if error != .None {return true}
 	defer json.destroy_value(value)
 	root, ok := value.(json.Object)
 	if !ok {return true}
-	kind := Request_Kind(uintptr(data))
-	if kind == .Load {load_replied = true}
-	if success, found := root["returnValue"].(json.Boolean); found {
-		fmt.printf("reply kind=%v accepted=%v\n", kind, bool(success))
-		if !bool(success) {
-			if kind == .Rate {rate_repair_pending = false}
-			if kind == .Seek {timeline.seek_target_ms = -1}
-			if kind == .Load {notice = "video could not be loaded"; return_to_grid = true}
-			if code, valid := model.number(root["errorCode"]); valid {
-				fmt.println("request error code:", code)
-			}
-			return true
-		}
-		if kind == .Register {registered = true}
-		if kind == .Unload {unloaded = true}
-	}
-	if kind == .Register {
-		if event, found := root["event"].(json.String); found {
-			fmt.println("app lifecycle:", string(event))
-			if event == "close" {running = false}
-			if event == "relaunch" {raise_window()}
-		}
-	}
-	if kind == .Load && media_id == "" {
-		if id, found := root["mediaId"].(json.String); found {
-			media_id = strings.clone(string(id))
-			fmt.println("media session:", media_id)
-			command("luna://com.webos.media/subscribe", "", .Subscribe)
-			foreground()
-			command("luna://com.webos.media/play")
-		}
-	}
-	if kind == .Subscribe {
-		if info, found := root["videoInfo"].(json.Object); found {
-			width, w_ok := model.number(info["width"])
-			height, h_ok := model.number(info["height"])
-			if w_ok && h_ok && width > 0 && height > 0 {
-				if stream_width != int(width) || stream_height != int(height) {
-					stream_width = int(width)
-					stream_height = int(height)
-					dirty = true
-					fmt.printf(
-						"video %dx%d after %d ms\n",
-						int(width),
-						int(height),
-						sdl.GetTicks() - playback_requested_at,
-					)
-				}
-			}
-			fps, f_ok := model.number(info["frameRate"])
-			if f_ok && fps > 0 {video_frame_rate = fps}
-			if w_ok && h_ok && f_ok && !video_seen {
-				video_seen = true
-				fmt.printf("first video after %d ms\n", sdl.GetTicks() - playback_requested_at)
-			}
-			scan, s_ok := info["scanType"].(json.String)
-			if w_ok && h_ok && video_frame_rate > 0 && s_ok && scan == "progressive" {
-				metadata := struct {
-					ctx:     string `json:"context"`,
-					content: string,
-					video:   struct {
-						frameRate:     f64,
-						scanType:      string,
-						width, height: i64,
-						path:          string,
-						hdrType:       string `json:",omitempty"`,
-					},
-				} {
-					ctx     = media_id,
-					content = "movie",
-					video   = {
-						video_frame_rate,
-						"VIDEO_PROGRESSIVE",
-						i64(width),
-						i64(height),
-						"network",
-						yt.hdr_label(playback_hdr),
-					},
-				}
-				delete(video_metadata)
-				encoded, err := json.marshal(metadata)
-				if err == nil {
-					video_metadata = encoded
-					if loaded {update_display(string(encoded))}
-				}
-			} else {fmt.eprintln("unsupported video metadata")}
-		}
-		if _, found := root["playing"]; found {paused = false; dirty = true}
-		if _, found := root["paused"]; found {paused = true; dirty = true}
-		if source, found := root["sourceInfo"].(json.Object); found {
-			duration_ms = model.source_duration(source)
-			fmt.printf("source duration_ms=%.0f\n", duration_ms)
-			dirty = true
-		}
-		if _, found := root["loadCompleted"]; found {
-			loaded = true
-			// Draw the loaded frame before the synchronous display attach, so the
-			// spinner does not freeze on screen while TV display control blocks.
-			attach_pending = true
-			dirty = true
-		}
-		ms, valid := model.number(root["currentTime"])
-		if time, found := root["currentTime"].(json.Object);
-		   found {ms, valid = model.number(time["currentTime"])}
-		if valid {timeline.position_ms = ms; dirty = true}
-		if _, found := root["seekDone"]; found {
-			model.seek_done(&timeline)
-			// UriPlayer::SetPlayRate uses GST_SEEK_FLAG_TRICKMODE, which can mute
-			// audio and decode keyframes only. A normal seek at the stored rate
-			// re-enters the audio-capable seek path.
-			if rate_repair_pending {
-				rate_repair_pending = false
-				_ = seek_to(timeline.position_ms)
-			}
-			dirty = true
-		}
-		if _, found := root["error"]; found {
-			fmt.eprintln("native media error event")
-			notice = "video playback failed; choose another video"
-			return_to_grid = true
-		}
-		if _, found := root["endOfStream"]; found {return_to_grid = true}
+	if success, found := root["returnValue"].(json.Boolean);
+	   found && bool(success) {registered = true}
+	if event, found := root["event"].(json.String); found {
+		if event == "close" {running = false}
+		if event == "relaunch" {raise_window()}
 	}
 	return true
-}
-attach_media :: proc() {
-	fmt.println("native load completed")
-	fmt.println(
-		"native display attached:",
-		attach_display(APP_ID, media_id, string(video_metadata)),
-	)
-	foreground()
-	command("luna://com.webos.media/play")
-}
-
-stop_playback :: proc() {
-	if media_id != "" {
-		unloaded = false
-		command("luna://com.webos.media/unload", "", .Unload)
-		start := sdl.GetTicks()
-		for !unloaded && sdl.GetTicks() - start < 1500 {poll_services(); sdl.Delay(10)}
-		fmt.println("media unload acknowledged:", unloaded)
-		if !unloaded {running = false}
-	}
-	cancel_media_subscription()
-	release_display()
-	yt.remove_local_hls()
-	delete(media_id); media_id = ""
-	delete(video_metadata); video_metadata = nil
-	video_frame_rate = 0
-	video_seen = false
-	loaded = false; paused = false; resolving = false; attach_pending = false
-	rate_repair_pending = false; rate_repair_at = 0
-	delete(sponsor_segments); sponsor_segments = nil
-	timeline = {
-		seek_target_ms = -1,
-	}
-	browsing = true; return_to_grid = false; dirty = true; library_focus_pending = true
-}
-
-start_video :: proc() {
-	if selected < 0 || selected >= len(catalog.videos) {return}
-	resolve_selected()
-}
-
-load_video :: proc(url: string, renderer: ^sdl.Renderer) {
-	request := struct {
-		uri:     string,
-		kind:    string `json:"type"`,
-		payload: struct {
-			option: struct {
-				appId: string,
-			},
-		},
-	} {
-		uri = url,
-		kind = "media",
-		payload = {option = {APP_ID}},
-	}
-	load, error := json.marshal(request)
-	if error != nil {browsing = true; notice = "video request failed"; dirty = true; return}
-	defer delete(load)
-	notice = ""
-	browsing = false; paused = false; loaded = false; load_replied = false
-	attach_pending = false
-	timeline = {
-		seek_target_ms = -1,
-	}; rate = 1
-	rate_repair_pending = false; rate_repair_at = 0
-	duration_ms = catalog.videos[selected].duration_ms
-	dirty = true
-	if !send(
-		"luna://com.webos.media/load",
-		string(load),
-		.Load,
-	) {browsing = true; notice = "video request failed"; return}
-	// Serialize opening and closing. Do not start a second session while the
-	// first load response is pending. SDL keeps input queued during this wait.
-	start := sdl.GetTicks()
-	for !load_replied && running && !window_closing && sdl.GetTicks() - start < 3000 {
-		poll_services()
-		if !render(renderer) {running = false; return}
-		sdl.Delay(10)
-	}
-	if !load_replied {fmt.eprintln("media load response timed out"); running = false}
 }
 
 main :: proc() {
@@ -271,6 +59,11 @@ main :: proc() {
 	_ = sdl.SetHint(sdl.HINT_VIDEO_DRIVER, "wayland")
 	_ = sdl.SetAppMetadata("LeanTube", APP_VERSION, APP_ID)
 	setup_logging()
+	action := posix.sigaction_t {
+		sa_handler = stop_signal,
+	}
+	if posix.sigaction(.SIGTERM, &action, nil) != .OK ||
+	   posix.sigaction(.SIGINT, &action, nil) != .OK {return}
 	if !start_bus(APP_ID) {os.exit(1)}
 	window: ^sdl.Window
 	renderer: ^sdl.Renderer
@@ -309,11 +102,7 @@ main :: proc() {
 			return
 		}
 	}
-	send(
-		"luna://com.webos.applicationManager/registerApp",
-		"{\"id\":\"" + APP_ID + "\"}",
-		.Register,
-	)
+	if !register_application() {return}
 	start := sdl.GetTicks()
 	for !registered && sdl.GetTicks() - start < 3000 {poll_services(); sdl.Delay(10)}
 	if !registered {fmt.eprintln("registration failed"); return}
@@ -347,6 +136,7 @@ main :: proc() {
 	if !sdl.SetRenderDrawBlendMode(renderer, sdl.BLENDMODE_BLEND) {return}
 	if !open_tv_cursor() {fmt.eprintln("cursor failed:", sdl.GetError())}
 	if !open_text(renderer) {fmt.eprintln("UI assets failed:", sdl.GetError()); return}
+	init_player()
 	if start_network() {
 		activate_navigation(signed_in ? .Subscriptions : .Home)
 	} else {
@@ -355,7 +145,7 @@ main :: proc() {
 	if !render(renderer) {fmt.eprintln("frame failed:", sdl.GetError()); return}
 	fmt.println("video grid presented")
 	previous_frame := sdl.GetTicks()
-	for running && !window_closing {
+	for running && !window_closing && sync.atomic_load(&interrupted) == 0 {
 		poll_services()
 		if return_to_grid {stop_playback()}
 		wheel: f32
@@ -368,20 +158,16 @@ main :: proc() {
 			}
 		}
 		poll_network(renderer)
+		poll_player()
 		poll_card_press(sdl.GetTicks())
 		poll_login_tick()
 		auto_skip_sponsor()
 		expire_player_controls()
 		now := sdl.GetTicks()
-		if rate_repair_pending && now >= rate_repair_at {
-			rate_repair_pending = false
-			_ = seek_to(timeline.position_ms)
-		}
 		frame_dt := f32(min(now - previous_frame, 50)) / 1000
 		previous_frame = now
 		if !window_visible {running = false}
 		if dirty || loading_active() {if !render(renderer, wheel, frame_dt) {break}; dirty = false}
-		if attach_pending {attach_pending = false; attach_media()}
 	}
 	fmt.println("player stopping")
 }

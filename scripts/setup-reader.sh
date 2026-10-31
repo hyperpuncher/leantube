@@ -21,7 +21,9 @@ mkdir -p "$build_dir"
 		--enable-shared --disable-static --disable-programs --disable-doc --disable-debug \
 		--disable-asm --disable-autodetect --disable-everything --disable-avdevice --disable-avfilter \
 		--disable-swscale --disable-swresample --enable-network --enable-openssl --enable-zlib \
-		--enable-demuxer=mov,matroska --enable-muxer=adts --enable-parser=aac,vp9 --enable-decoder=aac,vp9 \
+		--enable-demuxer=mov,matroska --enable-muxer=adts,h264,hevc,obu \
+		--enable-parser=aac,vp9,h264,hevc,av1 --enable-decoder=aac,vp9,h264,hevc,av1 \
+		--enable-bsf=h264_mp4toannexb,hevc_mp4toannexb,av1_metadata \
 		--enable-protocol=file,http,https,tcp,tls
 	# Relink against the current private SDK after dependency ABI updates.
 	make clean

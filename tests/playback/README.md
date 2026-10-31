@@ -19,7 +19,7 @@ just setup-reader
 just bench-install
 ```
 
-the benchmark app uses the LeanTube app ID. neither installed YouTube app is changed. the normal LeanTube player is not changed by the benchmark code.
+the benchmark app uses the LeanTube app ID. neither installed YouTube app is changed. explicit test entry points require a benchmark build. the normal app now uses the same reader and decoder through managed app startup.
 
 keep player responses and results private on the host. the harness sends signed URLs to the TV through SSH input. it does not write media or request files to TV storage. use a new output path for each test. refresh expired player responses.
 
@@ -47,7 +47,7 @@ startup and rebuffering use the same 3-second threshold. packet queues keep the 
 
 `presentation_updates` counts native timestamp reports, not displayed frames. some firmware reports these only about five times per second. verify visible pictures separately and compare their content with source frames before claiming a playback speed. a decoder counter alone is not display proof. check audible audio too.
 
-the normal app still uses its existing native HLS player. this diagnostic is not yet a replacement for the normal player. source and license details for the C interface are in the vendored Starfish documentation.
+the normal app now selects direct sources using the installed decoder capability limits and uses this reader and decoder. first managed-app TV tests have displayed 4K SDR and 4K60 PQ HDR at 1×. speed changes have a known timestamp/feed stall; the integration is not complete. source and license details for the C interface are in the vendored Starfish documentation.
 
 ## raw transport
 

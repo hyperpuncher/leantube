@@ -3,16 +3,6 @@ package main
 import "./model"
 import sdl "vendor:sdl3"
 
-Request_Kind :: enum uintptr {
-	Register,
-	Load,
-	Subscribe,
-	Foreground,
-	Control,
-	Rate,
-	Seek,
-	Unload,
-}
 running := true
 paused: bool
 loaded: bool
@@ -21,8 +11,6 @@ timeline := model.Timeline {
 }
 duration_ms: f64
 rate: f64 = 1
-rate_repair_pending: bool
-rate_repair_at: u64
 dirty := true
 browsing := true
 return_to_grid: bool

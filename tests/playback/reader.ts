@@ -122,6 +122,8 @@ const sources = [
 	...(decode
 		? [
 				"src/starfish_linux_arm32.odin",
+				"src/player_linux_arm32.odin",
+				"src/main_linux_arm32.odin",
 				"src/bench_decoder_linux_arm32.odin",
 				"src/display_linux_arm32.odin",
 				"vendor/starfish/StarfishMediaAPIs_C.cpp",

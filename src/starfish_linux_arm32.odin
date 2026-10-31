@@ -30,11 +30,17 @@ foreign starfish {
 	sf_play :: proc(_: ^Starfish) -> bool ---
 	@(link_name = "StarfishMediaAPIs_pause")
 	sf_pause :: proc(_: ^Starfish) -> bool ---
+	@(link_name = "StarfishMediaAPIs_pushEOS")
+	sf_eos :: proc(_: ^Starfish) -> bool ---
+	@(link_name = "StarfishMediaAPIs_setPlayRate")
+	sf_rate :: proc(_: ^Starfish, _: cstring) -> bool ---
+	@(link_name = "StarfishMediaAPIs_videoLimits")
+	sf_video_limits :: proc(_: cstring, _: ^c.int, _: ^c.int, _: ^c.int) -> bool ---
 	@(link_name = "StarfishMediaAPIs_unload")
 	sf_unload :: proc(_: ^Starfish) -> bool ---
 }
 Decoder_Status :: struct {
-	loaded, unloaded, error, playing:        i32,
+	loaded, unloaded, error, playing, ended: i32,
 	presentation_updates, dropped, frame_ns: i64,
 }
 decoder_callback :: proc "c" (kind: c.int, value: i64, text: cstring, user: rawptr) {
@@ -54,6 +60,8 @@ decoder_callback :: proc "c" (kind: c.int, value: i64, text: cstring, user: rawp
 		sync.atomic_store(&s.playing, 1)
 	case 0x1b:
 		sync.atomic_store(&s.playing, 0)
+	case 0x1c:
+		sync.atomic_store(&s.ended, 1)
 	case 0x30:
 		sync.atomic_add(&s.dropped, 1)
 	}
@@ -74,7 +82,7 @@ decoder_close :: proc(api: ^Starfish, status: ^Decoder_Status) -> bool {
 	release_display()
 	// A missing completion is fatal to this diagnostic. Keep callback storage
 	// live until process exit rather than reuse a possibly live native session.
-	if !complete {return false}
+	if !complete {running = false; return false}
 	sf_destroy(api)
 	free(status)
 	return true
@@ -111,11 +119,12 @@ decoder_open :: proc(
 		metadata,
 		10,
 		true,
-	) {sf_destroy(api); free(status); return nil, nil}
+	) {release_display(); sf_destroy(api); free(status); return nil, nil}
 	sf_foreground(api)
 	payload := fmt.aprintf(
-		`{{"args":[{{"mediaTransportType":"BUFFERSTREAM","option":{{"appId":"%s","queryPosition":false,"externalStreamingInfo":{{"contents":{{"format":"RAW","provider":"Chrome","codec":{{"video":"VP9","audio":"AAC"}},"esInfo":{{"pauseAtDecodeTime":false,"seperatedPTS":true,"ptsToDecode":%d,"videoWidth":%d,"videoHeight":%d,"videoFpsValue":%d,"videoFpsScale":%d}},"aacInfo":{{"channels":%d,"format":"adts","frequency":%.3f,"profile":2}}}},"restartStreaming":false,"totalStreamSize":256,"bufferingCtrInfo":{{"preBufferByte":0,"bufferMinLevel":0,"bufferMaxLevel":0,"qBufferLevelAudio":0,"qBufferLevelVideo":0,"srcBufferLevelAudio":{{"minimum":1024,"maximum":1048576}},"srcBufferLevelVideo":{{"minimum":1024,"maximum":8388608}}}}}},"adaptiveStreaming":{{"audioOnly":false,"maxWidth":%d,"maxHeight":%d,"maxFrameRate":%.6f}}}}}}]}}`,
+		`{{"args":[{{"mediaTransportType":"BUFFERSTREAM","option":{{"appId":"%s","queryPosition":false,"externalStreamingInfo":{{"contents":{{"format":"RAW","provider":"Chrome","codec":{{"video":"%s","audio":"AAC"}},"esInfo":{{"pauseAtDecodeTime":false,"seperatedPTS":true,"ptsToDecode":%d,"videoWidth":%d,"videoHeight":%d,"videoFpsValue":%d,"videoFpsScale":%d}},"aacInfo":{{"channels":%d,"format":"adts","frequency":%.3f,"profile":2}}}},"restartStreaming":false,"totalStreamSize":256,"bufferingCtrInfo":{{"preBufferByte":0,"bufferMinLevel":0,"bufferMaxLevel":0,"qBufferLevelAudio":0,"qBufferLevelVideo":0,"srcBufferLevelAudio":{{"minimum":1024,"maximum":1048576}},"srcBufferLevelVideo":{{"minimum":1024,"maximum":8388608}}}}}},"adaptiveStreaming":{{"audioOnly":false,"maxWidth":%d,"maxHeight":%d,"maxFrameRate":%.6f}}}}}}]}}`,
 		APP_ID,
+		native_video_codec(v.codec),
 		i64(target * 1e9),
 		v.width,
 		v.height,
@@ -131,7 +140,8 @@ decoder_open :: proc(
 	defer delete(payload); defer delete(body)
 	if !sf_load(api, body, decoder_callback, status) {decoder_close(api, status); return nil, nil}
 	fmt.printf(
-		"{{\"event\":\"decoder_load\",\"width\":%d,\"height\":%d,\"fps\":%.6f,\"transfer\":%d,\"audio_rate\":%d,\"audio_channels\":%d}}\n",
+		"{{\"event\":\"decoder_load\",\"codec\":\"%s\",\"width\":%d,\"height\":%d,\"fps\":%.6f,\"transfer\":%d,\"audio_rate\":%d,\"audio_channels\":%d}}\n",
+		v.codec,
 		v.width,
 		v.height,
 		v.fps,
