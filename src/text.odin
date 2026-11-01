@@ -50,8 +50,8 @@ open_text :: proc(renderer: ^sdl.Renderer) -> bool {
 		mono := style == .Mono_Small || style == .Mono_Body
 		file := mono ? "GeistMono-Regular.ttf" : "Geist.ttf"
 		path := fmt.caprintf("%s/fonts/%s", app_directory, file)
-		// Geist's seventh named instance is Bold (700), as in its font metadata.
-		face: sdl.Sint64 = style == .Player_Title ? 7 << 16 : 0
+		// Geist's sixth named instance is SemiBold (600).
+		face: sdl.Sint64 = style == .Player_Title ? 6 << 16 : 0
 		configured :=
 			sdl.SetStringProperty(properties, ttf.PROP_FONT_CREATE_FILENAME_STRING, path) &&
 			sdl.SetFloatProperty(properties, ttf.PROP_FONT_CREATE_SIZE_FLOAT, f32(size)) &&
