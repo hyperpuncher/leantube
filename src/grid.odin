@@ -99,14 +99,14 @@ grid_layout :: proc() {
 				layout = {
 					sizing = {width = clay.SizingGrow({}), height = clay.SizingGrow({})},
 					layoutDirection = .TopToBottom,
-					childGap = spacing(32),
+					childGap = spacing(16),
 				},
 				clip = {vertical = true, childOffset = clay.GetScrollOffset()},
 			},
 			) {
 				for row in 0 ..< (len(catalog.videos) + grid_columns - 1) / grid_columns {
 					if clay.UI()(
-					{layout = {sizing = {width = clay.SizingGrow({})}, childGap = spacing(32)}},
+					{layout = {sizing = {width = clay.SizingGrow({})}, childGap = spacing(16)}},
 					) {
 						for column in 0 ..< grid_columns {
 							index := row * grid_columns + column
