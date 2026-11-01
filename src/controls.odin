@@ -130,10 +130,10 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 }
 
 TIMELINE_HEIGHT :: 44
-TIMELINE_TRACK :: 4
-TIMELINE_TRACK_HOVER :: 8
-TIMELINE_KNOB :: 14
-TIMELINE_KNOB_HOVER :: 24
+TIMELINE_TRACK :: 6
+TIMELINE_TRACK_HOVER :: 12
+TIMELINE_KNOB :: 18
+TIMELINE_KNOB_HOVER :: 28
 
 timeline_hovered :: proc() -> bool {return(
 		clay.PointerOver(clay.ID("timeline")) ||
