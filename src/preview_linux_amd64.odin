@@ -61,6 +61,30 @@ check_rounded_edges :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 		assert(partial > 8, "rounded fills and opaque images must have antialiased edges")
 	}
 	save_snapshot(surface, "rounded-edges")
+	// The gray track must not darken a completed bar at its rounded edge.
+	assert(set_color(renderer, COLOR_ACCENT) && sdl.RenderClear(renderer))
+	assert(
+		rounded_progress(
+			renderer,
+			{16, 16, 64, 64},
+			clay.CornerRadiusAll(16),
+			100,
+			{0, 0, surface.w, surface.h},
+		),
+	)
+	assert(sdl.RenderPresent(renderer))
+	for x in 16 ..< 32 {
+		for y in 76 ..< 80 {
+			red, green, blue: u8
+			assert(sdl.ReadSurfacePixel(surface, i32(x), i32(y), &red, &green, &blue, nil))
+			assert(
+				math.abs(i32(red) - i32(COLOR_ACCENT[0])) <= 1 &&
+				math.abs(i32(green) - i32(COLOR_ACCENT[1])) <= 1 &&
+				math.abs(i32(blue) - i32(COLOR_ACCENT[2])) <= 1,
+				"a completed bar must not leave a dark track at the rounded edge",
+			)
+		}
+	}
 }
 
 // A 4:3 JPEG with baked-in bars must fill a 16:9 frame in both render paths.
@@ -173,6 +197,7 @@ main :: proc() {
 				model.Video {
 					title = fmt.aprintf("video %02d · %s", i + 1, titles[i % len(titles)]),
 					duration_ms = 100000,
+					watched_percent = i == 0 ? 35 : i == 1 ? 100 : 0,
 					channel = fmt.aprintf("channel %02d", i + 1),
 					duration_label = model.time_label(100000),
 				},
@@ -267,8 +292,39 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	key(sdl.K_RIGHT)
 	assert(!rail_focus && selected == 0)
 	check_cover_fill(renderer, surface)
+	assert(render(renderer))
 	first := clay.GetElementData(clay.ID("video", 0)).boundingBox
 	first_cover := clay.GetElementData(clay.ID("cover", 0)).boundingBox
+	completed_cover := clay.GetElementData(clay.ID("cover", 1)).boundingBox
+	// A full progress bar must leave the rounded corner clear.
+	for offset, i in ([2]f32{1, scaled(24)}) {
+		assert(
+			sdl.ReadSurfacePixel(
+				surface,
+				i32(completed_cover.x + offset),
+				i32(completed_cover.y + completed_cover.height - scaled(2)),
+				&red,
+				&green,
+				&blue,
+				nil,
+			),
+		)
+		expected := i == 0 ? COLOR_BACKGROUND : COLOR_ACCENT
+		assert(red == u8(expected[0]) && green == u8(expected[1]) && blue == u8(expected[2]))
+	}
+	assert(
+		sdl.ReadSurfacePixel(
+			surface,
+			i32(first_cover.x + first_cover.width / 2),
+			i32(first_cover.y + first_cover.height - scaled(2)),
+			&red,
+			&green,
+			&blue,
+			nil,
+		),
+	)
+	assert(red == u8(COLOR_TRACK[0]) && green == u8(COLOR_TRACK[1]) && blue == u8(COLOR_TRACK[2]))
+	assert(!clay.GetElementData(clay.ID("watched-progress", 2)).found)
 	for _, i in catalog.videos {
 		card := clay.GetElementData(clay.ID("video", u32(i))).boundingBox
 		column := clay.GetElementData(clay.ID("video", u32(i % grid_columns))).boundingBox

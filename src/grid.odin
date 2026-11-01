@@ -150,6 +150,7 @@ grid_layout :: proc() {
 
 video_card :: proc(index: int) {
 	video := catalog.videos[index]
+	corners := clay.CornerRadiusAll(scaled(12))
 	title, channel, meta := video.title, video.channel, video.meta
 	if index < len(card_labels) {
 		title = card_labels[index].title
@@ -184,7 +185,7 @@ video_card :: proc(index: int) {
 				image = {imageData = rawptr(textures[index])},
 				backgroundColor = textures[index] == nil ? COLOR_SURFACE : clay.Color{},
 				aspectRatio = {16.0 / 9.0},
-				cornerRadius = clay.CornerRadiusAll(scaled(12)),
+				cornerRadius = corners,
 			},
 			) {
 				if clay.UI(clay.ID("duration", u32(index)))(
@@ -201,6 +202,25 @@ video_card :: proc(index: int) {
 					cornerRadius = clay.CornerRadiusAll(scaled(4)),
 				},
 				) {label(video.duration_label, .Mono_Small)}
+				if video.watched_percent > 0 {
+					if clay.UI(clay.ID("watched-progress", u32(index)))(
+					{
+						floating = {
+							attachTo = .Parent,
+							clipTo = .AttachedParent,
+							pointerCaptureMode = .Passthrough,
+						},
+						layout = {
+							sizing = {
+								width = clay.SizingPercent(1),
+								height = clay.SizingPercent(1),
+							},
+						},
+						cornerRadius = corners,
+						custom = {customData = &catalog.videos[index].watched_percent},
+					},
+					) {}
+				}
 			}
 		}
 		if clay.UI()(

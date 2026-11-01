@@ -122,6 +122,17 @@ fill_card_labels :: proc(card: ^model.Video, labels: []string) {
 	card.meta = model.video_meta(views, relative)
 }
 
+// Read both thumbnail overlay formats. Missing progress means unwatched.
+watched_percent :: proc(overlays: json.Value) -> f32 {
+	resume := find_node(overlays, "thumbnailOverlayResumePlaybackRenderer")
+	percent, ok := numeric(field(resume, "percentDurationWatched"))
+	if !ok {
+		bar := find_node(overlays, "thumbnailOverlayProgressBarViewModel")
+		percent, _ = numeric(field(bar, "startPercent"))
+	}
+	return f32(clamp(percent, 0, 100))
+}
+
 video_id_valid :: proc(id: string) -> bool {
 	if len(id) != 11 {return false}
 	for ch in id {
@@ -162,10 +173,11 @@ collect_videos :: proc(value: json.Value, catalog: ^model.Catalog) {
 			title := text(video["title"])
 			if title == "" {delete(title); delete(stamp); return}
 			card := model.Video {
-				id             = strings.clone(string(id)),
-				title          = title,
-				duration_label = stamp,
-				duration_ms    = ms,
+				id              = strings.clone(string(id)),
+				watched_percent = watched_percent(video["thumbnailOverlays"]),
+				title           = title,
+				duration_label  = stamp,
+				duration_ms     = ms,
 			}
 			view_text := text(video["viewCountText"])
 			published := text(video["publishedTimeText"])
@@ -273,11 +285,12 @@ collect_lockups :: proc(value: json.Value, catalog: ^model.Catalog) {
 			ms := duration(stamp)
 			if !playlist && ms <= 0 {delete(stamp); return}
 			card := model.Video {
-				id             = playlist ? "" : strings.clone(string(id)),
-				browse_id      = playlist ? fmt.aprintf("VL%s", string(id)) : "",
-				title          = strings.clone(string(title_text)),
-				duration_label = stamp,
-				duration_ms    = ms,
+				watched_percent = playlist ? 0 : watched_percent(field(thumbnail, "overlays")),
+				id              = playlist ? "" : strings.clone(string(id)),
+				browse_id       = playlist ? fmt.aprintf("VL%s", string(id)) : "",
+				title           = strings.clone(string(title_text)),
+				duration_label  = stamp,
+				duration_ms     = ms,
 			}
 			fill_card_labels(&card, labels[:])
 			card.actions = parse_card_actions(lockup)

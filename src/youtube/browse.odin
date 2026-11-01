@@ -112,11 +112,12 @@ parse_tile :: proc(tile: json.Value) -> (card: model.Video) {
 	title := text(field(metadata, "title"))
 	if title == "" {delete(stamp); return}
 	card = {
-		id             = strings.clone(string(id)),
-		browse_id      = playlist ? strings.clone(string(browse_id)) : "",
-		title          = title,
-		duration_label = stamp,
-		duration_ms    = playlist ? 0 : duration(stamp),
+		id              = strings.clone(string(id)),
+		watched_percent = playlist ? 0 : watched_percent(field(header, "thumbnailOverlays")),
+		browse_id       = playlist ? strings.clone(string(browse_id)) : "",
+		title           = title,
+		duration_label  = stamp,
+		duration_ms     = playlist ? 0 : duration(stamp),
 	}
 	labels: [dynamic]string
 	defer {

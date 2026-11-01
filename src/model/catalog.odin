@@ -8,6 +8,7 @@ import "core:strings"
 GRID_COLUMNS :: 3
 Video :: struct {
 	duration_ms:                        f64,
+	watched_percent:                    f32,
 	id, title, channel, duration_label: string,
 	meta:                               string,
 	published_age_s:                    i64,

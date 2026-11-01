@@ -4,6 +4,32 @@ import clay "../vendor/clay"
 import "core:math"
 import sdl "vendor:sdl3"
 
+// Draw only the bottom strip of the same rounded shape used for the cover.
+rounded_progress :: proc(
+	renderer: ^sdl.Renderer,
+	rect: sdl.FRect,
+	corners: clay.CornerRadius,
+	percent: f32,
+	clip: sdl.Rect,
+) -> bool {
+	saved_clip := clip
+	defer _ = sdl.SetRenderClipRect(renderer, &saved_clip)
+	strip := sdl.Rect{i32(rect.x), i32(rect.y + rect.h - scaled(4)), i32(rect.w), i32(scaled(4))}
+	completed := i32(f32(strip.w) * percent / 100)
+	for color, i in ([2]clay.Color{COLOR_TRACK, COLOR_ACCENT}) {
+		part := strip
+		if i == 0 {
+			part.x += completed
+			part.w -= completed
+		} else {part.w = completed}
+		visible: sdl.Rect
+		if !sdl.GetRectIntersection(clip, part, &visible) {continue}
+		if !sdl.SetRenderClipRect(renderer, &visible) ||
+		   !rounded_shape(renderer, rect, corners, color) {return false}
+	}
+	return true
+}
+
 // SDL geometry has no edge antialiasing. A one-pixel alpha fringe smooths
 // rounded fills and images without masks, render targets, or another renderer.
 rounded_shape :: proc(

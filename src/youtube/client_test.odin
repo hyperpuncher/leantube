@@ -8,7 +8,7 @@ import "core:testing"
 search_owns_metadata_and_skips_live_duplicate_and_invalid_entries :: proc(t: ^testing.T) {
 	catalog, error, visitor := parse_search(
 		`{"responseContext":{"visitorData":"test-session"},"contents":{"twoColumnSearchResultsRenderer":{"primaryContents":{"items":[
-		{"videoRenderer":{"videoId":"aqz-KE-bpKQ","title":{"runs":[{"text":"café "},{"text":"movie"}]},"ownerText":{"runs":[{"text":"Blender"}]},"lengthText":{"simpleText":"1:02:03"}}},
+		{"videoRenderer":{"videoId":"aqz-KE-bpKQ","thumbnailOverlays":[{"thumbnailOverlayResumePlaybackRenderer":{"percentDurationWatched":100}}],"title":{"runs":[{"text":"café "},{"text":"movie"}]},"ownerText":{"runs":[{"text":"Blender"}]},"lengthText":{"simpleText":"1:02:03"}}},
 		{"videoRenderer":{"videoId":"aqz-KE-bpKQ","title":{"simpleText":"duplicate"},"lengthText":{"simpleText":"1:00"}}},
 		{"videoRenderer":{"videoId":"C5WDBA2i9nE","title":{"simpleText":"live"}}},
 		{"videoRenderer":{"videoId":"../private","title":{"simpleText":"invalid"},"lengthText":{"simpleText":"1:00"}}}
@@ -23,6 +23,7 @@ search_owns_metadata_and_skips_live_duplicate_and_invalid_entries :: proc(t: ^te
 	testing.expect_value(t, catalog.query, "cinéma")
 	testing.expect_value(t, catalog.videos[0].id, "aqz-KE-bpKQ")
 	testing.expect_value(t, catalog.videos[0].title, "café movie")
+	testing.expect_value(t, catalog.videos[0].watched_percent, f32(100))
 	testing.expect_value(t, catalog.videos[0].channel, "Blender")
 	testing.expect_value(t, catalog.videos[0].duration_ms, f64(3723000))
 }
@@ -49,7 +50,7 @@ empty_results_are_distinct_from_invalid_responses :: proc(t: ^testing.T) {
 tv_search_lockups_are_parsed_without_web_renderers :: proc(t: ^testing.T) {
 	catalog, error, visitor := parse_search_tv(
 		`{"responseContext":{"visitorData":"tv-session"},"contents":{"sectionListRenderer":{"contents":[{"shelfRenderer":{"content":{"horizontalListRenderer":{"items":[
-		{"lockupViewModel":{"contentId":"DN953UW8iJ8","contentType":"LOCKUP_CONTENT_TYPE_VIDEO","metadata":{"lockupMetadataViewModel":{"title":{"content":"TV search result"},"metadata":{"contentMetadataViewModel":{"metadataRows":[{"metadataParts":[{"text":{"content":"Linus Tech Tips"}}]}]}}}},"contentImage":{"thumbnailViewModel":{"overlays":[{"thumbnailBottomOverlayViewModel":{"badges":[{"thumbnailBadgeViewModel":{"text":"15:51"}}]}}]}}}}
+		{"lockupViewModel":{"contentId":"DN953UW8iJ8","contentType":"LOCKUP_CONTENT_TYPE_VIDEO","metadata":{"lockupMetadataViewModel":{"title":{"content":"TV search result"},"metadata":{"contentMetadataViewModel":{"metadataRows":[{"metadataParts":[{"text":{"content":"Linus Tech Tips"}}]}]}}}},"contentImage":{"thumbnailViewModel":{"overlays":[{"thumbnailOverlayProgressBarViewModel":{"startPercent":65}},{"thumbnailBottomOverlayViewModel":{"badges":[{"thumbnailBadgeViewModel":{"text":"15:51"}}]}}]}}}}
 		]}}}}]}}}`,
 		"Linus",
 	)
@@ -62,6 +63,7 @@ tv_search_lockups_are_parsed_without_web_renderers :: proc(t: ^testing.T) {
 	testing.expect_value(t, catalog.videos[0].title, "TV search result")
 	testing.expect_value(t, catalog.videos[0].channel, "Linus Tech Tips")
 	testing.expect_value(t, catalog.videos[0].duration_ms, f64(951000))
+	testing.expect_value(t, catalog.videos[0].watched_percent, f32(65))
 }
 
 @(test)

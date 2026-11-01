@@ -10,7 +10,7 @@ browse_reads_only_selected_feed_and_skips_ads_live_and_duplicates :: proc(t: ^te
 	{"tabRenderer":{"selected":false,"content":{"tileRenderer":{"onSelectCommand":{"watchEndpoint":{"videoId":"C5WDBA2i9nE"}},"header":{"tileHeaderRenderer":{"thumbnailOverlays":[{"thumbnailOverlayTimeStatusRenderer":{"text":{"simpleText":"1:00"}}}]}},"metadata":{"tileMetadataRenderer":{"title":{"simpleText":"not selected"}}}}}}},
 	{"tabRenderer":{"selected":true,"content":{"sectionListRenderer":{"contents":[
 	{"adSlotRenderer":{"tileRenderer":{"onSelectCommand":{"watchEndpoint":{"videoId":"C5WDBA2i9nE"}}}}},
-	{"tileRenderer":{"onSelectCommand":{"watchEndpoint":{"videoId":"DN953UW8iJ8"}},"header":{"tileHeaderRenderer":{"thumbnail":{"thumbnails":[{"url":"https://images.example/cover"}]},"thumbnailOverlays":[{"thumbnailOverlayResumePlaybackRenderer":{}},{"thumbnailOverlayTimeStatusRenderer":{"text":{"simpleText":"15:51"}}}]}},"metadata":{"tileMetadataRenderer":{"title":{"simpleText":"A video"},"lines":[{"lineRenderer":{"items":[{"lineItemRenderer":{"text":{"runs":[{"text":"A channel"}]}}}]}}]}}}},
+	{"tileRenderer":{"onSelectCommand":{"watchEndpoint":{"videoId":"DN953UW8iJ8"}},"header":{"tileHeaderRenderer":{"thumbnail":{"thumbnails":[{"url":"https://images.example/cover"}]},"thumbnailOverlays":[{"thumbnailOverlayResumePlaybackRenderer":{"percentDurationWatched":35}},{"thumbnailOverlayTimeStatusRenderer":{"text":{"simpleText":"15:51"}}}]}},"metadata":{"tileMetadataRenderer":{"title":{"simpleText":"A video"},"lines":[{"lineRenderer":{"items":[{"lineItemRenderer":{"text":{"runs":[{"text":"A channel"}]}}}]}}]}}}},
 	{"tileRenderer":{"onSelectCommand":{"watchEndpoint":{"videoId":"DN953UW8iJ8"}},"header":{"tileHeaderRenderer":{"thumbnailOverlays":[{"thumbnailOverlayTimeStatusRenderer":{"text":{"simpleText":"15:51"}}}]}},"metadata":{"tileMetadataRenderer":{"title":{"simpleText":"duplicate"}}}}},
 	{"tileRenderer":{"onSelectCommand":{"watchEndpoint":{"videoId":"C5WDBA2i9nE"}},"metadata":{"tileMetadataRenderer":{"title":{"simpleText":"live"}}}}}
 	],"continuations":[{"nextContinuationData":{"continuation":"next-page"}}]}}}}
@@ -22,6 +22,7 @@ browse_reads_only_selected_feed_and_skips_ads_live_and_duplicates :: proc(t: ^te
 	if !testing.expect_value(t, len(catalog.videos), 1) {return}
 	testing.expect_value(t, catalog.videos[0].id, "DN953UW8iJ8")
 	testing.expect_value(t, catalog.videos[0].channel, "A channel")
+	testing.expect_value(t, catalog.videos[0].watched_percent, f32(35))
 	testing.expect_value(t, catalog.videos[0].thumbnail_url, "https://images.example/cover")
 	testing.expect_value(t, catalog.continuation, "next-page")
 }

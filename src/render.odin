@@ -196,6 +196,18 @@ render_commands :: proc(
 					{source.x / width, source.y / height, source.w / width, source.h / height},
 				) {return false}
 			} else if !sdl.RenderTexture(renderer, texture, &source, &rect) {return false}
+		case .Custom:
+			data := command.renderData.custom
+			percent := (cast(^f32)data.customData)^
+			if !rounded_progress(
+				renderer,
+				rect,
+				data.cornerRadius,
+				percent,
+				clips[len(clips) - 1],
+			) {
+				return false
+			}
 		case .Text:
 			text := command.renderData.text
 			if text.stringContents.length == 0 {continue}
