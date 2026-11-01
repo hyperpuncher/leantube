@@ -49,9 +49,9 @@ subscription_sort_keeps_loaded_and_pending_covers_with_their_videos :: proc(t: ^
 		},
 	)
 	poll_network(renderer)
-	older_texture := textures[1]
+	older_texture := textures[catalog.videos[1].cover_index]
 	if !testing.expect(t, older_texture != nil) {return}
-	testing.expect(t, textures[0] == nil)
+	testing.expect(t, textures[catalog.videos[0].cover_index] == nil)
 
 	chan.send(
 		network_results,
@@ -63,10 +63,10 @@ subscription_sort_keeps_loaded_and_pending_covers_with_their_videos :: proc(t: ^
 		},
 	)
 	poll_network(renderer)
-	older_avatar := card_avatars[1]
+	older_avatar := card_avatars[catalog.videos[1].cover_index]
 	if !testing.expect(t, older_avatar != nil) {return}
 
-	// A newer continuation must move both images and preserve focus.
+	// A newer continuation must keep both images attached and preserve focus.
 	selected = 1
 	next := Network_Result {
 		kind   = .Catalog,
@@ -82,10 +82,14 @@ subscription_sort_keeps_loaded_and_pending_covers_with_their_videos :: proc(t: ^
 	testing.expect_value(t, catalog.videos[0].id, "newest")
 	testing.expect_value(t, catalog.videos[1].id, "newer")
 	testing.expect_value(t, catalog.videos[2].id, "older")
-	testing.expect_value(t, textures[2], older_texture)
-	testing.expect_value(t, card_avatars[2], older_avatar)
+	testing.expect_value(t, textures[catalog.videos[2].cover_index], older_texture)
+	testing.expect_value(t, card_avatars[catalog.videos[2].cover_index], older_avatar)
 	testing.expect_value(t, selected, 2)
-	testing.expect(t, textures[0] == nil && textures[1] == nil)
+	testing.expect(
+		t,
+		textures[catalog.videos[0].cover_index] == nil &&
+		textures[catalog.videos[1].cover_index] == nil,
+	)
 
 	// A delayed first-page cover and a new-page cover arrive out of order.
 	chan.send(
@@ -109,12 +113,15 @@ subscription_sort_keeps_loaded_and_pending_covers_with_their_videos :: proc(t: ^
 	poll_network(renderer)
 	for expected, i in ([][2]f32{{53, 29}, {41, 23}, {31, 17}}) {
 		width, height: f32
-		if !testing.expect(t, textures[i] != nil) {return}
-		testing.expect(t, sdl.GetTextureSize(textures[i], &width, &height))
+		if !testing.expect(t, textures[catalog.videos[i].cover_index] != nil) {return}
+		testing.expect(
+			t,
+			sdl.GetTextureSize(textures[catalog.videos[i].cover_index], &width, &height),
+		)
 		testing.expect_value(t, width, expected[0])
 		testing.expect_value(t, height, expected[1])
 	}
-	latest_texture := textures[0]
+	latest_texture := textures[catalog.videos[0].cover_index]
 	chan.send(
 		network_results,
 		Network_Result {
@@ -134,6 +141,6 @@ subscription_sort_keeps_loaded_and_pending_covers_with_their_videos :: proc(t: ^
 		},
 	)
 	poll_network(renderer)
-	testing.expect_value(t, textures[0], latest_texture)
-	testing.expect_value(t, textures[2], older_texture)
+	testing.expect_value(t, textures[catalog.videos[0].cover_index], latest_texture)
+	testing.expect_value(t, textures[catalog.videos[2].cover_index], older_texture)
 }

@@ -178,8 +178,8 @@ video_card :: proc(index: int) {
 		if clay.UI(clay.ID("cover", u32(index)))(
 		{
 			layout = {sizing = {width = clay.SizingGrow({})}},
-			image = {imageData = rawptr(textures[index])},
-			backgroundColor = textures[index] == nil ? COLOR_SURFACE : clay.Color{},
+			image = {imageData = rawptr(textures[video.cover_index])},
+			backgroundColor = textures[video.cover_index] == nil ? COLOR_SURFACE : clay.Color{},
 			aspectRatio = {16.0 / 9.0},
 			cornerRadius = corners,
 		},
@@ -254,7 +254,7 @@ video_card :: proc(index: int) {
 				if channel_id != "" {
 					avatar_button(
 						clay.ID("card-avatar", u32(index)),
-						card_avatars[index],
+						card_avatars[video.cover_index],
 						CARD_AVATAR_SIZE,
 						4,
 					)

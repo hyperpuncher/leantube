@@ -646,16 +646,9 @@ resolve_selected :: proc(position_ms: f64 = 0, start_paused: bool = false) {
 // Cover replies use the original feed position, not the sorted grid position.
 sort_subscriptions :: proc(preserve_selection: bool) {
 	if len(catalog.videos) == 0 {return}
-	covers := make(map[int]struct {
-			cover, avatar: ^sdl.Texture,
-		})
-	defer delete(covers)
 	selected_cover := preserve_selection ? catalog.videos[selected].cover_index : -1
-	for video, i in catalog.videos {covers[video.cover_index] = {textures[i], card_avatars[i]}}
 	model.sort_latest(catalog.videos[:])
 	for video, i in catalog.videos {
-		textures[i] = covers[video.cover_index].cover
-		card_avatars[i] = covers[video.cover_index].avatar
 		if video.cover_index == selected_cover {selected = i}
 	}
 }
@@ -781,11 +774,8 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				slot = &player_channel_avatar
 			}
 			if result.kind == .Cover || result.index >= 0 {
-				index := -1
-				for video, i in catalog.videos {
-					if video.cover_index == result.index {index = i; break}
-				}
-				if index < 0 {continue}
+				index := result.index
+				if index < 0 || index >= len(textures) {continue}
 				slot = result.kind == .Cover ? &textures[index] : &card_avatars[index]
 			}
 			if result.surface == nil {continue}

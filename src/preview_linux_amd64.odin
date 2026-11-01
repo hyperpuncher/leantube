@@ -212,6 +212,7 @@ main :: proc() {
 				&catalog.videos,
 				model.Video {
 					title = fmt.aprintf("video %02d · %s", i + 1, titles[i % len(titles)]),
+					cover_index = i,
 					duration_ms = 100000,
 					watched_percent = i == 0 ? 35 : i == 1 ? 100 : 0,
 					channel = fmt.aprintf("channel %02d", i + 1),
