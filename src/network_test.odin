@@ -30,6 +30,8 @@ canceling_and_reopening_the_same_video_rejects_old_replies :: proc(t: ^testing.T
 	defer delete(second.text)
 	testing.expect(t, first_ok && second_ok)
 	testing.expect(t, first.playback != second.playback)
+	old_segments := make([dynamic]sb.Segment)
+	append(&old_segments, sb.Segment{start_ms = 0, end_ms = 1000})
 	chan.send(
 		network_results,
 		Network_Result {
@@ -37,16 +39,6 @@ canceling_and_reopening_the_same_video_rejects_old_replies :: proc(t: ^testing.T
 			page = first.page,
 			playback = first.playback,
 			error = .No_Direct_Stream,
-		},
-	)
-	old_segments := make([dynamic]sb.Segment)
-	append(&old_segments, sb.Segment{start_ms = 0, end_ms = 1000})
-	chan.send(
-		network_results,
-		Network_Result {
-			kind = .Segments,
-			page = first.page,
-			playback = first.playback,
 			segments = old_segments,
 		},
 	)

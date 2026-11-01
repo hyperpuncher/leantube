@@ -67,9 +67,11 @@ http_body_is_bounded_and_redirect_headers_reset_response :: proc(t: ^testing.T) 
 }
 @(test)
 consuming_packets_updates_bytes_and_clearing_releases_the_tail :: proc(t: ^testing.T) {
+	state := State{}
 	track := Track {
-		eof = true,
-		end = 2,
+		state = &state,
+		eof   = true,
+		end   = 2,
 	}
 	queue.init(&track.packets)
 	defer {clear_track(&track); queue.destroy(&track.packets)}

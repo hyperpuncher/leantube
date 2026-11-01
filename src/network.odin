@@ -5,7 +5,6 @@ import "./http"
 import "./model"
 import sb "./sponsorblock"
 import yt "./youtube"
-import "core:fmt"
 import "core:strings"
 import "core:sync/chan"
 import "core:thread"
@@ -37,7 +36,6 @@ Network_Result :: struct {
 		Cover,
 		Channel_Avatar,
 		Stream,
-		Segments,
 		Account,
 		Login_Code,
 		Login_Waiting,
@@ -352,6 +350,10 @@ network_main :: proc(_: ^thread.Thread) {
 				network_stopping,
 				limits = playback_limits[:],
 			)
+			// Deliver the skip plan with the sources, before any media read-ahead.
+			segments: [dynamic]sb.Segment
+			if error == .None &&
+			   !network_stopping() {segments = sb.fetch(&network_client, request.text)}
 			if !post_network_result(
 				{
 					kind = .Stream,
@@ -359,19 +361,9 @@ network_main :: proc(_: ^thread.Thread) {
 					playback = request.playback,
 					error = error,
 					stream = stream,
+					segments = segments,
 				},
 			) {return}
-			if error == .None && !chan.is_closed(network_requests) {
-				segments := sb.fetch(&network_client, request.text)
-				if !post_network_result(
-					{
-						kind = .Segments,
-						page = request.page,
-						playback = request.playback,
-						segments = segments,
-					},
-				) {return}
-			}
 		}
 	}
 }
@@ -711,15 +703,12 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 					result.error == .No_Direct_Stream ? "YouTube did not provide a supported direct stream" : "video resolution failed; try again"
 			} else {
 				stream_width, stream_height = result.stream.width, result.stream.height
+				delete(sponsor_segments)
+				sponsor_segments = result.segments
+				result.segments = nil
 				load_video(result.stream, renderer)
 				show_player_controls()
 			}
-		case .Segments:
-			if browsing || return_to_grid || result.playback != playback {continue}
-			delete(sponsor_segments)
-			sponsor_segments = result.segments
-			fmt.println("sponsor segments loaded:", len(sponsor_segments))
-			result.segments = nil
 		case:
 		}
 		dirty = true

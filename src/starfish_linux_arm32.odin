@@ -154,7 +154,7 @@ decoder_open :: proc(
 decoder_feed :: proc(api: ^Starfish, t: ^reader.Track, limit: f64) -> bool {
 	sync.mutex_lock(&t.mutex)
 	defer sync.mutex_unlock(&t.mutex)
-	for queue.len(t.packets) > 0 && queue.front(&t.packets).pts <= limit {
+	for reader.current_packet(t) && queue.front(&t.packets).pts <= limit {
 		p := queue.front(&t.packets)
 		payload := fmt.aprintf(
 			`{{"bufferAddr":"0x%x","bufferSize":%d,"pts":%d,"esData":%d}}`,

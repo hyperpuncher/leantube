@@ -63,7 +63,7 @@ decoder_close :: proc(_: ^Starfish, _: ^Decoder_Status) -> bool {fake_close += 1
 	)}
 decoder_feed :: proc(_: ^Starfish, t: ^reader.Track, limit: f64) -> bool {
 	if fake_full {return true}
-	for queue.len(t.packets) > 0 && queue.front(&t.packets).pts <= limit {
+	for reader.current_packet(t) && queue.front(&t.packets).pts <= limit {
 		p := queue.pop_front(&t.packets)
 		reader.av_packet_free(&p.packet)
 	}
@@ -84,7 +84,7 @@ prepare_player :: proc(end: f64) {
 		for pts in ([]f64{0, end - 0.1}) {
 			queue.push_back(
 				&t.packets,
-				{packet = reader.av_packet_alloc(), pts = pts, end = pts + 0.1},
+				{packet = reader.av_packet_alloc(), pts = pts, decode_time = pts, end = pts + 0.1},
 			)
 		}
 	}
@@ -135,6 +135,8 @@ controls_preserve_pause_audio_rate_and_seek_generation :: proc(t: ^testing.T) {
 	testing.expect_value(t, sync.atomic_load(&player_reader.state.generation), u32(1))
 	testing.expect_value(t, sync.atomic_load(&player_reader.state.seek_target), f64(2))
 	for &track in player_reader.tracks {testing.expect_value(t, queue.len(track.packets), 0)}
+	testing.expect(t, seek_to(3000) && seek_to(4000))
+	testing.expect_value(t, timeline.seek_target_ms, f64(4000))
 }
 
 @(test)

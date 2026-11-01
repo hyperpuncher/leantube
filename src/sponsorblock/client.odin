@@ -101,6 +101,18 @@ skip_target :: proc(segments: []Segment, position_ms, duration_ms: f64) -> f64 {
 	}
 	return target > position_ms ? target : -1
 }
+// Find the next eligible group, including a group containing the position.
+next_skip :: proc(segments: []Segment, position_ms, duration_ms: f64) -> (from, to: f64) {
+	from, to = -1, -1
+	for segment in segments {
+		if can_skip(segment, duration_ms) &&
+		   segment.end_ms > position_ms &&
+		   (from < 0 || segment.start_ms < from) {from = segment.start_ms}
+	}
+	if from >= 0 {to = skip_target(segments, max(from, position_ms), duration_ms)}
+	return
+}
+
 mark_skipped :: proc(segments: []Segment, from_ms, to_ms: f64) {
 	for &segment in segments {
 		if segment.start_ms <= to_ms && segment.end_ms > from_ms {segment.skipped = true}

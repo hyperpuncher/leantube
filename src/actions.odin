@@ -1,8 +1,6 @@
 package main
 
 import "./model"
-import sb "./sponsorblock"
-import "core:fmt"
 import "core:strings"
 import sdl "vendor:sdl3"
 
@@ -90,21 +88,4 @@ key :: proc(code: sdl.Keycode, window: ^sdl.Window = nil) {
 		}
 	}
 	dirty = true
-}
-
-seek_to :: proc(target: f64) -> bool {
-	if !player_seek(target) {return false}
-	timeline.seek_target_ms = target
-	timeline.buffer_start_ms, timeline.buffer_end_ms = 0, 0
-	return true
-}
-
-auto_skip_sponsor :: proc() {
-	if browsing || !loaded || paused || timeline.seek_target_ms >= 0 {return}
-	from := timeline.position_ms
-	target := sb.skip_target(sponsor_segments[:], from, duration_ms)
-	if target >= 0 && seek_to(target) {
-		fmt.printf("sponsor skip %.3f -> %.3f seconds\n", from / 1000, target / 1000)
-		sb.mark_skipped(sponsor_segments[:], from, target)
-	}
 }

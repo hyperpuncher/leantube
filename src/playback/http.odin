@@ -14,6 +14,7 @@ BLOCK_BYTES :: 1024 * 1024
 Cancel :: struct {
 	state:      ^State,
 	generation: u32,
+	opening:    bool,
 }
 Http :: struct {
 	cancel:                                        Cancel,
@@ -60,7 +61,7 @@ http_socket_options :: proc "c" (
 cancelled :: proc "contextless" (cancel: ^Cancel) -> bool {
 	return(
 		sync.atomic_load(&cancel.state.stopped) ||
-		cancel.generation != sync.atomic_load(&cancel.state.generation) \
+		(!cancel.opening && cancel.generation != sync.atomic_load(&cancel.state.generation)) \
 	)
 }
 interrupt :: proc "c" (arg: rawptr) -> c.int {

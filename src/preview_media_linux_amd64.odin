@@ -19,7 +19,17 @@ player_pause :: proc(value: bool) -> bool {paused = value; return true}
 player_rate :: proc(_: f64) -> bool {return true}
 player_seek :: proc(_: f64) -> bool {return true}
 
-load_video :: proc(_: yt.Stream, _: ^sdl.Renderer) {start_video()}
+load_video :: proc(
+	stream: yt.Stream,
+	_: ^sdl.Renderer,
+	position_ms: f64 = 0,
+	start_paused: bool = false,
+) {
+	start_video()
+	if stream.duration_ms > 0 {duration_ms = stream.duration_ms}
+	timeline.position_ms = position_ms
+	paused = start_paused
+}
 
 start_video :: proc() {
 	if selected < 0 || selected >= len(catalog.videos) {return}

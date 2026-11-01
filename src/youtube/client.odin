@@ -18,10 +18,11 @@ Error :: enum {
 	No_Direct_Stream,
 }
 Stream :: struct {
-	url:       string,
-	width:     int,
-	height:    int,
-	audio_url: string,
+	url:         string,
+	width:       int,
+	height:      int,
+	audio_url:   string,
+	duration_ms: f64,
 }
 
 // Client profiles follow yt-dlp's YouTube extractor. No account cookies or

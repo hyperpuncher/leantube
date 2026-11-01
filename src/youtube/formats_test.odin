@@ -5,7 +5,7 @@ import "core:testing"
 
 @(test)
 player_selects_highest_supported_resolution_frame_rate_and_hdr :: proc(t: ^testing.T) {
-	data := `{"playabilityStatus":{"status":"OK"},"streamingData":{"adaptiveFormats":[
+	data := `{"videoDetails":{"lengthSeconds":"123"},"playabilityStatus":{"status":"OK"},"streamingData":{"adaptiveFormats":[
 	{"mimeType":"audio/mp4; codecs=\"mp4a.40.2\"","bitrate":128000,"xtags":"ChEKBWFjb250EghvcmlnaW5hbAoNCgRsYW5nEgVlbi1VUw","audioTrack":{"audioIsDefault":false},"url":"https://media.example/original"},
 	{"mimeType":"audio/mp4; codecs=\"mp4a.40.2\"","bitrate":256000,"xtags":"ChQKBWFjb250EgtkdWJiZWQtYXV0bwoNCgRsYW5nEgVkZS1ERQ","audioTrack":{"audioIsDefault":true},"url":"https://media.example/dub"},
 	{"mimeType":"audio/mp4; codecs=\"mp4a.40.2\"","bitrate":256000,"isDrc":true,"url":"https://media.example/drc"},
@@ -22,6 +22,7 @@ player_selects_highest_supported_resolution_frame_rate_and_hdr :: proc(t: ^testi
 	testing.expect_value(t, stream.url, "https://media.example/hdr")
 	testing.expect_value(t, stream.audio_url, "https://media.example/original")
 	testing.expect(t, stream.width == 3840 && stream.height == 2160)
+	testing.expect_value(t, stream.duration_ms, f64(123000))
 	// A more capable device is not limited to the tested TV's resolution.
 	larger, larger_error := parse_player(data, {{"av1", 7680, 4320, 60}})
 	defer delete(larger.url); defer delete(larger.audio_url)

@@ -41,7 +41,7 @@ session_bounds_both_queues_seeks_and_joins_workers :: proc(t: ^testing.T) {
 	testing.expect_value(t, sync.atomic_load(&s.state.failure), c.int(0))
 	testing.expect(t, full)
 	if !full {return}
-	seek(s, 21)
+	seek(s, 41)
 	testing.expect_value(t, sync.atomic_load(&s.state.generation), u32(1))
 	ended := false
 	begun = time.tick_now()
@@ -58,6 +58,6 @@ session_bounds_both_queues_seeks_and_joins_workers :: proc(t: ^testing.T) {
 	testing.expect(t, s.workers[0] == nil && s.workers[1] == nil)
 	testing.expect(t, v.width == 32 && v.height == 32 && v.fps == 5)
 	testing.expect(t, queue.len(v.packets) > 0 && queue.len(a.packets) > 0)
-	testing.expect(t, v.hot_first_pts >= 20 && v.hot_first_pts <= 21)
-	testing.expect(t, a.hot_first_pts >= 20 && a.hot_first_pts <= 21.1)
+	testing.expect(t, v.hot_first_pts >= 40 && v.hot_first_pts <= 41)
+	testing.expect(t, a.hot_first_pts >= 40 && a.hot_first_pts <= 41.1)
 }

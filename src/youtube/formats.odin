@@ -90,5 +90,7 @@ parse_player :: proc(data: string, limits: []Video_Limit = nil) -> (stream: Stre
 	}
 	if stream.url == "" {delete(audio.url); return {}, .No_Direct_Stream}
 	stream.audio_url = audio.url
+	seconds, _ := numeric(field(field(value, "videoDetails"), "lengthSeconds"))
+	if seconds > 0 {stream.duration_ms = seconds * 1000}
 	return
 }

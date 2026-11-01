@@ -16,18 +16,21 @@ Options :: struct {
 	receive_buffer_bytes: c.int,
 	decoder_preroll:      bool,
 	trace:                bool,
-	start:                f64,
+	start, end:           f64,
 }
 State :: struct {
-	stopped:               bool,
-	failure:               c.int,
-	generation:            u32,
-	position, seek_target: f64,
+	stopped:                         bool,
+	failure:                         c.int,
+	generation, consumer_generation: u32,
+	position, seek_target:           f64,
+	// One prepared jump. These fields are protected by both track mutexes.
+	skip_start, skip_end, read_end:  f64,
 }
 Packet :: struct {
-	packet: ^AVPacket,
-	end:    f64,
-	pts:    f64,
+	packet:      ^AVPacket,
+	end, pts:    f64,
+	decode_time: f64,
+	generation:  u32,
 }
 Track :: struct {
 	state:                                                         ^State,
@@ -37,9 +40,9 @@ Track :: struct {
 	mutex:                                                         sync.Mutex,
 	changed:                                                       sync.Cond,
 	packets:                                                       queue.Queue(Packet),
-	eof:                                                           bool,
+	eof, at_limit:                                                 bool,
 	queued_bytes, read_bytes, io_bytes, discarded:                 i64,
-	end:                                                           f64,
+	end, skip_boundary, skip_gap:                                  f64,
 	width, height:                                                 c.int,
 	codec:                                                         string,
 	frame_rate:                                                    Rational,
@@ -91,13 +94,33 @@ clear_track :: proc(t: ^Track) {
 		av_packet_free(&p.packet)
 	}
 	t.queued_bytes = 0
-	t.eof = false
+	t.eof, t.at_limit = false, false
 }
+// Call these queue queries with the track mutex held.
+current_packet :: proc(t: ^Track) -> bool {
+	return(
+		queue.len(t.packets) > 0 &&
+		queue.front(&t.packets).generation == t.state.consumer_generation \
+	)
+}
+span_closed :: proc(t: ^Track) -> bool {
+	return t.eof || sync.atomic_load(&t.state.generation) != t.state.consumer_generation
+}
+span_drained :: proc(t: ^Track) -> bool {return span_closed(t) && !current_packet(t)}
 ahead :: proc(t: ^Track, clock: f64) -> f64 {
-	return queue.len(t.packets) == 0 ? 0 : max(0, t.end - clock)
+	if queue.len(t.packets) == 0 {return 0}
+	end := t.end
+	if t.state.skip_end > t.state.skip_start {
+		end -= max(0, min(end, t.state.skip_end) - max(clock, t.state.skip_start))
+	}
+	return max(0, end - clock)
+}
+wait_at_end :: proc(t: ^Track, cancel: ^Cancel) {
+	t.eof = true
+	for !cancelled(cancel) {sync.cond_wait(&t.changed, &t.mutex)}
 }
 consume :: proc(t: ^Track, clock: f64) {
-	for queue.len(t.packets) > 0 && queue.front(&t.packets).end <= clock {
+	for current_packet(t) && queue.front(&t.packets).end <= clock {
 		p := queue.pop_front(&t.packets)
 		t.queued_bytes -= i64(p.packet.size)
 		av_packet_free(&p.packet)
@@ -114,7 +137,7 @@ read_track :: proc(worker: ^thread.Thread) {
 	if format == nil {sync.atomic_store(&s.failure, ERROR_MEMORY); return}
 	io: ^AVIOContext
 	h := Http {
-		cancel = {state = s},
+		cancel = {state = s, opening = true},
 		handle = curl.easy_init(),
 		url = strings.clone(t.url),
 		mode = t.options.mode,
@@ -204,10 +227,15 @@ read_track :: proc(worker: ^thread.Thread) {
 		}
 		sync.mutex_unlock(&t.mutex)
 	}
+	// Input metadata must finish opening before a seek can use its index.
+	// Stop still cancels this phase; seek requests are applied below.
+	h.cancel.opening = false
+	first_in_generation := true
 	for result >= 0 && !sync.atomic_load(&s.stopped) {
 		if h.cancel.generation != sync.atomic_load(&s.generation) {
 			h.cancel.generation = sync.atomic_load(&s.generation)
 			start = sync.atomic_load(&s.seek_target)
+			first_in_generation = true
 			at := time.tick_now()
 			result = av_seek_frame(format, -1, i64(start * 1e6), 1)
 			t.hot_seek_s = seconds_since(at)
@@ -231,14 +259,14 @@ read_track :: proc(worker: ^thread.Thread) {
 			if result == ERROR_EOF {
 				sync.mutex_lock(&t.mutex)
 				if h.cancel.generation == sync.atomic_load(&s.generation) {
-					if h.cancel.generation > 0 &&
+					if s.read_end == 0 &&
+					   h.cancel.generation > 0 &&
 					   t.end <= start &&
 					   format.duration != NO_PTS &&
 					   start + 0.1 < f64(format.duration) / 1e6 {
 						result = ERROR_INVALID_DATA
 					} else {
-						t.eof = true
-						for !cancelled(&h.cancel) {sync.cond_wait(&t.changed, &t.mutex)}
+						wait_at_end(t, &h.cancel)
 						result = 0
 					}
 				} else {result = 0}
@@ -259,14 +287,40 @@ read_track :: proc(worker: ^thread.Thread) {
 		if mux != nil &&
 		   !framing_frame(mux, &p) {av_packet_free(&p); result = ERROR_INVALID_DATA; break}
 		sync.mutex_lock(&t.mutex)
-		for !cancelled(&h.cancel) &&
-		    (end - sync.atomic_load(&s.position) > MAXIMUM_SECONDS ||
-				    (queue.len(t.packets) > 0 &&
-						    end - queue.front(&t.packets).pts >
-							    MAXIMUM_SECONDS)) {sync.cond_wait(&t.changed, &t.mutex)}
+		pts := f64(p.pts) * base
+		decode_time := f64(p.dts == NO_PTS ? p.pts : p.dts) * base
+		if !cancelled(&h.cancel) && s.read_end > 0 && decode_time >= s.read_end {
+			av_packet_free(&p)
+			t.at_limit = true
+			wait_at_end(t, &h.cancel)
+			sync.mutex_unlock(&t.mutex)
+			continue
+		}
+		if first_in_generation && !cancelled(&h.cancel) {
+			t.skip_gap = pts - t.skip_boundary
+			first_in_generation = false
+		}
+		for !cancelled(&h.cancel) {
+			gap := h.cancel.generation != s.consumer_generation ? t.skip_gap : 0
+			front_gap: f64
+			if queue.len(t.packets) > 0 &&
+			   queue.front(&t.packets).generation != h.cancel.generation {front_gap = t.skip_gap}
+			if end - sync.atomic_load(&s.position) - gap <= MAXIMUM_SECONDS &&
+			   (queue.len(t.packets) == 0 ||
+					   end - queue.front(&t.packets).pts - front_gap <= MAXIMUM_SECONDS) {break}
+			sync.cond_wait(&t.changed, &t.mutex)
+		}
 		if cancelled(&h.cancel) {av_packet_free(&p)} else {
-			if ok, _ := queue.push_back(&t.packets, Packet{p, end, f64(p.pts) * base});
-			   !ok {av_packet_free(&p); result = ERROR_MEMORY} else {
+			if ok, _ := queue.push_back(
+				&t.packets,
+				Packet {
+					packet = p,
+					end = end,
+					pts = pts,
+					decode_time = decode_time,
+					generation = h.cancel.generation,
+				},
+			); !ok {av_packet_free(&p); result = ERROR_MEMORY} else {
 				t.read_bytes += i64(p.size)
 				t.queued_bytes += i64(p.size)
 				t.end = end
