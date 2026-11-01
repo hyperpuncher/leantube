@@ -137,6 +137,10 @@ test-tv-layout:
 package: build-release
 	ares-package build/app -o build
 
+# Build the IPK and Homebrew Channel feed without publishing or TV access.
+release: package
+	bun scripts/release.ts
+
 # Check live search, cover download, resolution, and CDN access locally.
 test-youtube:
 	odin run tests/youtube -out:build/youtube-check
