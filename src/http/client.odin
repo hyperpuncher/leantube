@@ -21,11 +21,6 @@ Response :: struct {
 	body:   [dynamic]u8,
 }
 
-// CURLOPT_REDIR_PROTOCOLS is 182 in curl's ABI. The current Odin bindings
-// omit this enum member.
-@(private)
-CURL_REDIR_PROTOCOLS :: curl.option(182)
-
 // Open before starting the network worker; close after joining it.
 // Each client belongs to one worker. Requests must stay off the UI thread.
 open :: proc(ca_file: string = "") -> (client: Client, error: Error) {
@@ -108,7 +103,7 @@ request :: proc(
 	curl.easy_setopt(handle, .WRITEDATA, rawptr(&response_body)) or_return
 	curl.easy_setopt(handle, .HTTPHEADER, list) or_return
 	if follow_redirects {
-		curl.easy_setopt(handle, CURL_REDIR_PROTOCOLS, c.long(curl.PROTO_HTTPS)) or_return
+		curl.easy_setopt(handle, .REDIR_PROTOCOLS_STR, cstring("https")) or_return
 		curl.easy_setopt(handle, .MAXREDIRS, c.long(5)) or_return
 		curl.easy_setopt(handle, .FOLLOWLOCATION, c.long(1)) or_return
 	}
