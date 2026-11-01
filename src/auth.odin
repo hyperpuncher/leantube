@@ -72,16 +72,21 @@ save_auth :: proc() -> bool {
 	data, error := json.marshal(store)
 	if error != nil {return false}
 	defer delete(data)
-	_ = os.remove(path)
+	// Replace only after the private staging file has been written and closed.
+	temporary := strings.concatenate({path, ".new"})
+	defer delete(temporary)
+	_ = os.remove(temporary)
+	defer os.remove(temporary)
 	file, open_error := os.open(
-		path,
-		{.Create, .Write, .Trunc},
+		temporary,
+		{.Create, .Write, .Excl},
 		os.Permissions{.Read_User, .Write_User},
 	)
 	if open_error != nil {return false}
-	defer os.close(file)
 	written, write_error := os.write(file, data)
-	return write_error == nil && written == len(data)
+	close_error := os.close(file)
+	if write_error != nil || written != len(data) || close_error != nil {return false}
+	return os.rename(temporary, path) == nil
 }
 
 free_auth_token :: proc(token: ^Auth_Token) {
