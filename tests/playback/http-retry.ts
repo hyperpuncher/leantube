@@ -155,8 +155,7 @@ const server = Bun.serve({
 });
 try {
 	await $`mkdir -p build/playback-bench`;
-	await $`odin test src/playback -out:build/playback-bench/reader-test -define:READER_HTTP_TEST_SERVER=${server.url.origin} -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false`;
-	await $`odin test tests/playback/diagnostics -out:build/playback-bench/diagnostics-test -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false`;
+	await $`odin test tests/playback/host -all-packages -vet -out:build/playback-bench/reader-test -define:READER_HTTP_TEST_SERVER=${server.url.origin} -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false`;
 	if (counts["/once"] !== 2 || counts["/always"] !== 2)
 		throw Error("range recovery exceeded its retry limit");
 	if (counts["/redirect"] !== 2 || counts["/target"] !== 2)

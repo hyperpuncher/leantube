@@ -29,9 +29,9 @@ session_bounds_both_queues_seeks_and_joins_workers :: proc(t: ^testing.T) {
 		sync.mutex_lock(&v.mutex); sync.mutex_lock(&a.mutex)
 		full = v.end >= 19.8 && a.end >= 19.8
 		for &track in s.tracks {
-			testing.expect(t, track.end <= MAXIMUM_SECONDS)
+			testing.expect(t, track.end <= 20)
 			if queue.len(track.packets) > 0 {
-				testing.expect(t, track.end - queue.front(&track.packets).pts <= MAXIMUM_SECONDS)
+				testing.expect(t, track.end - queue.front(&track.packets).pts <= 20)
 			}
 		}
 		sync.mutex_unlock(&a.mutex); sync.mutex_unlock(&v.mutex)

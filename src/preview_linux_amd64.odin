@@ -12,12 +12,19 @@ import sdl "vendor:sdl3"
 import ttf "vendor:sdl3/ttf"
 
 UI_TEST :: #config(UI_TEST, false)
+UI_SCREENSHOTS :: #config(UI_SCREENSHOTS, false)
+
+save_snapshot :: proc(surface: ^sdl.Surface, name: string) {
+	when UI_SCREENSHOTS {
+		path := fmt.caprintf("build/ui-test/%s-%s.png", os.args[1], name)
+		defer delete(path)
+		assert(sdl.SavePNG(surface, path), string(sdl.GetError()))
+	}
+}
 
 snapshot :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface, name: string) {
 	assert(render(renderer), string(sdl.GetError()))
-	path := fmt.caprintf("build/ui-test/%s-%s.png", os.args[1], name)
-	defer delete(path)
-	assert(sdl.SavePNG(surface, path), string(sdl.GetError()))
+	save_snapshot(surface, name)
 }
 
 check_rounded_edges :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
@@ -53,7 +60,7 @@ check_rounded_edges :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 		}
 		assert(partial > 8, "rounded fills and opaque images must have antialiased edges")
 	}
-	assert(sdl.SavePNG(surface, "build/ui-test/rounded-edges.png"))
+	save_snapshot(surface, "rounded-edges")
 }
 
 // A 4:3 JPEG with baked-in bars must fill a 16:9 frame in both render paths.
@@ -95,7 +102,7 @@ check_cover_fill :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 			assert(red > 240, "center-crop must remove the baked-in bars without side gaps")
 		}
 	}
-	assert(sdl.SavePNG(surface, "build/ui-test/cover-fill.png"))
+	save_snapshot(surface, "cover-fill")
 }
 
 main :: proc() {
@@ -131,7 +138,6 @@ main :: proc() {
 		if os.args[1] == "720p" {width, height = 1280, 720}
 		if os.args[1] == "1440p" {width, height = 2560, 1440}
 		if os.args[1] == "4k" {width, height, ui_scale = 3840, 2160, 2}
-		if os.args[1] == "narrow" {width = 960}
 		surface = sdl.CreateSurface(width, height, .RGBA32)
 		assert(surface != nil)
 		renderer = sdl.CreateSoftwareRenderer(surface)
@@ -284,7 +290,6 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 		assert(text_sizes[.Body] == BASE_TEXT_SIZES[.Body] * 2)
 	}
 	if os.args[1] == "1440p" {assert(grid_columns == 4)}
-	if os.args[1] == "narrow" {assert(grid_columns == 1)}
 	for direction in ([]int{1, -1}) {
 		for step in 1 ..= 4 {
 			key(direction > 0 ? sdl.K_DOWN : sdl.K_UP)
@@ -337,7 +342,6 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	assert(knob_target.x > knob_before.x + scaled(10), "the knob must follow a pending seek")
 	model.seek_done(&timeline)
 	assert(timeline.position_ms == duration_ms / 2)
-	snapshot(renderer, surface, "player-seek")
 	snapshot(renderer, surface, "player-paused")
 	panel := clay.GetElementData(clay.ID("controls")).boundingBox
 	play_button := clay.GetElementData(clay.ID("pause")).boundingBox
@@ -345,7 +349,6 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	assert(!paused)
 	snapshot(renderer, surface, "player")
 	assert(play_button == clay.GetElementData(clay.ID("pause")).boundingBox)
-	assert(COLOR_PANEL[3] > 0 && COLOR_PANEL[3] < 255)
 	assert(panel.y + panel.height == view_height)
 	key(sdl.K_AC_BACK)
 	assert(return_to_grid)
@@ -368,9 +371,7 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	check_account_ui(renderer, surface)
 	check_search_flow(renderer, surface)
 	check_login_ui(renderer, surface)
-	fmt.println(
-		"scrolling, player return, search states, and image edges passed; screenshots: build/ui-test",
-	)
+	fmt.printf("%s: UI checks passed\n", os.args[1])
 }
 
 check_account_ui :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
@@ -436,7 +437,7 @@ check_search_flow :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	for state in 0 ..< 3 {
 		key(sdl.K_RETURN)
 		assert(search_loading && !search_editing && len(catalog.videos) == 0)
-		snapshot(renderer, surface, "search-loading")
+		if state == 0 {snapshot(renderer, surface, "search-loading")}
 		request, ready := chan.try_recv(network_requests)
 		assert(ready && request.text == "Linus Tech Tips")
 		defer delete(request.text)

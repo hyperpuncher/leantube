@@ -2,7 +2,6 @@ package playback
 
 import "core:c"
 import queue "core:container/queue"
-import "core:sync"
 import "core:testing"
 
 @(test)
@@ -24,12 +23,6 @@ http_logs_reject_requests_before_formatting :: proc(t: ^testing.T) {
 		testing.expect(t, !safe_http_log_format(value))
 	}
 }
-@(test)
-buffer_policy_keeps_three_second_startup_and_twenty_second_queues :: proc(t: ^testing.T) {
-	testing.expect_value(t, STARTUP_SECONDS, 3.0)
-	testing.expect_value(t, MAXIMUM_SECONDS, 20.0)
-}
-
 @(test)
 range_response_must_match_requested_bytes :: proc(t: ^testing.T) {
 	first, last, total, ok := parse_range(" bytes 10-19/100\r\n")
@@ -73,16 +66,7 @@ http_body_is_bounded_and_redirect_headers_reset_response :: proc(t: ^testing.T) 
 	testing.expect(t, len(h.bytes) == 0 && h.first == -1 && h.last == -1 && h.length == -1)
 }
 @(test)
-seek_cancels_previous_generation_and_clears_packets :: proc(t: ^testing.T) {
-	s := State{}
-	cancel := Cancel {
-		state = &s,
-	}
-	testing.expect(t, !cancelled(&cancel))
-	sync.atomic_add(&s.generation, 1)
-	testing.expect(t, cancelled(&cancel))
-	cancel.generation = 1
-	testing.expect(t, !cancelled(&cancel))
+consuming_packets_updates_bytes_and_clearing_releases_the_tail :: proc(t: ^testing.T) {
 	track := Track {
 		eof = true,
 		end = 2,

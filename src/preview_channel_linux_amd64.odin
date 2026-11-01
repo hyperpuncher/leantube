@@ -46,7 +46,7 @@ check_channel_ui :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 		assert(button.found && button.boundingBox.width > 0)
 		assert(
 			button.boundingBox.x + button.boundingBox.width <= view_width,
-			"channel controls must fit even in the narrow layout",
+			"channel controls must fit the display",
 		)
 	}
 	key(sdl.K_UP)

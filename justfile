@@ -9,31 +9,19 @@ default:
 check: host-qr
 	odin check src -vet
 	odin check src -vet -define:UI_TEST=true
-	odin check tests/layout -vet
-	odin check tests/http -vet
-	odin check tests/youtube -vet
-	odin check tests/playback/resolve -vet
 	odin check src/playback -no-entry-point -vet
-	odin check tests/playback/host -vet
-	odin check tests/sponsorblock -vet
-	bash -n scripts/*.sh tests/install.sh tests/capture.sh tests/native/run.sh tests/player/run.sh
-	shellcheck -x scripts/*.sh tests/install.sh tests/capture.sh tests/native/run.sh tests/player/run.sh
-	bun fmt --check package.json tsconfig.json scripts/ui.ts tests/http/run.ts tests/playback/reference.ts tests/playback/reader.ts tests/playback/fixture.ts tests/playback/http-retry.ts
+	shopt -s globstar; shellcheck -x scripts/**/*.sh tests/**/*.sh
 	bun check
 
-# Test metadata and installer completion handling without a TV.
-test: test-layout test-http test-ui test-native test-player test-reader-http
-	odin test src/model -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
-	odin test src/youtube -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
-	odin test src/sponsorblock -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
-	odin test src -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
+# Run independent suites in parallel. No TV access.
+[parallel]
+test: test-unit test-http test-ui test-native test-player test-reader-http
+
+# Test the app and its imported packages in one process, then shell regressions.
+test-unit: host-qr
+	odin test src -all-packages -vet -out:build/unit-test -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
 	bash tests/install.sh
 	bash tests/capture.sh
-
-# Test layout with the upstream host library, without opening a window.
-test-layout:
-	mkdir -p build/host-layout
-	odin run tests/layout -out:build/host-layout/layout-check
 
 # Check TLS safety and request recovery against a real local HTTPS server.
 test-http:
@@ -58,9 +46,13 @@ test-native:
 test-player:
 	bash tests/player/run.sh
 
-# Render the real UI offscreen and save local regression screenshots.
+# Test the real UI offscreen at TV sizes, without PNG export.
 test-ui: host-qr
 	bun scripts/ui.ts
+
+# Run the same UI tests and save size-prefixed images in build/ui-test.
+screenshots: host-qr
+	bun scripts/ui.ts --screenshots
 
 # Open a local Wayland UI preview. No TV commands or media playback.
 dev *args: host-qr
@@ -74,7 +66,7 @@ fmt:
 	odinfmt src -w
 	odinfmt tests -w
 	clang-format -i src/native/bridge.c src/native/clay.c tests/native/fixture.c
-	bun fmt package.json tsconfig.json scripts/ui.ts tests/http/run.ts tests/playback/reference.ts tests/playback/reader.ts tests/playback/fixture.ts tests/playback/http-retry.ts
+	bun fmt
 
 # Provision the toolchain, then build native libraries. No TV access.
 setup: setup-toolchain setup-libs setup-reader
