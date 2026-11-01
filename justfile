@@ -1,6 +1,9 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 set dotenv-load
 
+app_id := `jq -r .id app/appinfo.json`
+app_version := `jq -r .version app/appinfo.json`
+
 # Show the available project tasks. No TV command runs by default.
 default:
 	@just --list
@@ -17,11 +20,9 @@ check: host-qr
 [parallel]
 test: test-unit test-http test-ui test-native test-player test-reader-http
 
-# Test the app and its imported packages in one process, then shell regressions.
+# Test the app and its imported packages in one process.
 test-unit: host-qr
 	odin test src -all-packages -vet -out:build/unit-test -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
-	bash tests/install.sh
-	bash tests/capture.sh
 
 # Check TLS safety and request recovery against a real local HTTPS server.
 test-http:
@@ -94,9 +95,8 @@ bench-build:
 
 # Install benchmark code, not media fixtures or request files.
 bench-install: bench-build
-	bun run ares-package build/app -o build
-	bash scripts/install.sh
-	ssh "${TV_HOST:-tv}" 'node -e '\''require("fs").unlinkSync("/tmp/leantube.ipk")'\'''
+	ares-package build/app -o build
+	ares-install build/{{app_id}}_{{app_version}}_arm.ipk
 
 # Serve a remux-only fixture from this computer, not from TV storage.
 bench-fixture player_json:
@@ -134,7 +134,7 @@ test-tv-layout:
 	bash scripts/test-tv-layout.sh
 
 package: build-release
-	bun run ares-package build/app -o build
+	ares-package build/app -o build
 
 # Check live search, cover download, resolution, and CDN access locally.
 test-youtube:
@@ -152,25 +152,50 @@ bench-reference *args:
 test-sponsorblock:
 	odin run tests/sponsorblock -out:build/sponsorblock-check
 
-# These commands target the separate LeanTube app, not either YouTube app.
+# Fast code-only deployment. Use install after asset or library changes.
+deploy: build
+	bash scripts/deploy.sh
+
+# Open the normal app directly. Positions are seconds.
+play video_id position="0" paused="false":
+	ares-launch {{app_id}} -p "$(jq -nc --arg id {{quote(video_id)}} --argjson position {{quote(position)}} --argjson paused {{quote(paused)}} '{action:"open",videoId:$id,position:$position,paused:$paused}')"
+
+seek position:
+	ares-launch {{app_id}} -p "$(jq -nc --argjson position {{quote(position)}} '{action:"seek",position:$position}')"
+
+pause:
+	ares-launch {{app_id}} -p '{"action":"pause"}'
+
+resume:
+	ares-launch {{app_id}} -p '{"action":"resume"}'
+
+# Read player state without captures or UI navigation.
+state:
+	ares-shell -r 'cat /tmp/leantube-state.json' | jq .
+
 install: package
-	bash scripts/install.sh
+	ares-install build/{{app_id}}_{{app_version}}_arm.ipk
 
 run:
-	bash scripts/tv.sh run
+	ares-launch {{app_id}}
 
+# Check the process and media pipelines, not only the close reply.
 stop:
-	bash scripts/tv.sh stop
+	ares-launch --close {{app_id}}
+	ares-shell -r 'for i in 1 2 3 4 5; do if ! pidof leantube >/dev/null; then exit 0; fi; sleep 1; done; exit 1'
+	bash scripts/luna.sh com.webos.media/getActivePipelines | jq -e --arg id {{app_id}} '[.[] | select(.appId == $id)] | length == 0' >/dev/null
 
 logs:
-	bash scripts/tv.sh logs
+	@mkdir -p build
+	@ares-pull /tmp/leantube.log build >/dev/null
+	@tail -n 100 build/leantube.log
 
 status:
-	bash scripts/tv.sh status
+	bash scripts/luna.sh com.webos.media/getActivePipelines | jq --arg id {{app_id}} '[.[] | select(.appId == $id) | {id,mediaState,is_foreground,resource}]'
 
-# Use the tested B9 capture surface size; allow explicit diagnostic overrides.
+# This capture API requires dimensions. Allow explicit size overrides.
 capture width="1920" height="1080":
-	bash scripts/tv.sh capture {{quote(width)}} {{quote(height)}}
+	bash scripts/capture.sh {{quote(width)}} {{quote(height)}}
 
 clean:
 	if [[ -d build ]]; then trash -- build; fi

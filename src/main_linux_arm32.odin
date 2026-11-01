@@ -49,7 +49,10 @@ reply :: proc "c" (_: rawptr, message: rawptr, _: rawptr) -> bool {
 	   found && bool(success) {registered = true}
 	if event, found := root["event"].(json.String); found {
 		if event == "close" {running = false}
-		if event == "relaunch" {raise_window()}
+		if event == "relaunch" {
+			raise_window()
+			queue_control(root["parameters"])
+		}
 	}
 	return true
 }
@@ -59,6 +62,13 @@ main :: proc() {
 	_ = sdl.SetHint(sdl.HINT_VIDEO_DRIVER, "wayland")
 	_ = sdl.SetAppMetadata("LeanTube", APP_VERSION, APP_ID)
 	setup_logging()
+	_ = os.remove(CONTROL_STATE)
+	if len(os.args) > 1 {
+		if value, err := json.parse(os.args[1]); err == .None {
+			if root, ok := value.(json.Object); ok {queue_control(root["parameters"])}
+			json.destroy_value(value)
+		}
+	}
 	action := posix.sigaction_t {
 		sa_handler = stop_signal,
 	}
@@ -71,6 +81,7 @@ main :: proc() {
 	defer {
 		if search_editing {finish_search_input(window)}
 		stop_playback()
+		write_control_state(true)
 		close_login_screen()
 		stop_network()
 		delete(search_text)
@@ -138,7 +149,9 @@ main :: proc() {
 	if !open_text(renderer) {fmt.eprintln("UI assets failed:", sdl.GetError()); return}
 	init_player()
 	if start_network() {
-		activate_navigation(signed_in ? .Subscriptions : .Home)
+		if pending_control.action == .Open {apply_control(window)} else {
+			activate_navigation(signed_in ? .Subscriptions : .Home)
+		}
 	} else {
 		notice = "network is unavailable"
 	}
@@ -148,6 +161,7 @@ main :: proc() {
 	for running && !window_closing && sync.atomic_load(&interrupted) == 0 {
 		poll_services()
 		if return_to_grid {stop_playback()}
+		apply_control(window)
 		wheel: f32
 		event: sdl.Event
 		if sdl.WaitEventTimeout(&event, loading_active() ? 0 : 20) {
@@ -162,6 +176,7 @@ main :: proc() {
 		poll_card_press(sdl.GetTicks())
 		poll_login_tick()
 		auto_skip_sponsor()
+		write_control_state()
 		expire_player_controls()
 		now := sdl.GetTicks()
 		frame_dt := f32(min(now - previous_frame, 50)) / 1000

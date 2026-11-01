@@ -73,10 +73,10 @@ for (const [format, path, map] of [
 const data = await probe(videoPath);
 const stream = data?.streams[0];
 if (!stream?.width || !stream.height) throw Error("fixture has no video stream");
-const connection = Bun.spawn(
-	["ssh", process.env.TV_HOST ?? "tv", 'printf "%s" "$SSH_CONNECTION"'],
-	{ stdout: "pipe", stderr: "pipe" },
-);
+const connection = Bun.spawn(["ares-shell", "-r", 'printf "%s" "$SSH_CONNECTION"'], {
+	stdout: "pipe",
+	stderr: "pipe",
+});
 const address = (await new Response(connection.stdout).text()).trim().split(/\s+/)[0];
 await new Response(connection.stderr).arrayBuffer();
 if ((await connection.exited) !== 0 || !address)

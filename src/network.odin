@@ -22,6 +22,8 @@ Network_Request :: struct {
 		Card_Action,
 	},
 	page, playback: u32,
+	position_ms:    f64,
+	start_paused:   bool,
 	text:           string,
 	continuation:   string,
 	params, filter: string,
@@ -44,6 +46,8 @@ Network_Result :: struct {
 		Card_Action,
 	},
 	page, playback: u32,
+	position_ms:    f64,
+	start_paused:   bool,
 	index:          int,
 	append:         bool,
 	error:          yt.Error,
@@ -343,6 +347,12 @@ network_main :: proc(_: ^thread.Thread) {
 				if !post_network_result({kind = .Login_Error, login_message = message}) {return}
 			}
 		case .Resolve:
+			// Bootstrap the same visitor context as normal browsing, without UI navigation.
+			if visitor_data == "" {
+				lookup, _, visitor := yt.search(&network_client, request.text)
+				model.catalog_destroy(&lookup)
+				visitor_data = visitor
+			}
 			stream, error := yt.resolve(
 				&network_client,
 				request.text,
@@ -359,6 +369,8 @@ network_main :: proc(_: ^thread.Thread) {
 					kind = .Stream,
 					page = request.page,
 					playback = request.playback,
+					position_ms = request.position_ms,
+					start_paused = request.start_paused,
 					error = error,
 					stream = stream,
 					segments = segments,
@@ -528,7 +540,7 @@ start_search :: proc(query: string = "Linus Tech Tips", keep_history: bool = fal
 		{kind = .Search, page = page, text = owned},
 	) {search_loading = false; notice = "network is unavailable"}
 }
-resolve_selected :: proc() {
+resolve_selected :: proc(position_ms: f64 = 0, start_paused: bool = false) {
 	if selected < 0 || selected >= len(catalog.videos) {return}
 	playback += 1
 	playback_requested_at = sdl.GetTicks()
@@ -544,6 +556,8 @@ resolve_selected :: proc() {
 			kind = .Resolve,
 			page = page,
 			playback = playback,
+			position_ms = position_ms,
+			start_paused = start_paused,
 			text = strings.clone(catalog.videos[selected].id),
 		},
 	) {
@@ -706,7 +720,7 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				delete(sponsor_segments)
 				sponsor_segments = result.segments
 				result.segments = nil
-				load_video(result.stream, renderer)
+				load_video(result.stream, renderer, result.position_ms, result.start_paused)
 				show_player_controls()
 			}
 		case:

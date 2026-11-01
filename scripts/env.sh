@@ -6,7 +6,6 @@ export WEBOS_TOOLCHAIN
 export WEBOS_SDK="$WEBOS_TOOLCHAIN/sdk"
 export WEBOS_ODIN="$WEBOS_TOOLCHAIN/odin/odin"
 export WEBOS_PLATFORM="$WEBOS_TOOLCHAIN/platform"
-: "${TV_HOST:=tv}"
 app_id=$(jq -r .id app/appinfo.json)
 app_main=$(jq -r .main app/appinfo.json)
 app_version=$(jq -r .version app/appinfo.json)

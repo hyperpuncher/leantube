@@ -1,4 +1,6 @@
-import { open } from "node:fs/promises";
+import { mkdtemp, open, writeFile } from "node:fs/promises";
+
+import { $ } from "bun";
 
 const args = Bun.argv.slice(2);
 const host = args[0] === "--host";
@@ -91,11 +93,7 @@ for (const link of links) {
 }
 async function powerState(): Promise<string> {
 	const request = Bun.spawn(
-		[
-			"ssh",
-			process.env.TV_HOST ?? "tv",
-			'luna-send -n 1 -w 5000 luna://com.webos.service.tvpower/power/getPowerState "{}" </dev/null',
-		],
+		["bash", "scripts/luna.sh", "com.webos.service.tvpower/power/getPowerState"],
 		{ stdout: "pipe", stderr: "pipe" },
 	);
 	const [text] = await Promise.all([
@@ -147,27 +145,33 @@ const benchArgs = transport
 			seekToText,
 		];
 const command = `${decode ? "APPID=org.hyperpuncher.leantube " : ""}LEANTUBE_READER_RCVBUF=${socketReceiveBuffer} timeout -t ${transport ? 80 : seconds + 110} /media/developer/apps/usr/palm/applications/org.hyperpuncher.leantube/leantube ${benchArgs.join(" ")}`;
-const child = Bun.spawn(
-	host
-		? [
-				"build/playback-bench/reader-host",
-				...(transport ? benchArgs : benchArgs.slice(1)),
-			]
-		: ["ssh", process.env.TV_HOST ?? "tv", command],
-	{
-		stdin: "pipe",
-		stdout: "pipe",
-		stderr: "pipe",
-	},
-);
-child.stdin.write(`${links.join("\n")}\n`);
-child.stdin.end();
-const errors = new Response(child.stderr).text();
-const cancel = () => child.kill();
+const directory = host ? "" : await mkdtemp("/tmp/leantube-reader-");
+let child: Bun.Subprocess<"pipe", "pipe", "pipe"> | undefined;
+const cancel = () => child?.kill();
 process.once("SIGINT", cancel);
 process.once("SIGTERM", cancel);
 let summarySeen = false;
 try {
+	// SDK shell commands do not reliably stream stdin/stdout. Keep diagnostic
+	// input and output in private RAM files, and use SDK file transfers.
+	if (!host) {
+		await writeFile(directory + "/request", links.join("\n") + "\n", { mode: 0o600 });
+		await $`ares-shell -r ${"mkdir -m 700 " + directory}`.quiet();
+		await $`ares-push ${directory + "/request"} ${directory + "/request"}`.quiet();
+	}
+	const remote = `chmod 600 ${directory}/request; ${command} <${directory}/request >${directory}/reader.log 2>&1`;
+	child = Bun.spawn(
+		host
+			? [
+					"build/playback-bench/reader-host",
+					...(transport ? benchArgs : benchArgs.slice(1)),
+				]
+			: ["ares-shell", "-r", remote],
+		{ stdin: "pipe", stdout: "pipe", stderr: "pipe" },
+	);
+	if (host) child.stdin.write(links.join("\n") + "\n");
+	child.stdin.end();
+	const errors = new Response(child.stderr).text();
 	await file.write(
 		`${JSON.stringify({
 			type: transport
@@ -223,7 +227,13 @@ try {
 		})}\n`,
 	);
 	const lines = new TextDecoderStream();
-	const stream = child.stdout.pipeThrough(lines);
+	let input = child.stdout;
+	if (!host) {
+		await child.exited;
+		await $`ares-pull ${directory + "/reader.log"} ${directory}`.quiet();
+		input = Bun.file(directory + "/reader.log").stream();
+	}
+	const stream = input.pipeThrough(lines);
 	let pending = "";
 	for await (const text of stream) {
 		pending += text;
@@ -232,6 +242,10 @@ try {
 			const line = pending.slice(0, newline);
 			pending = pending.slice(newline + 1);
 			if (!line.trim()) continue;
+			if (line.startsWith("reader ")) {
+				console.error(line);
+				continue;
+			}
 			let sample;
 			try {
 				sample = JSON.parse(line);
@@ -302,15 +316,16 @@ try {
 } finally {
 	process.removeListener("SIGINT", cancel);
 	process.removeListener("SIGTERM", cancel);
-	child.kill();
+	child?.kill();
 	await file.close();
 	// Stop only this diagnostic command. Do not touch a normal app process.
 	if (!host) {
-		const cleanupScript = `var fs=require("fs");fs.readdirSync("/proc").filter(function(p){return /^\\d+$/.test(p)}).forEach(function(p){try{var a=fs.readFileSync("/proc/"+p+"/cmdline","utf8").split("\\0");if(a[0]==="/media/developer/apps/usr/palm/applications/org.hyperpuncher.leantube/leantube"&&(a[1]==="--reader-bench"||a[1]==="--transport-bench"||a[1]==="--decoder-bench"))process.kill(Number(p),"SIGTERM")}catch(e){}});`;
-		const cleanup = Bun.spawn(
-			["ssh", process.env.TV_HOST ?? "tv", `node -e '${cleanupScript}'`],
-			{ stdout: "ignore", stderr: "pipe" },
-		);
+		const cleanupScript = `var fs=require("fs");if(fs.existsSync("${directory}")){fs.readdirSync("${directory}").forEach(function(p){fs.unlinkSync("${directory}/"+p)});fs.rmdirSync("${directory}")};fs.readdirSync("/proc").filter(function(p){return /^\\d+$/.test(p)}).forEach(function(p){try{var a=fs.readFileSync("/proc/"+p+"/cmdline","utf8").split("\\0");if(a[0]==="/media/developer/apps/usr/palm/applications/org.hyperpuncher.leantube/leantube"&&(a[1]==="--reader-bench"||a[1]==="--transport-bench"||a[1]==="--decoder-bench"))process.kill(Number(p),"SIGTERM")}catch(e){}});`;
+		const cleanup = Bun.spawn(["ares-shell", "-r", `node -e '${cleanupScript}'`], {
+			stdout: "ignore",
+			stderr: "pipe",
+		});
+		await $`trash -- ${directory}`.quiet();
 		await new Response(cleanup.stderr).arrayBuffer();
 		if ((await cleanup.exited) !== 0)
 			throw Error("could not verify reader process cleanup");
