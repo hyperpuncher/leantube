@@ -54,7 +54,6 @@ Network_Result :: struct {
 	append:         bool,
 	error:          yt.Error,
 	catalog:        model.Catalog,
-	bytes:          [dynamic]u8,
 	// Cover pixels are decoded by the worker; only texture upload uses the UI.
 	surface:        ^sdl.Surface,
 	stream:         yt.Stream,
@@ -120,7 +119,6 @@ free_network_request :: proc(request: ^Network_Request) {
 free_network_result :: proc(result: ^Network_Result) {
 	model.catalog_destroy(&result.catalog)
 	model.card_actions_destroy(&result.actions)
-	delete(result.bytes)
 	sdl.DestroySurface(result.surface)
 	yt.stream_destroy(&result.stream)
 	delete(result.segments)
@@ -142,6 +140,23 @@ post_network_result :: proc(result: Network_Result) -> bool {
 	return true
 }
 network_stopping :: proc() -> bool {return chan.is_closed(network_requests)}
+
+// Decode and prefilter on the worker. The result owns its pixels, not bytes.
+decode_image :: proc(bytes: []u8, target: i32 = 0) -> ^sdl.Surface {
+	if len(bytes) == 0 {return nil}
+	io := sdl.IOFromConstMem(raw_data(bytes), uint(len(bytes)))
+	if io == nil {return nil}
+	surface := img.Load_IO(io, true)
+	for target > 0 && surface != nil && max(surface.w, surface.h) > target {
+		ratio := max(f32(0.5), f32(target) / f32(max(surface.w, surface.h)))
+		width := max(1, i32(math.round(f32(surface.w) * ratio)))
+		height := max(1, i32(math.round(f32(surface.h) * ratio)))
+		next := sdl.ScaleSurface(surface, width, height, .LINEAR)
+		sdl.DestroySurface(surface)
+		surface = next
+	}
+	return surface
+}
 
 network_main :: proc(_: ^thread.Thread) {
 	covers: [dynamic]struct {
@@ -186,27 +201,16 @@ network_main :: proc(_: ^thread.Thread) {
 			} else {
 				bytes = yt.thumbnail(&network_client, source, network_stopping)
 			}
-			surface: ^sdl.Surface
-			if len(bytes) > 0 {
-				io := sdl.IOFromConstMem(raw_data(bytes), uint(len(bytes)))
-				if io != nil {surface = img.Load_IO(io, true)}
-			}
-			delete(bytes)
+			target: i32
 			if covers[index].avatar {
 				// Reduce in small steps: a single 900px-to-32px bilinear draw aliases.
-				target: i32 = 2 * CHANNEL_AVATAR_SIZE
+				target = 2 * CHANNEL_AVATAR_SIZE
 				if covers[index].index >= 0 {
 					target = 2 * CARD_AVATAR_SIZE
 				} else if covers[index].playback != 0 {target = 2 * PLAYER_AVATAR_SIZE}
-				for surface != nil && max(surface.w, surface.h) > target {
-					ratio := max(f32(0.5), f32(target) / f32(max(surface.w, surface.h)))
-					width := max(1, i32(math.round(f32(surface.w) * ratio)))
-					height := max(1, i32(math.round(f32(surface.h) * ratio)))
-					scaled := sdl.ScaleSurface(surface, width, height, .LINEAR)
-					sdl.DestroySurface(surface)
-					surface = scaled
-				}
 			}
+			surface := decode_image(bytes[:], target)
+			delete(bytes)
 			if surface != nil {
 				if !post_network_result(
 					{
@@ -244,12 +248,13 @@ network_main :: proc(_: ^thread.Thread) {
 				if error == nil &&
 				   response.status == 200 {avatar = response.body} else {delete(response.body)}
 			}
+			defer delete(avatar)
 			if !post_network_result(
 				{
 					kind = .Account,
 					account = session_account,
 					auth_token = clone_auth_token(session_auth),
-					bytes = avatar,
+					surface = decode_image(avatar[:], 128),
 				},
 			) {return}
 		case .Search, .Browse, .Card_Action, .Player_Channel:
@@ -668,7 +673,7 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				result.auth_token = {}
 				_ = save_auth()
 			}
-			set_account_avatar(renderer, result.bytes[:])
+			set_account_avatar(renderer, result.surface)
 			dirty = true
 			continue
 		case .Login_Code:

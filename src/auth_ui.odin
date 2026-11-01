@@ -5,7 +5,6 @@ import "core:fmt"
 import "core:strings"
 import "core:unicode/utf8"
 import sdl "vendor:sdl3"
-import img "vendor:sdl3/image"
 
 signed_in: bool
 login_screen: bool
@@ -28,23 +27,8 @@ account_initial :: proc() -> string {
 	return account_initial_name(token.name)
 }
 
-set_account_avatar :: proc(renderer: ^sdl.Renderer, bytes: []u8) {
-	if len(bytes) == 0 {return}
-	io := sdl.IOFromConstMem(raw_data(bytes), uint(len(bytes)))
-	if io == nil {return}
-	surface := img.Load_IO(io, true)
+set_account_avatar :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	if surface == nil {return}
-	defer sdl.DestroySurface(surface)
-	// Prefilter large photos before upload. A single texture sample from a
-	// large photo loses detail when drawn as a small avatar.
-	size := i32(scaled(64))
-	for surface.w > size || surface.h > size {
-		width, height := max(size, surface.w / 2), max(size, surface.h / 2)
-		next := sdl.ScaleSurface(surface, width, height, .LINEAR)
-		if next == nil {return}
-		sdl.DestroySurface(surface)
-		surface = next
-	}
 	texture := sdl.CreateTextureFromSurface(renderer, surface)
 	if texture == nil {return}
 	_ = sdl.SetTextureBlendMode(texture, sdl.BLENDMODE_BLEND)

@@ -4,11 +4,11 @@ package main
 import clay "../vendor/clay"
 import "./model"
 import sb "./sponsorblock"
+import "core:os"
 import "core:strings"
 import "core:sync/chan"
 import "core:testing"
 import sdl "vendor:sdl3"
-import img "vendor:sdl3/image"
 
 @(test)
 canceling_and_reopening_the_same_video_rejects_old_replies :: proc(t: ^testing.T) {
@@ -167,7 +167,10 @@ decoded_covers_upload_and_stale_results_keep_the_current_texture :: proc(t: ^tes
 			{"tests/ui/cover.jpg", 4, 1, false}, // Missing card.
 			{"tests/ui/cover.jpg", 4, 0, true},
 		}) {
-		image := img.Load(fixture.file)
+		bytes, error := os.read_entire_file(string(fixture.file), context.allocator)
+		if !testing.expect(t, error == nil) {return}
+		image := decode_image(bytes)
+		delete(bytes)
 		if !testing.expect(t, image != nil) {return}
 		expected_width, expected_height := f32(image.w), f32(image.h)
 		previous := textures[0]
