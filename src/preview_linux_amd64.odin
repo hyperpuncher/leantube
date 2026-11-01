@@ -185,6 +185,7 @@ main :: proc() {
 	when UI_TEST {check_rounded_edges(renderer, surface)}
 	assert(open_text(renderer), string(sdl.GetError()))
 	defer close_text()
+	defer close_fade()
 	defer close_icons()
 	defer clear_catalog()
 	defer {

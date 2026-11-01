@@ -88,6 +88,7 @@ main :: proc() {
 		clear_browse_history()
 		delete(browse_id); delete(browse_params); delete(browse_filter)
 		clear_catalog()
+		close_fade()
 		close_icons()
 		close_tv_cursor()
 		close_text()

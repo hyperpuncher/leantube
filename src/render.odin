@@ -48,26 +48,86 @@ loading_active :: proc() -> bool {
 	return browsing ? search_loading || card_menu_waiting : !loaded
 }
 
+// Preview screenshots can use white, so a fade has no dark video behind it.
+WHITE_PREVIEW :: #config(UI_WHITE, false)
+
 set_color :: proc(renderer: ^sdl.Renderer, color: clay.Color) -> bool {
 	return sdl.SetRenderDrawColor(renderer, u8(color[0]), u8(color[1]), u8(color[2]), u8(color[3]))
 }
 
-player_fade :: proc(renderer: ^sdl.Renderer, id: string, top, bottom: f32) -> bool {
-	box := clay.GetElementData(clay.ID(id)).boundingBox
-	vertices := [4]sdl.Vertex {
-		{{box.x, box.y}, {0, 0, 0, top}, {}},
-		{{box.x + box.width, box.y}, {0, 0, 0, top}, {}},
-		{{box.x + box.width, box.y + box.height}, {0, 0, 0, bottom}, {}},
-		{{box.x, box.y + box.height}, {0, 0, 0, bottom}, {}},
+// Render the fade at screen resolution. Subpixel alpha dithering must not
+// be stretched into visible stripes.
+PLAYER_FADE_ALPHA :: 216 // 85% opacity in SDL's 8-bit alpha.
+fade_textures: [2]^sdl.Texture
+fade_sizes: [2]sdl.Point
+
+bayer_value :: proc(x, y: int) -> u8 {
+	quad := [4]u8{0, 2, 3, 1}
+	value: u8
+	for bit in u32(0) ..< 3 {
+		quadrant := ((x >> bit) & 1) | (((y >> bit) & 1) << 1)
+		value = value * 4 + quad[quadrant]
 	}
-	indices := [6]i32{0, 1, 2, 0, 2, 3}
-	return sdl.RenderGeometry(
+	return value
+}
+
+// Rebuild only when the layout size changes.
+open_fade :: proc(renderer: ^sdl.Renderer, slot: int, width, height: f32) -> bool {
+	size := sdl.Point{i32(math.round(width)), max(2, i32(math.round(height)))}
+	if fade_textures[slot] != nil && fade_sizes[slot] == size {return true}
+	if fade_textures[slot] != nil {
+		sdl.DestroyTexture(fade_textures[slot])
+		fade_textures[slot] = nil
+	}
+	columns, rows := int(size.x), int(size.y)
+	pixels := make([]u8, columns * rows * 4)
+	defer delete(pixels)
+	for y in 0 ..< rows {
+		// Smoothstep with less than one alpha level of ordered dither.
+		t := f32(y) / f32(rows - 1)
+		alpha := t * t * (3 - 2 * t) * 255
+		for x in 0 ..< columns {
+			threshold := (f32(bayer_value(x, y)) + 0.5) / 64
+			base := (y * columns + x) * 4
+			pixels[base + 3] = u8(clamp(alpha + threshold, 0, 255))
+		}
+	}
+	texture := sdl.CreateTexture(renderer, .RGBA32, .STATIC, size.x, size.y)
+	if texture == nil {return false}
+	if !sdl.UpdateTexture(texture, nil, raw_data(pixels), size.x * 4) ||
+	   !sdl.SetTextureBlendMode(texture, sdl.BLENDMODE_BLEND) ||
+	   !sdl.SetTextureAlphaMod(texture, PLAYER_FADE_ALPHA) ||
+	   !sdl.SetTextureScaleMode(texture, .NEAREST) {
+		sdl.DestroyTexture(texture)
+		return false
+	}
+	fade_textures[slot], fade_sizes[slot] = texture, size
+	return true
+}
+
+close_fade :: proc() {
+	for &texture in fade_textures {
+		if texture != nil {sdl.DestroyTexture(texture); texture = nil}
+	}
+}
+
+// Fade from clear to 85% black. Extend beyond the controls without moving
+// them, and flip the same curve to darken the header at the top.
+player_fade :: proc(renderer: ^sdl.Renderer, id: string, flip: bool, extend: f32) -> bool {
+	box := clay.GetElementData(clay.ID(id)).boundingBox
+	if !flip {box.y -= extend}
+	box.height += extend
+	if !open_fade(renderer, int(flip), box.width, box.height) {return false}
+	texture := fade_textures[int(flip)]
+	rect := sdl.FRect{box.x, box.y, box.width, box.height}
+	return sdl.RenderTextureRotated(
 		renderer,
+		texture,
 		nil,
-		raw_data(vertices[:]),
-		len(vertices),
-		raw_data(indices[:]),
-		len(indices),
+		&rect,
+		0,
+		nil,
+		flip ? .VERTICAL : .NONE,
 	)
 }
 
@@ -83,6 +143,9 @@ render :: proc(renderer: ^sdl.Renderer, wheel: f32 = 0, dt: f32 = 1.0 / 60) -> b
 	}
 	color: clay.Color
 	if browsing {color = COLOR_BACKGROUND}
+	when WHITE_PREVIEW {
+		if !browsing {color = {255, 255, 255, 255}}
+	}
 	if !set_color(renderer, color) || !sdl.RenderClear(renderer) {return false}
 	// Clay borrows these strings until the render commands have been drawn.
 	elapsed, total, speed, quality: string
@@ -104,8 +167,8 @@ render :: proc(renderer: ^sdl.Renderer, wheel: f32 = 0, dt: f32 = 1.0 / 60) -> b
 	}
 	commands := clay.EndLayout(0)
 	if controls_visible &&
-	   (!player_fade(renderer, "player-header", 0.9, 0) ||
-			   !player_fade(renderer, "controls", 0, 1)) {return false}
+	   (!player_fade(renderer, "player-header", true, scaled(32)) ||
+			   !player_fade(renderer, "controls", false, scaled(80))) {return false}
 	if browsing && library_focus_pending {
 		library_focus_pending = false
 		if reveal_selected_video() {
