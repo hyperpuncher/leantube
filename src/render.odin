@@ -5,6 +5,7 @@ import "./model"
 import "base:runtime"
 import "core:c"
 import "core:fmt"
+import "core:math"
 import sdl "vendor:sdl3"
 import ttf "vendor:sdl3/ttf"
 
@@ -237,7 +238,7 @@ render_commands :: proc(
 			if value == nil {return false}
 			ok :=
 				ttf.SetTextColor(value, u8(color[0]), u8(color[1]), u8(color[2]), u8(color[3])) &&
-				ttf.DrawRendererText(value, box.x, box.y)
+				ttf.DrawRendererText(value, math.round(box.x), math.round(box.y))
 			ttf.DestroyText(value)
 			if !ok {return false}
 		case .ScissorStart:
