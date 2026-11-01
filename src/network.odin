@@ -5,6 +5,7 @@ import "./http"
 import "./model"
 import sb "./sponsorblock"
 import yt "./youtube"
+import "core:fmt"
 import "core:math"
 import "core:strings"
 import "core:sync/chan"
@@ -159,6 +160,18 @@ decode_image :: proc(bytes: []u8, target: i32 = 0) -> ^sdl.Surface {
 }
 
 network_main :: proc(_: ^thread.Thread) {
+	directory := auth_directory != "" ? auth_directory : app_directory
+	cache_directory := fmt.aprintf("%s/.cache/images", directory)
+	defer delete(cache_directory)
+	cache := Image_Cache {
+		directory     = cache_directory,
+		maximum_bytes = IMAGE_CACHE_BYTES,
+	}
+	cache_path := strings.clone_to_cstring(cache.directory)
+	defer delete(cache_path)
+	if !sdl.CreateDirectory(cache_path) || !trim_image_cache(cache) {
+		fmt.eprintln("image cache is unavailable")
+	}
 	covers: [dynamic]struct {
 		source:         string,
 		index:          int,
@@ -193,14 +206,6 @@ network_main :: proc(_: ^thread.Thread) {
 				// Check for a new section before starting another HTTP request.
 				continue
 			}
-			bytes: [dynamic]u8
-			if strings.has_prefix(source, "https://") {
-				response, error := yt.fetch_thumbnail(&network_client, source)
-				if error == nil &&
-				   response.status == 200 {bytes = response.body} else {delete(response.body)}
-			} else {
-				bytes = yt.thumbnail(&network_client, source, network_stopping)
-			}
 			target: i32
 			if covers[index].avatar {
 				// Reduce in small steps: a single 900px-to-32px bilinear draw aliases.
@@ -209,8 +214,7 @@ network_main :: proc(_: ^thread.Thread) {
 					target = 2 * CARD_AVATAR_SIZE
 				} else if covers[index].playback != 0 {target = 2 * PLAYER_AVATAR_SIZE}
 			}
-			surface := decode_image(bytes[:], target)
-			delete(bytes)
+			surface := load_cached_image(cache, &network_client, source, target)
 			if surface != nil {
 				if !post_network_result(
 					{
@@ -242,19 +246,13 @@ network_main :: proc(_: ^thread.Thread) {
 			if name != "" {delete(session_auth.name); session_auth.name = name} else {delete(name)}
 			if avatar_url !=
 			   "" {delete(session_auth.avatar_url); session_auth.avatar_url = avatar_url} else {delete(avatar_url)}
-			avatar: [dynamic]u8
-			if session_auth.avatar_url != "" {
-				response, error := yt.fetch_thumbnail(&network_client, session_auth.avatar_url)
-				if error == nil &&
-				   response.status == 200 {avatar = response.body} else {delete(response.body)}
-			}
-			defer delete(avatar)
+			avatar := load_cached_image(cache, &network_client, session_auth.avatar_url, 128)
 			if !post_network_result(
 				{
 					kind = .Account,
 					account = session_account,
 					auth_token = clone_auth_token(session_auth),
-					surface = decode_image(avatar[:], 128),
+					surface = avatar,
 				},
 			) {return}
 		case .Search, .Browse, .Card_Action, .Player_Channel:
