@@ -99,6 +99,7 @@ attach_window :: proc(app_id: cstring, display, surface: rawptr) -> bool {
 		"_WEBOS_ACCESS_POLICY_KEYS_BACK",
 		"true",
 	)
+	// Leave KEYS_EXIT unclaimed: webOS handles long-back exit.
 	wl_webos_shell_surface_set_state(window_shell_surface, WL_FULLSCREEN)
 	wl_display_flush(display)
 	return true

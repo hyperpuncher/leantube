@@ -55,7 +55,9 @@ stop_playback :: proc() {
 
 run_dev :: proc(renderer: ^sdl.Renderer) {
 	fmt.println("local UI preview only; no TV commands or media playback")
-	fmt.println("arrows: select / seek / rate; enter: open / pause; escape: back / close")
+	fmt.println(
+		"arrows: select / seek / rate; enter: open / pause; escape: back; close the window to exit",
+	)
 	assert(render(renderer), string(sdl.GetError()))
 	dirty = false
 	started := sdl.GetTicks()

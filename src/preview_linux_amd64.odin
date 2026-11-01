@@ -280,6 +280,8 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	assert(!clay.PointerOver(clay.ID("video", 0)), "keyboard input must clear mouse hover")
 	key(sdl.K_LEFT)
 	assert(!clay.GetElementData(clay.ID("search")).found)
+	key(sdl.K_AC_BACK)
+	assert(running && browsing, "short back at the root must not close the app")
 	// Use real font measurements, including UTF-8 and an explicit final line.
 	for sample in ([]string{"short", "café café café café café café", "a long channel name that must end with an ellipsis"}) {
 		fit, owned := fit_text(fonts[.Small], sample, 160)

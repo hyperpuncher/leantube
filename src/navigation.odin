@@ -88,7 +88,7 @@ navigation_key :: proc(code: sdl.Keycode, window: ^sdl.Window) -> bool {
 	case sdl.K_RETURN, sdl.K_SPACE, sdl.K_KP_ENTER:
 		activate_navigation(rail_cursor, window)
 	case sdl.K_ESCAPE, sdl.K_AC_BACK:
-		running = false
+		rail_focus = false
 	case:
 		return false
 	}

@@ -14,7 +14,8 @@ handle_event :: proc(renderer: ^sdl.Renderer, event: sdl.Event) -> (wheel: f32) 
 	case .KEY_DOWN:
 		code := input_key(event.key.raw, event.key.key)
 		ok := code == sdl.K_RETURN || code == sdl.K_KP_ENTER || code == sdl.K_SPACE
-		if ok && event.key.repeat {return}
+		back := code == sdl.K_AC_BACK || code == sdl.K_ESCAPE
+		if (ok || back) && event.key.repeat {return}
 		clay.SetPointerState({-1, -1}, false)
 		if ok && can_press_card() {
 			if !card_press.active {begin_card_press(false, sdl.GetTicks())}

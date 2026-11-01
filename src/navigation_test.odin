@@ -6,9 +6,12 @@ import sdl "vendor:sdl3"
 
 @(test)
 remote_moves_between_rail_and_cards_without_changing_the_selected_card :: proc(t: ^testing.T) {
+	old_running := running
+	running = true
 	old_selected, old_columns := selected, grid_columns
 	old_focus, old_cursor, old_active := rail_focus, rail_cursor, rail_active
 	defer {
+		running = old_running
 		selected, grid_columns = old_selected, old_columns
 		rail_focus, rail_cursor, rail_active = old_focus, old_cursor, old_active
 	}
@@ -30,4 +33,8 @@ remote_moves_between_rail_and_cards_without_changing_the_selected_card :: proc(t
 	navigation_key(sdl.K_RIGHT, nil)
 	testing.expect(t, !rail_focus)
 	testing.expect_value(t, selected, 3)
+	navigation_key(sdl.K_LEFT, nil)
+	testing.expect(t, rail_focus)
+	navigation_key(sdl.K_AC_BACK, nil)
+	testing.expect(t, running && !rail_focus)
 }
