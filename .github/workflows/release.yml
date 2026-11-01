@@ -75,4 +75,4 @@ jobs:
               run: |
                   gh release create "$GITHUB_REF_NAME" release/*/*.ipk release/*/repo.json \
                     --repo "$GITHUB_REPOSITORY" --verify-tag \
-                    --title "LeanTube $GITHUB_REF_NAME" --notes-file release/*/notes.md
+                    --title "$GITHUB_REF_NAME" --notes-file release/*/notes.md
