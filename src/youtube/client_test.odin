@@ -77,7 +77,7 @@ search_cards_read_views_and_the_relative_date :: proc(t: ^testing.T) {
 	if !testing.expect_value(t, web_error, .None) {return}
 	if !testing.expect_value(t, len(web.videos), 1) {return}
 	testing.expect_value(t, web.videos[0].channel, "A channel")
-	testing.expect_value(t, web.videos[0].meta, "1.2M views · 2 years ago")
+	testing.expect_value(t, web.videos[0].meta, "1.2M · 2 years ago")
 
 	tv, tv_error, tv_visitor := parse_search_tv(
 		`{"contents":{"sectionListRenderer":{"contents":[{"shelfRenderer":{"content":{"horizontalListRenderer":{"items":[
@@ -90,7 +90,7 @@ search_cards_read_views_and_the_relative_date :: proc(t: ^testing.T) {
 	if !testing.expect_value(t, tv_error, .None) {return}
 	if !testing.expect_value(t, len(tv.videos), 1) {return}
 	testing.expect_value(t, tv.videos[0].channel, "A channel")
-	testing.expect_value(t, tv.videos[0].meta, "1.1M views · 16 hours ago")
+	testing.expect_value(t, tv.videos[0].meta, "1.1M · 16 hours ago")
 }
 
 @(test)

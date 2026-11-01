@@ -53,7 +53,7 @@ channel_reads_selected_tab_header_and_dropdown_sort_commands :: proc(t: ^testing
 	testing.expect_value(t, catalog.videos[0].id, "DN953UW8iJ8")
 	testing.expect_value(t, catalog.videos[0].duration_ms, f64(951000))
 	testing.expect_value(t, catalog.videos[0].thumbnail_url, "https://images.example/large")
-	testing.expect_value(t, catalog.videos[0].meta, "1.2M views · 2 years ago")
+	testing.expect_value(t, catalog.videos[0].meta, "1.2M · 2 years ago")
 	testing.expect_value(t, catalog.continuation, "next-channel-page")
 }
 

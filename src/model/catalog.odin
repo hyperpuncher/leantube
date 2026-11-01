@@ -133,7 +133,7 @@ views_count :: proc(text: string) -> u64 {
 // Round to the nearest shown unit: 987, 12K, 1.2M, 345M, 1.5B.
 views_label :: proc(views: u64) -> string {
 	if views == 0 {return ""}
-	if views < 1_000 {return fmt.aprintf("%d views", views)}
+	if views < 1_000 {return fmt.aprintf("%d", views)}
 	value: f64
 	unit: byte
 	switch {
@@ -144,10 +144,10 @@ views_label :: proc(views: u64) -> string {
 	case:
 		value, unit = f64(views) / 1_000_000_000, 'B'
 	}
-	return fmt.aprintf(value < 9.95 ? "%.1f%c views" : "%.0f%c views", value, unit)
+	return fmt.aprintf(value < 9.95 ? "%.1f%c" : "%.0f%c", value, unit)
 }
 
-// One caption line for a card, for example "1.2M views · 2 years ago".
+// One caption line for a card, for example "1.2M · 2 years ago".
 video_meta :: proc(views: u64, published: string) -> string {
 	views_text := views_label(views)
 	defer delete(views_text)

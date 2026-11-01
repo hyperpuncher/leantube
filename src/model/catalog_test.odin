@@ -46,7 +46,7 @@ view_counts_round_to_one_compact_caption :: proc(t: ^testing.T) {
 	for c in ([]struct {
 			views: u64,
 			label: string,
-		}{{0, ""}, {7, "7 views"}, {987, "987 views"}, {1_000, "1.0K views"}, {1_234, "1.2K views"}, {12_345, "12K views"}, {179_000, "179K views"}, {999_499, "999K views"}, {1_234_567, "1.2M views"}, {12_345_678, "12M views"}, {345_000_000, "345M views"}, {1_234_567_890, "1.2B views"}}) {
+		}{{0, ""}, {7, "7"}, {987, "987"}, {1_000, "1.0K"}, {1_234, "1.2K"}, {12_345, "12K"}, {179_000, "179K"}, {999_499, "999K"}, {1_234_567, "1.2M"}, {12_345_678, "12M"}, {345_000_000, "345M"}, {1_234_567_890, "1.2B"}}) {
 		label := views_label(c.views)
 		testing.expect_value(t, label, c.label)
 		delete(label)
@@ -93,7 +93,7 @@ latest_sort_puts_newest_first_and_unknown_dates_last :: proc(t: ^testing.T) {
 card_meta_joins_views_and_the_relative_date :: proc(t: ^testing.T) {
 	joined := video_meta(1_234_567, " Streamed 2 years ago ")
 	defer delete(joined)
-	testing.expect_value(t, joined, "1.2M views · Streamed 2 years ago")
+	testing.expect_value(t, joined, "1.2M · Streamed 2 years ago")
 	only_date := video_meta(0, "2 years ago")
 	defer delete(only_date)
 	testing.expect_value(t, only_date, "2 years ago")
