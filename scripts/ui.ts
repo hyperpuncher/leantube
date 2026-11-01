@@ -15,8 +15,7 @@ if (!buildOnly) {
 		console.log("native YouTube search; local playback is UI-only");
 		await $`${binary}`;
 	} else {
-		await Promise.all(
-			["720p", "1080p", "1440p", "4k"].map((size) => $`${binary} ${size}`),
-		);
+		const sizes = screenshots ? ["720p", "1080p", "1440p", "4k"] : ["1080p"];
+		await Promise.all(sizes.map((size) => $`${binary} ${size}`));
 	}
 }
