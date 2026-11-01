@@ -85,6 +85,20 @@ check_rounded_edges :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 			)
 		}
 	}
+	assert(set_color(renderer, COLOR_BACKGROUND) && sdl.RenderClear(renderer))
+	assert(
+		rounded_progress(
+			renderer,
+			{16.25, 16.25, 64.5, 64.5},
+			clay.CornerRadiusAll(16),
+			100,
+			{0, 0, surface.w, surface.h},
+		),
+	)
+	assert(sdl.RenderPresent(renderer))
+	red: u8
+	assert(sdl.ReadSurfacePixel(surface, 48, 80, &red, nil, nil, nil))
+	assert(red > 0, "fractional cover bounds must not cut off the bottom progress edge")
 }
 
 // A 4:3 JPEG with baked-in bars must fill a 16:9 frame in both render paths.
@@ -295,6 +309,19 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	assert(render(renderer))
 	first := clay.GetElementData(clay.ID("video", 0)).boundingBox
 	first_cover := clay.GetElementData(clay.ID("cover", 0)).boundingBox
+	// Selection covers the caption area too, without an accent outline.
+	assert(
+		sdl.ReadSurfacePixel(
+			surface,
+			i32(first.x + scaled(24)),
+			i32(first.y + first.height - scaled(6)),
+			&red,
+			&green,
+			&blue,
+			nil,
+		),
+	)
+	assert(red == u8(COLOR_HOVER[0]) && green == u8(COLOR_HOVER[1]) && blue == u8(COLOR_HOVER[2]))
 	completed_cover := clay.GetElementData(clay.ID("cover", 1)).boundingBox
 	// A full progress bar must leave the rounded corner clear.
 	for offset, i in ([2]f32{1, scaled(24)}) {

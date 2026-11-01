@@ -4,6 +4,12 @@ import clay "../vendor/clay"
 import "core:math"
 import sdl "vendor:sdl3"
 
+// Round clip bounds outward so fractional edges do not leave a one-pixel gap.
+pixel_bounds :: proc(rect: sdl.FRect) -> sdl.Rect {
+	x, y := i32(math.floor(rect.x)), i32(math.floor(rect.y))
+	return {x, y, i32(math.ceil(rect.x + rect.w)) - x, i32(math.ceil(rect.y + rect.h)) - y}
+}
+
 // Draw only the bottom strip of the same rounded shape used for the cover.
 rounded_progress :: proc(
 	renderer: ^sdl.Renderer,
@@ -14,7 +20,7 @@ rounded_progress :: proc(
 ) -> bool {
 	saved_clip := clip
 	defer _ = sdl.SetRenderClipRect(renderer, &saved_clip)
-	strip := sdl.Rect{i32(rect.x), i32(rect.y + rect.h - scaled(4)), i32(rect.w), i32(scaled(4))}
+	strip := pixel_bounds({rect.x, rect.y + rect.h - scaled(4), rect.w, scaled(4)})
 	completed := i32(f32(strip.w) * percent / 100)
 	for color, i in ([2]clay.Color{COLOR_TRACK, COLOR_ACCENT}) {
 		part := strip

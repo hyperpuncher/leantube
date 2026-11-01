@@ -158,69 +158,57 @@ video_card :: proc(index: int) {
 		meta = card_labels[index].meta
 	}
 	focus :=
-		!rail_focus && !channel_focus && !search_editing && index == selected ? COLOR_ACCENT : COLOR_BACKGROUND
+		!rail_focus && !channel_focus && !search_editing && index == selected ? COLOR_HOVER : clay.PointerOver(clay.ID("video", u32(index))) ? COLOR_SURFACE : clay.Color{}
 	if clay.UI(clay.ID("video", u32(index)))(
 	{
 		layout = {
 			sizing = {width = clay.SizingPercent(1.0 / f32(grid_columns))},
 			layoutDirection = .TopToBottom,
-			padding = padding(4, 4, 0, 0),
-			childGap = spacing(4),
+			padding = clay.PaddingAll(spacing(12)),
+			childGap = spacing(8),
 		},
+		backgroundColor = focus,
+		cornerRadius = clay.CornerRadiusAll(scaled(16)),
 	},
 	) {
-		if clay.UI()(
+		if clay.UI(clay.ID("cover", u32(index)))(
 		{
-			layout = {
-				sizing = {width = clay.SizingGrow({})},
-				padding = clay.PaddingAll(spacing(4)),
-			},
-			backgroundColor = focus,
-			cornerRadius = clay.CornerRadiusAll(scaled(16)),
+			layout = {sizing = {width = clay.SizingGrow({})}},
+			image = {imageData = rawptr(textures[index])},
+			backgroundColor = textures[index] == nil ? COLOR_SURFACE : clay.Color{},
+			aspectRatio = {16.0 / 9.0},
+			cornerRadius = corners,
 		},
 		) {
-			if clay.UI(clay.ID("cover", u32(index)))(
+			if clay.UI(clay.ID("duration", u32(index)))(
 			{
-				layout = {sizing = {width = clay.SizingGrow({})}},
-				image = {imageData = rawptr(textures[index])},
-				backgroundColor = textures[index] == nil ? COLOR_SURFACE : clay.Color{},
-				aspectRatio = {16.0 / 9.0},
-				cornerRadius = corners,
+				floating = {
+					attachTo = .Parent,
+					attachment = {element = .RightBottom, parent = .RightBottom},
+					offset = {-scaled(8), -scaled(8)},
+					clipTo = .AttachedParent,
+					pointerCaptureMode = .Passthrough,
+				},
+				layout = {padding = padding(8, 8, 4, 4)},
+				backgroundColor = COLOR_BADGE,
+				cornerRadius = clay.CornerRadiusAll(scaled(4)),
 			},
-			) {
-				if clay.UI(clay.ID("duration", u32(index)))(
+			) {label(video.duration_label, .Mono_Small)}
+			if video.watched_percent > 0 {
+				if clay.UI(clay.ID("watched-progress", u32(index)))(
 				{
 					floating = {
 						attachTo = .Parent,
-						attachment = {element = .RightBottom, parent = .RightBottom},
-						offset = {-scaled(8), -scaled(8)},
 						clipTo = .AttachedParent,
 						pointerCaptureMode = .Passthrough,
 					},
-					layout = {padding = padding(8, 8, 4, 4)},
-					backgroundColor = COLOR_BADGE,
-					cornerRadius = clay.CornerRadiusAll(scaled(4)),
-				},
-				) {label(video.duration_label, .Mono_Small)}
-				if video.watched_percent > 0 {
-					if clay.UI(clay.ID("watched-progress", u32(index)))(
-					{
-						floating = {
-							attachTo = .Parent,
-							clipTo = .AttachedParent,
-							pointerCaptureMode = .Passthrough,
-						},
-						layout = {
-							sizing = {
-								width = clay.SizingPercent(1),
-								height = clay.SizingPercent(1),
-							},
-						},
-						cornerRadius = corners,
-						custom = {customData = &catalog.videos[index].watched_percent},
+					layout = {
+						sizing = {width = clay.SizingPercent(1), height = clay.SizingPercent(1)},
 					},
-					) {}
-				}
+					cornerRadius = corners,
+					custom = {customData = &catalog.videos[index].watched_percent},
+				},
+				) {}
 			}
 		}
 		if clay.UI()(
@@ -229,7 +217,6 @@ video_card :: proc(index: int) {
 				sizing = {width = clay.SizingGrow({})},
 				layoutDirection = .TopToBottom,
 				childGap = spacing(2),
-				padding = padding(4, 4, 0, 0),
 			},
 		},
 		) {

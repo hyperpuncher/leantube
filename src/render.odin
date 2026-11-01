@@ -242,7 +242,7 @@ render_commands :: proc(
 			if !ok {return false}
 		case .ScissorStart:
 			parent := clips[len(clips) - 1]
-			next := sdl.Rect{i32(box.x), i32(box.y), i32(box.width), i32(box.height)}
+			next := pixel_bounds(rect)
 			if !command.renderData.clip.horizontal {next.x = parent.x; next.w = parent.w}
 			if !command.renderData.clip.vertical {next.y = parent.y; next.h = parent.h}
 			clipped: sdl.Rect
