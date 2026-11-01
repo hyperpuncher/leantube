@@ -100,7 +100,14 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 			return
 		}
 		if channel_pointer(activate) {return}
-		for _, i in catalog.videos {
+		for video, i in catalog.videos {
+			if clay.PointerOver(clay.ID("card-avatar", u32(i))) {
+				card_press.active = false
+				selected = i
+				rail_focus, channel_focus = false, false
+				if activate {start_browse(model.video_channel_id(video))}
+				return
+			}
 			if clay.PointerOver(clay.ID("video", u32(i))) {
 				selected = i
 				rail_focus = false
@@ -132,30 +139,7 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 
 player_channel_button :: proc() {
 	if player_channel_id == "" {return}
-	if clay.UI(clay.ID("player-channel"))(
-	{
-		layout = {
-			sizing = {width = clay.SizingFixed(scaled(64)), height = clay.SizingFixed(scaled(64))},
-			padding = clay.PaddingAll(spacing(8)),
-		},
-		backgroundColor = clay.PointerOver(clay.ID("player-channel")) ? COLOR_HOVER : clay.Color{},
-		cornerRadius = clay.CornerRadiusAll(scaled(32)),
-	},
-	) {
-		if clay.UI()(
-		{
-			layout = {
-				sizing = {
-					width = clay.SizingFixed(scaled(48)),
-					height = clay.SizingFixed(scaled(48)),
-				},
-			},
-			image = {imageData = rawptr(player_channel_avatar)},
-			backgroundColor = COLOR_SURFACE,
-			cornerRadius = clay.CornerRadiusAll(scaled(24)),
-		},
-		) {}
-	}
+	avatar_button(clay.ID("player-channel"), player_channel_avatar, PLAYER_AVATAR_SIZE, 8)
 }
 
 TIMELINE_HEIGHT :: 44

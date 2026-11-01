@@ -8,7 +8,7 @@ import "core:testing"
 search_owns_metadata_and_skips_live_duplicate_and_invalid_entries :: proc(t: ^testing.T) {
 	catalog, error, visitor := parse_search(
 		`{"responseContext":{"visitorData":"test-session"},"contents":{"twoColumnSearchResultsRenderer":{"primaryContents":{"items":[
-		{"videoRenderer":{"videoId":"aqz-KE-bpKQ","thumbnailOverlays":[{"thumbnailOverlayResumePlaybackRenderer":{"percentDurationWatched":100}}],"title":{"runs":[{"text":"café "},{"text":"movie"}]},"ownerText":{"runs":[{"text":"Blender"}]},"lengthText":{"simpleText":"1:02:03"}}},
+		{"videoRenderer":{"videoId":"aqz-KE-bpKQ","thumbnailOverlays":[{"thumbnailOverlayResumePlaybackRenderer":{"percentDurationWatched":100}}],"title":{"runs":[{"text":"café "},{"text":"movie"}]},"ownerText":{"runs":[{"text":"Blender","navigationEndpoint":{"browseEndpoint":{"browseId":"UC-blender"}}}]},"channelThumbnailSupportedRenderers":{"channelThumbnailWithLinkRenderer":{"thumbnail":{"thumbnails":[{"url":"https://images.example/avatar","width":88}]}}},"lengthText":{"simpleText":"1:02:03"}}},
 		{"videoRenderer":{"videoId":"aqz-KE-bpKQ","title":{"simpleText":"duplicate"},"lengthText":{"simpleText":"1:00"}}},
 		{"videoRenderer":{"videoId":"C5WDBA2i9nE","title":{"simpleText":"live"}}},
 		{"videoRenderer":{"videoId":"../private","title":{"simpleText":"invalid"},"lengthText":{"simpleText":"1:00"}}}
@@ -25,6 +25,8 @@ search_owns_metadata_and_skips_live_duplicate_and_invalid_entries :: proc(t: ^te
 	testing.expect_value(t, catalog.videos[0].title, "café movie")
 	testing.expect_value(t, catalog.videos[0].watched_percent, f32(100))
 	testing.expect_value(t, catalog.videos[0].channel, "Blender")
+	testing.expect_value(t, catalog.videos[0].avatar_url, "https://images.example/avatar")
+	testing.expect_value(t, model.video_channel_id(catalog.videos[0]), "UC-blender")
 	testing.expect_value(t, catalog.videos[0].duration_ms, f64(3723000))
 }
 

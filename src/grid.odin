@@ -1,6 +1,7 @@
 package main
 
 import clay "../vendor/clay"
+import "./model"
 import "core:c"
 import "core:math"
 import "core:strings"
@@ -29,7 +30,9 @@ labels_build :: proc(width: f32) {
 	labels_release()
 	for video in catalog.videos {
 		title, title_owned := fit_wrapped(fonts[.Small], video.title, c.int(width), 2)
-		channel, channel_owned := fit_text(fonts[.Caption], video.channel, c.int(width))
+		channel_width :=
+			width - (model.video_channel_id(video) != "" ? scaled(CARD_AVATAR_SIZE + 16) : 0)
+		channel, channel_owned := fit_text(fonts[.Caption], video.channel, c.int(channel_width))
 		meta, meta_owned := fit_text(fonts[.Caption], video.meta, c.int(width))
 		append(
 			&card_labels,
@@ -150,6 +153,7 @@ grid_layout :: proc() {
 
 video_card :: proc(index: int) {
 	video := catalog.videos[index]
+	channel_id := model.video_channel_id(video)
 	corners := clay.CornerRadiusAll(scaled(12))
 	title, channel, meta := video.title, video.channel, video.meta
 	if index < len(card_labels) {
@@ -235,11 +239,28 @@ video_card :: proc(index: int) {
 				layout = {
 					sizing = {
 						width = clay.SizingGrow({}),
-						height = clay.SizingFixed(f32(ttf.GetFontHeight(fonts[.Caption]))),
+						height = clay.SizingFixed(
+							max(
+								f32(ttf.GetFontHeight(fonts[.Caption])),
+								channel_id != "" ? scaled(CARD_AVATAR_SIZE + 8) : 0,
+							),
+						),
 					},
+					childGap = spacing(8),
+					childAlignment = {y = .Center},
 				},
 			},
-			) {label(channel, .Caption, COLOR_MUTED)}
+			) {
+				if channel_id != "" {
+					avatar_button(
+						clay.ID("card-avatar", u32(index)),
+						card_avatars[index],
+						CARD_AVATAR_SIZE,
+						4,
+					)
+				}
+				label(channel, .Caption, COLOR_MUTED)
+			}
 			if meta != "" {
 				if clay.UI(clay.ID("card-meta", u32(index)))(
 				{

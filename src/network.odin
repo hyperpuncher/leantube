@@ -5,6 +5,7 @@ import "./http"
 import "./model"
 import sb "./sponsorblock"
 import yt "./youtube"
+import "core:math"
 import "core:strings"
 import "core:sync/chan"
 import "core:thread"
@@ -28,7 +29,7 @@ Network_Request :: struct {
 	text:           string,
 	continuation:   string,
 	params, filter: string,
-	index:          int,
+	index, columns: int,
 	account:        u32,
 	auth_token:     Auth_Token,
 	action:         model.Card_Action,
@@ -150,6 +151,8 @@ network_main :: proc(_: ^thread.Thread) {
 		page, playback: u32,
 	}
 	defer {for cover in covers {delete(cover.source)}; delete(covers)}
+	avatars := make(map[string]string)
+	defer {for id, url in avatars {delete(id); delete(url)}; delete(avatars)}
 	next: int
 	session_auth: Auth_Token
 	defer {free_auth_token(&session_auth); yt.set_access_token("")}
@@ -162,13 +165,26 @@ network_main :: proc(_: ^thread.Thread) {
 		if !ready && next < len(covers) {
 			index := next
 			next += 1
+			source := covers[index].source
+			if covers[index].avatar && strings.has_prefix(source, "UC") {
+				url, found := avatars[source]
+				if !found {
+					url = yt.channel_avatar(&network_client, source, visitor_data)
+					if url != "" {avatars[strings.clone(source)] = url}
+				}
+				delete(covers[index].source)
+				covers[index].source = strings.clone(url)
+				if url != "" {next -= 1}
+				// Check for a new section before starting another HTTP request.
+				continue
+			}
 			bytes: [dynamic]u8
-			if strings.has_prefix(covers[index].source, "https://") {
-				response, error := yt.fetch_thumbnail(&network_client, covers[index].source)
+			if strings.has_prefix(source, "https://") {
+				response, error := yt.fetch_thumbnail(&network_client, source)
 				if error == nil &&
 				   response.status == 200 {bytes = response.body} else {delete(response.body)}
 			} else {
-				bytes = yt.thumbnail(&network_client, covers[index].source, network_stopping)
+				bytes = yt.thumbnail(&network_client, source, network_stopping)
 			}
 			surface: ^sdl.Surface
 			if len(bytes) > 0 {
@@ -176,6 +192,21 @@ network_main :: proc(_: ^thread.Thread) {
 				if io != nil {surface = img.Load_IO(io, true)}
 			}
 			delete(bytes)
+			if covers[index].avatar {
+				// Reduce in small steps: a single 900px-to-32px bilinear draw aliases.
+				target: i32 = 2 * CHANNEL_AVATAR_SIZE
+				if covers[index].index >= 0 {
+					target = 2 * CARD_AVATAR_SIZE
+				} else if covers[index].playback != 0 {target = 2 * PLAYER_AVATAR_SIZE}
+				for surface != nil && max(surface.w, surface.h) > target {
+					ratio := max(f32(0.5), f32(target) / f32(max(surface.w, surface.h)))
+					width := max(1, i32(math.round(f32(surface.w) * ratio)))
+					height := max(1, i32(math.round(f32(surface.h) * ratio)))
+					scaled := sdl.ScaleSurface(surface, width, height, .LINEAR)
+					sdl.DestroySurface(surface)
+					surface = scaled
+				}
+			}
 			if surface != nil {
 				if !post_network_result(
 					{
@@ -236,24 +267,16 @@ network_main :: proc(_: ^thread.Thread) {
 				refresh_at = sdl.GetTicks() + u64(max(session_auth.expires_in - 60, 30)) * 1000
 			}
 			if request.kind == .Player_Channel {
-				channel, _, visitor := yt.browse(
-					&network_client,
-					request.text,
-					visitor_data = visitor_data,
+				append(
+					&covers,
+					{
+						source = strings.clone(request.text),
+						index = -1,
+						avatar = true,
+						page = request.page,
+						playback = request.playback,
+					},
 				)
-				defer model.catalog_destroy(&channel)
-				delete(visitor)
-				if channel.channel.avatar_url != "" {
-					append(
-						&covers,
-						{
-							source = strings.clone(channel.channel.avatar_url),
-							avatar = true,
-							page = request.page,
-							playback = request.playback,
-						},
-					)
-				}
 				continue
 			}
 			if request.kind == .Card_Action {
@@ -297,23 +320,46 @@ network_main :: proc(_: ^thread.Thread) {
 					&covers,
 					{
 						source = strings.clone(catalog.channel.avatar_url),
+						index = -1,
 						avatar = true,
 						page = request.page,
 					},
 				)
 			}
-			for &video, i in catalog.videos {
-				video.cover_index = request.index + i
-				append(
-					&covers,
-					{
-						source = strings.clone(
-							video.thumbnail_url != "" ? video.thumbnail_url : video.id,
-						),
-						index = video.cover_index,
-						page = request.page,
-					},
-				)
+			for &video, i in catalog.videos {video.cover_index = request.index + i}
+			if request.kind == .Browse && request.text == "FEsubscriptions" {
+				model.sort_latest(catalog.videos[:])
+			}
+			// Fill two rows of covers before their avatars, not the entire feed.
+			batch_size := max(1, request.columns) * 2
+			for first := 0; first < len(catalog.videos); first += batch_size {
+				batch := catalog.videos[first:min(first + batch_size, len(catalog.videos))]
+				for video in batch {
+					append(
+						&covers,
+						{
+							source = strings.clone(
+								video.thumbnail_url != "" ? video.thumbnail_url : video.id,
+							),
+							index = video.cover_index,
+							page = request.page,
+						},
+					)
+				}
+				for video in batch {
+					source :=
+						video.avatar_url != "" ? video.avatar_url : model.video_channel_id(video)
+					if source == "" {continue}
+					append(
+						&covers,
+						{
+							source = strings.clone(source),
+							index = video.cover_index,
+							avatar = true,
+							page = request.page,
+						},
+					)
+				}
 			}
 			if !post_network_result(
 				{
@@ -474,6 +520,8 @@ clear_catalog :: proc(keep_channel: bool = false) {
 		if texture != nil {sdl.DestroyTexture(texture); texture = nil}
 	}
 	delete(textures); textures = nil
+	for texture in card_avatars {if texture != nil {sdl.DestroyTexture(texture)}}
+	delete(card_avatars); card_avatars = nil
 	channel: model.Channel
 	if keep_channel {channel = catalog.channel; catalog.channel = {}}
 	model.catalog_destroy(&catalog)
@@ -505,6 +553,7 @@ start_browse :: proc(id: string, params: string = "", filter: string = "", remem
 		{
 			kind = .Browse,
 			page = page,
+			columns = grid_columns,
 			text = strings.clone(browse_id),
 			params = strings.clone(browse_params),
 			filter = strings.clone(browse_filter),
@@ -526,6 +575,7 @@ load_more :: proc() {
 			text = strings.clone(browse_id),
 			continuation = strings.clone(catalog.continuation),
 			index = len(catalog.videos),
+			columns = grid_columns,
 		},
 	) {
 		search_loading = false
@@ -565,7 +615,7 @@ start_search :: proc(query: string = "Linus Tech Tips", keep_history: bool = fal
 	notice = ""
 	dirty = true
 	if !submit_network(
-		{kind = .Search, page = page, text = owned},
+		{kind = .Search, page = page, columns = grid_columns, text = owned},
 	) {search_loading = false; notice = "network is unavailable"}
 }
 resolve_selected :: proc(position_ms: f64 = 0, start_paused: bool = false) {
@@ -596,13 +646,16 @@ resolve_selected :: proc(position_ms: f64 = 0, start_paused: bool = false) {
 // Cover replies use the original feed position, not the sorted grid position.
 sort_subscriptions :: proc(preserve_selection: bool) {
 	if len(catalog.videos) == 0 {return}
-	covers := make(map[int]^sdl.Texture)
+	covers := make(map[int]struct {
+			cover, avatar: ^sdl.Texture,
+		})
 	defer delete(covers)
 	selected_cover := preserve_selection ? catalog.videos[selected].cover_index : -1
-	for video, i in catalog.videos {covers[video.cover_index] = textures[i]}
+	for video, i in catalog.videos {covers[video.cover_index] = {textures[i], card_avatars[i]}}
 	model.sort_latest(catalog.videos[:])
 	for video, i in catalog.videos {
-		textures[i] = covers[video.cover_index]
+		textures[i] = covers[video.cover_index].cover
+		card_avatars[i] = covers[video.cover_index].avatar
 		if video.cover_index == selected_cover {selected = i}
 	}
 }
@@ -716,6 +769,7 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				}
 			}
 			resize(&textures, len(catalog.videos))
+			resize(&card_avatars, len(catalog.videos))
 			if browse_id == "FEsubscriptions" {sort_subscriptions(result.append)}
 			catalog_revision += 1
 			notice = ""
@@ -726,13 +780,13 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				if browsing || result.playback != playback {continue}
 				slot = &player_channel_avatar
 			}
-			if result.kind == .Cover {
+			if result.kind == .Cover || result.index >= 0 {
 				index := -1
 				for video, i in catalog.videos {
 					if video.cover_index == result.index {index = i; break}
 				}
 				if index < 0 {continue}
-				slot = &textures[index]
+				slot = result.kind == .Cover ? &textures[index] : &card_avatars[index]
 			}
 			if result.surface == nil {continue}
 			texture := sdl.CreateTextureFromSurface(renderer, result.surface)

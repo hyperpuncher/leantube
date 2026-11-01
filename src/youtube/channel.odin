@@ -20,13 +20,12 @@ add_channel_action :: proc(card: ^model.Video, byline: json.Value) {
 	)
 }
 
-channel_browse :: proc(
+channel_request :: proc(
 	client: ^http.Client,
 	id, params, continuation, filter, visitor_data: string,
 ) -> (
-	model.Catalog,
+	http.Response,
 	Error,
-	string,
 ) {
 	request := struct {
 		ctx:                            struct {
@@ -49,9 +48,38 @@ channel_browse :: proc(
 	}
 	if request.continuation != "" {request.browseId, request.params = "", ""}
 	body, err := json.marshal(request)
-	if err != nil {return {}, .Invalid_Response, ""}
+	if err != nil {return {}, .Invalid_Response}
 	defer delete(body)
-	response, error := api_post(client, "browse", body)
+	return api_post(client, "browse", body)
+}
+
+channel_avatar :: proc(client: ^http.Client, id, visitor_data: string) -> string {
+	response, error := channel_request(client, id, "", "", "", visitor_data)
+	if error != .None {return ""}
+	defer delete(response.body)
+	value, err := json.parse(string(response.body[:]))
+	if err != .None {return ""}
+	defer json.destroy_value(value)
+	metadata := field(field(value, "metadata"), "channelMetadataRenderer")
+	return largest_image(field(field(metadata, "avatar"), "thumbnails"))
+}
+
+card_avatar :: proc(value: json.Value) -> string {
+	thumbnail := find_node(value, "channelThumbnailWithLinkRenderer")
+	if thumbnail != nil {return largest_image(field(field(thumbnail, "thumbnail"), "thumbnails"))}
+	avatar := find_node(value, "avatarViewModel")
+	return largest_image(field(field(avatar, "image"), "sources"))
+}
+
+channel_browse :: proc(
+	client: ^http.Client,
+	id, params, continuation, filter, visitor_data: string,
+) -> (
+	model.Catalog,
+	Error,
+	string,
+) {
+	response, error := channel_request(client, id, params, continuation, filter, visitor_data)
 	if error != .None {return {}, error, ""}
 	defer delete(response.body)
 	catalog, parse_error, visitor := parse_channel(string(response.body[:]), id)

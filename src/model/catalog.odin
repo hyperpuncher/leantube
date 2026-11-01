@@ -7,15 +7,15 @@ import "core:strings"
 
 GRID_COLUMNS :: 3
 Video :: struct {
-	duration_ms:                        f64,
-	watched_percent:                    f32,
-	id, title, channel, duration_label: string,
-	meta:                               string,
-	published_age_s:                    i64,
+	duration_ms:                          f64,
+	watched_percent:                      f32,
+	id, title, channel, duration_label:   string,
+	meta:                                 string,
+	published_age_s:                      i64,
 	// Original feed position, kept stable when the display order changes.
-	cover_index:                        int,
-	browse_id, thumbnail_url:           string,
-	actions:                            [dynamic]Card_Action,
+	cover_index:                          int,
+	browse_id, thumbnail_url, avatar_url: string,
+	actions:                              [dynamic]Card_Action,
 }
 Catalog :: struct {
 	query:        string,
@@ -185,9 +185,18 @@ time_label :: proc(ms: f64, zero: string = "00:00") -> string {
 	return fmt.aprintf("%02d:%02d", seconds / 60, seconds % 60)
 }
 
+// Borrow the channel target already supplied with the card actions.
+video_channel_id :: proc(video: Video) -> string {
+	for action in video.actions {
+		if action.kind == .Browse && strings.has_prefix(action.target, "UC") {return action.target}
+	}
+	return ""
+}
+
 video_destroy :: proc(video: ^Video) {
 	delete(video.id); delete(video.title); delete(video.channel); delete(video.duration_label)
-	delete(video.browse_id); delete(video.thumbnail_url); delete(video.meta)
+	delete(video.browse_id); delete(video.thumbnail_url)
+	delete(video.avatar_url); delete(video.meta)
 	card_actions_destroy(&video.actions)
 	video^ = {}
 }

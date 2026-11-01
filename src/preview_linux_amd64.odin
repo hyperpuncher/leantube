@@ -204,6 +204,7 @@ main :: proc() {
 		// Test an incomplete final row.
 		if UI_TEST && os.args[1] == "1440p" {count -= 1}
 		resize(&textures, count)
+		resize(&card_avatars, count)
 		catalog.query = fmt.aprintf("local scrolling test · %d videos", count)
 		for i in 0 ..< count {
 			append(
@@ -216,6 +217,15 @@ main :: proc() {
 					duration_label = model.time_label(100000),
 				},
 			)
+			append(
+				&catalog.videos[i].actions,
+				model.Card_Action {
+					kind = .Browse,
+					label = strings.clone("Go to channel"),
+					target = strings.clone("UC-example"),
+				},
+			)
+			if i != 2 {card_avatars[i] = load_texture(renderer, "tests/ui/cover.webp")}
 			if UI_TEST && i == 1 {
 				textures[i] = load_texture(renderer, "tests/ui/cover.jpg")
 				assert(textures[i] != nil)
@@ -336,6 +346,23 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 		),
 	)
 	assert(red == u8(COLOR_HOVER[0]) && green == u8(COLOR_HOVER[1]) && blue == u8(COLOR_HOVER[2]))
+	for index in ([2]int{0, 2}) {
+		avatar := clay.GetElementData(clay.ID("card-avatar", u32(index))).boundingBox
+		assert(avatar.width == scaled(40))
+		assert(
+			sdl.ReadSurfacePixel(
+				surface,
+				i32(avatar.x + avatar.width / 2),
+				i32(avatar.y + avatar.height / 2),
+				&red,
+				&green,
+				&blue,
+				nil,
+			),
+		)
+		if index ==
+		   0 {assert(red > 240, "a placeholder must not cover a loaded avatar")} else {assert(red == u8(COLOR_SURFACE[0]))}
+	}
 	completed_cover := clay.GetElementData(clay.ID("cover", 1)).boundingBox
 	// A full progress bar must leave the rounded corner clear.
 	for offset, i in ([2]f32{1, scaled(24)}) {

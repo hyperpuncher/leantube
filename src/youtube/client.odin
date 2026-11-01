@@ -186,6 +186,7 @@ collect_videos :: proc(value: json.Value, catalog: ^model.Catalog) {
 			fill_card_labels(&card, []string{view_text, published})
 			card.actions = parse_card_actions(video["menu"])
 			card.thumbnail_url = largest_image(field(video["thumbnail"], "thumbnails"))
+			card.avatar_url = card_avatar(video["channelThumbnailSupportedRenderers"])
 			if card.channel == "" {
 				card.channel = text(video["ownerText"])
 				if card.channel == "" {card.channel = text(video["longBylineText"])}
@@ -295,6 +296,7 @@ collect_lockups :: proc(value: json.Value, catalog: ^model.Catalog) {
 			fill_card_labels(&card, labels[:])
 			card.actions = parse_card_actions(lockup)
 			card.thumbnail_url = largest_image(field(field(thumbnail, "image"), "sources"))
+			card.avatar_url = card_avatar(field(lockup_metadata, "image"))
 			add_channel_action(&card, field(lockup_metadata, "metadata"))
 			append(&catalog.videos, card)
 			return

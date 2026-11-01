@@ -5,7 +5,12 @@ import "./model"
 import "core:strings"
 import sdl "vendor:sdl3"
 
+CARD_AVATAR_SIZE :: 32
+PLAYER_AVATAR_SIZE :: 48
+CHANNEL_AVATAR_SIZE :: 96
+
 channel_avatar: ^sdl.Texture
+card_avatars: [dynamic]^sdl.Texture
 player_channel_id: string
 player_channel_avatar: ^sdl.Texture
 
@@ -22,6 +27,37 @@ open_player_channel :: proc() {
 	stop_playback()
 	// start_browse copies the ID before clear_catalog releases it.
 	start_browse(player_channel_id)
+}
+
+avatar_button :: proc(id: clay.ElementId, texture: ^sdl.Texture, size: f32, inset: u16) {
+	button_size := scaled(size + 2 * f32(inset))
+	if clay.UI(id)(
+	{
+		layout = {
+			sizing = {
+				width = clay.SizingFixed(button_size),
+				height = clay.SizingFixed(button_size),
+			},
+			padding = clay.PaddingAll(spacing(inset)),
+		},
+		backgroundColor = clay.PointerOver(id) ? COLOR_TRACK : clay.Color{},
+		cornerRadius = clay.CornerRadiusAll(scaled(f32(inset) * 2)),
+	},
+	) {
+		if clay.UI()(
+		{
+			layout = {
+				sizing = {
+					width = clay.SizingFixed(scaled(size)),
+					height = clay.SizingFixed(scaled(size)),
+				},
+			},
+			image = {imageData = rawptr(texture)},
+			backgroundColor = texture == nil ? COLOR_SURFACE : clay.Color{},
+			cornerRadius = clay.CornerRadiusAll(scaled(size / 2)),
+		},
+		) {}
+	}
 }
 
 channel_focus: bool
@@ -172,13 +208,13 @@ channel_layout :: proc() {
 			{
 				layout = {
 					sizing = {
-						width = clay.SizingFixed(scaled(96)),
-						height = clay.SizingFixed(scaled(96)),
+						width = clay.SizingFixed(scaled(CHANNEL_AVATAR_SIZE)),
+						height = clay.SizingFixed(scaled(CHANNEL_AVATAR_SIZE)),
 					},
 				},
 				image = {imageData = rawptr(channel_avatar)},
-				backgroundColor = COLOR_SURFACE,
-				cornerRadius = clay.CornerRadiusAll(scaled(48)),
+				backgroundColor = channel_avatar == nil ? COLOR_SURFACE : clay.Color{},
+				cornerRadius = clay.CornerRadiusAll(scaled(CHANNEL_AVATAR_SIZE / 2)),
 			},
 			) {}
 			if clay.UI()(

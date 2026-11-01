@@ -53,7 +53,20 @@ subscription_sort_keeps_loaded_and_pending_covers_with_their_videos :: proc(t: ^
 	if !testing.expect(t, older_texture != nil) {return}
 	testing.expect(t, textures[0] == nil)
 
-	// A newer continuation must move the loaded cover and preserve focus.
+	chan.send(
+		network_results,
+		Network_Result {
+			kind = .Channel_Avatar,
+			page = page,
+			index = 0,
+			surface = sdl.CreateSurface(19, 19, .RGBA32),
+		},
+	)
+	poll_network(renderer)
+	older_avatar := card_avatars[1]
+	if !testing.expect(t, older_avatar != nil) {return}
+
+	// A newer continuation must move both images and preserve focus.
 	selected = 1
 	next := Network_Result {
 		kind   = .Catalog,
@@ -70,6 +83,7 @@ subscription_sort_keeps_loaded_and_pending_covers_with_their_videos :: proc(t: ^
 	testing.expect_value(t, catalog.videos[1].id, "newer")
 	testing.expect_value(t, catalog.videos[2].id, "older")
 	testing.expect_value(t, textures[2], older_texture)
+	testing.expect_value(t, card_avatars[2], older_avatar)
 	testing.expect_value(t, selected, 2)
 	testing.expect(t, textures[0] == nil && textures[1] == nil)
 
