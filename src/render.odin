@@ -188,7 +188,9 @@ render :: proc(renderer: ^sdl.Renderer, wheel: f32 = 0, dt: f32 = 1.0 / 60) -> b
 		grid_layout()
 		commands = clay.EndLayout(0)
 	}
-	return render_commands(renderer, commands)
+	ok := render_commands(renderer, commands)
+	if ok && browsing {preserve_catalog_images()}
+	return ok
 }
 
 render_commands :: proc(
@@ -208,6 +210,17 @@ render_commands :: proc(
 		command := clay.RenderCommandArray_Get(&commands, i)
 		box := command.boundingBox
 		rect := sdl.FRect{box.x, box.y, box.width, box.height}
+		if command.commandType == .Rectangle ||
+		   command.commandType == .Image ||
+		   command.commandType == .Custom ||
+		   command.commandType == .Text {
+			visible: sdl.Rect
+			if !sdl.GetRectIntersection(
+				pixel_bounds(rect),
+				clips[len(clips) - 1],
+				&visible,
+			) {continue}
+		}
 		#partial switch command.commandType {
 		case .Rectangle:
 			data := command.renderData.rectangle
@@ -276,7 +289,6 @@ render_commands :: proc(
 			text := command.renderData.text
 			if text.stringContents.length == 0 {continue}
 			clip := clips[len(clips) - 1]
-			if box.y >= f32(clip.y + clip.h) || box.y + box.height <= f32(clip.y) {continue}
 			continued := false
 			if i + 1 < commands.length {
 				next := clay.RenderCommandArray_Get(&commands, i + 1)

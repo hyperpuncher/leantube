@@ -13,12 +13,20 @@ import "core:thread"
 import sdl "vendor:sdl3"
 import img "vendor:sdl3/image"
 
+Image_Request :: struct {
+	source:         string,
+	index:          int,
+	target:         i32,
+	page, playback: u32,
+}
+
 Network_Request :: struct {
 	kind:           enum {
 		Search,
 		Browse,
 		Resolve,
 		Player_Channel,
+		Images,
 		Use_Account,
 		Login_Start,
 		Login_Poll,
@@ -30,10 +38,11 @@ Network_Request :: struct {
 	text:           string,
 	continuation:   string,
 	params, filter: string,
-	index, columns: int,
+	index:          int,
 	account:        u32,
 	auth_token:     Auth_Token,
 	action:         model.Card_Action,
+	images:         [dynamic]Image_Request,
 }
 Network_Result :: struct {
 	kind:           enum {
@@ -114,6 +123,8 @@ free_network_request :: proc(request: ^Network_Request) {
 	delete(request.params); delete(request.filter)
 	delete(request.action.label); delete(request.action.target); delete(request.action.payload)
 	free_auth_token(&request.auth_token)
+	for image in request.images {delete(image.source)}
+	delete(request.images)
 	request^ = {}
 }
 
@@ -172,12 +183,7 @@ network_main :: proc(_: ^thread.Thread) {
 	if !sdl.CreateDirectory(cache_path) || !trim_image_cache(cache) {
 		fmt.eprintln("image cache is unavailable")
 	}
-	covers: [dynamic]struct {
-		source:         string,
-		index:          int,
-		avatar:         bool,
-		page, playback: u32,
-	}
+	covers: [dynamic]Image_Request
 	defer {for cover in covers {delete(cover.source)}; delete(covers)}
 	avatars := make(map[string]string)
 	defer {for id, url in avatars {delete(id); delete(url)}; delete(avatars)}
@@ -194,7 +200,7 @@ network_main :: proc(_: ^thread.Thread) {
 			index := next
 			next += 1
 			source := covers[index].source
-			if covers[index].avatar && strings.has_prefix(source, "UC") {
+			if covers[index].target > 0 && strings.has_prefix(source, "UC") {
 				url, found := avatars[source]
 				if !found {
 					url = yt.channel_avatar(&network_client, source, visitor_data)
@@ -206,19 +212,11 @@ network_main :: proc(_: ^thread.Thread) {
 				// Check for a new section before starting another HTTP request.
 				continue
 			}
-			target: i32
-			if covers[index].avatar {
-				// Reduce in small steps: a single 900px-to-32px bilinear draw aliases.
-				target = 2 * CHANNEL_AVATAR_SIZE
-				if covers[index].index >= 0 {
-					target = 2 * CARD_AVATAR_SIZE
-				} else if covers[index].playback != 0 {target = 2 * PLAYER_AVATAR_SIZE}
-			}
-			surface := load_cached_image(cache, &network_client, source, target)
+			surface := load_cached_image(cache, &network_client, source, covers[index].target)
 			if surface != nil {
 				if !post_network_result(
 					{
-						kind = covers[index].avatar ? .Channel_Avatar : .Cover,
+						kind = covers[index].target > 0 ? .Channel_Avatar : .Cover,
 						page = covers[index].page,
 						index = covers[index].index,
 						playback = covers[index].playback,
@@ -232,6 +230,9 @@ network_main :: proc(_: ^thread.Thread) {
 		if !ready {return}
 		defer free_network_request(&request)
 		switch request.kind {
+		case .Images:
+			append(&covers, ..request.images[:])
+			clear(&request.images)
 		case .Use_Account:
 			free_auth_token(&session_auth)
 			session_auth = request.auth_token
@@ -275,7 +276,7 @@ network_main :: proc(_: ^thread.Thread) {
 					{
 						source = strings.clone(request.text),
 						index = -1,
-						avatar = true,
+						target = 2 * PLAYER_AVATAR_SIZE,
 						page = request.page,
 						playback = request.playback,
 					},
@@ -318,51 +319,9 @@ network_main :: proc(_: ^thread.Thread) {
 				for cover in covers {delete(cover.source)}
 				clear(&covers)
 			}
-			if catalog.channel.avatar_url != "" {
-				append(
-					&covers,
-					{
-						source = strings.clone(catalog.channel.avatar_url),
-						index = -1,
-						avatar = true,
-						page = request.page,
-					},
-				)
-			}
 			for &video, i in catalog.videos {video.cover_index = request.index + i}
 			if request.kind == .Browse && request.text == "FEsubscriptions" {
 				model.sort_latest(catalog.videos[:])
-			}
-			// Fill two rows of covers before their avatars, not the entire feed.
-			batch_size := max(1, request.columns) * 2
-			for first := 0; first < len(catalog.videos); first += batch_size {
-				batch := catalog.videos[first:min(first + batch_size, len(catalog.videos))]
-				for video in batch {
-					append(
-						&covers,
-						{
-							source = strings.clone(
-								video.thumbnail_url != "" ? video.thumbnail_url : video.id,
-							),
-							index = video.cover_index,
-							page = request.page,
-						},
-					)
-				}
-				for video in batch {
-					source :=
-						video.avatar_url != "" ? video.avatar_url : model.video_channel_id(video)
-					if source == "" {continue}
-					append(
-						&covers,
-						{
-							source = strings.clone(source),
-							index = video.cover_index,
-							avatar = true,
-							page = request.page,
-						},
-					)
-				}
 			}
 			if !post_network_result(
 				{
@@ -497,12 +456,13 @@ stop_network :: proc() {
 	free_device_auth(&pending_auth)
 	pending_auth_active = false
 	http.close(&network_client)
+	close_image_textures()
 }
 submit_network :: proc(request: Network_Request) -> bool {
 	if chan.try_send(network_requests, request) {return true}
 	// Replace old page requests, never pending account or login commands.
 	if previous, ok := chan.try_recv(network_requests); ok {
-		if previous.kind != .Search && previous.kind != .Browse {
+		if previous.kind != .Search && previous.kind != .Browse && previous.kind != .Images {
 			if !chan.try_send(network_requests, previous) {free_network_request(&previous)}
 			request := request
 			free_network_request(&request)
@@ -556,7 +516,6 @@ start_browse :: proc(id: string, params: string = "", filter: string = "", remem
 		{
 			kind = .Browse,
 			page = page,
-			columns = grid_columns,
 			text = strings.clone(browse_id),
 			params = strings.clone(browse_params),
 			filter = strings.clone(browse_filter),
@@ -578,7 +537,6 @@ load_more :: proc() {
 			text = strings.clone(browse_id),
 			continuation = strings.clone(catalog.continuation),
 			index = len(catalog.videos),
-			columns = grid_columns,
 		},
 	) {
 		search_loading = false
@@ -618,7 +576,7 @@ start_search :: proc(query: string = "Linus Tech Tips", keep_history: bool = fal
 	notice = ""
 	dirty = true
 	if !submit_network(
-		{kind = .Search, page = page, columns = grid_columns, text = owned},
+		{kind = .Search, page = page, text = owned},
 	) {search_loading = false; notice = "network is unavailable"}
 }
 resolve_selected :: proc(position_ms: f64 = 0, start_paused: bool = false) {
@@ -752,6 +710,13 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				same_channel :=
 					result.catalog.channel.id != "" &&
 					result.catalog.channel.id == catalog.channel.id
+				if same_channel &&
+				   channel_avatar != nil &&
+				   result.catalog.channel.avatar_url != "" &&
+				   result.catalog.channel.avatar_url != catalog.channel.avatar_url {
+					sdl.DestroyTexture(channel_avatar)
+					channel_avatar = nil
+				}
 				if same_channel && result.catalog.channel.title == "" {
 					sorts := result.catalog.channel.sorts
 					result.catalog.channel.sorts = nil
@@ -774,6 +739,7 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 			resize(&textures, len(catalog.videos))
 			resize(&card_avatars, len(catalog.videos))
 			if browse_id == "FEsubscriptions" {sort_subscriptions(result.append)}
+			queue_catalog_images()
 			catalog_revision += 1
 			notice = ""
 			library_focus_pending = true

@@ -144,13 +144,14 @@ search_errors_empty_results_and_recovery_finish_loading :: proc(t: ^testing.T) {
 }
 
 @(test)
-decoded_covers_upload_and_stale_results_keep_the_current_texture :: proc(t: ^testing.T) {
+decoded_covers_upload_reuse_and_reject_stale_results :: proc(t: ^testing.T) {
 	output := sdl.CreateSurface(160, 120, .RGBA32)
 	if !testing.expect(t, output != nil) {return}
 	defer sdl.DestroySurface(output)
 	renderer := sdl.CreateSoftwareRenderer(output)
 	if !testing.expect(t, renderer != nil) {return}
 	defer sdl.DestroyRenderer(renderer)
+	network_requests, _ = chan.create(chan.Chan(Network_Request), 1, context.allocator)
 	network_results, _ = chan.create(chan.Chan(Network_Result), 1, context.allocator)
 	defer {stop_network(); clear_catalog(); page = 0}
 	page = 4
@@ -193,6 +194,37 @@ decoded_covers_upload_and_stale_results_keep_the_current_texture :: proc(t: ^tes
 		testing.expect(t, sdl.GetTextureSize(textures[0], &width, &height))
 		testing.expect_value(t, width, expected_width)
 		testing.expect_value(t, height, expected_height)
+	}
+	original := textures[0]
+	source :: "https://images.example/cover"
+	retain_image_texture(image_key(source, 0), original)
+	for changed in ([2]bool{false, true}) {
+		clear_catalog()
+		result := Network_Result {
+			kind = .Catalog,
+			page = page,
+		}
+		append(
+			&result.catalog.videos,
+			model.Video{thumbnail_url = strings.clone(changed ? source + "-new" : source)},
+		)
+		chan.send(network_results, result)
+		poll_network(renderer)
+		if changed {
+			testing.expect(t, textures[0] == nil, "a changed image URL must be loaded again")
+			request, ready := chan.try_recv(network_requests)
+			defer free_network_request(&request)
+			testing.expect(t, ready && request.kind == .Images && len(request.images) == 1)
+		} else {
+			testing.expect_value(t, textures[0], original)
+			testing.expect(
+				t,
+				sdl.RenderTexture(renderer, textures[0], nil, nil) && sdl.RenderPresent(renderer),
+			)
+			unexpected, requested := chan.try_recv(network_requests)
+			defer free_network_request(&unexpected)
+			testing.expect(t, !requested, "a retained image must not be decoded or uploaded again")
+		}
 	}
 }
 
