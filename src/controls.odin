@@ -17,7 +17,10 @@ control_buttons := [?]Control_Button{PAUSE_BUTTON, SLOWER_BUTTON, FASTER_BUTTON}
 
 control_button :: proc(button: Control_Button) {
 	color: clay.Color
-	if clay.PointerOver(clay.ID(button.id)) {color = COLOR_HOVER}
+	if clay.PointerOver(clay.ID(button.id)) {
+		color = COLOR_HOVER
+		color[3] = COLOR_BADGE[3]
+	}
 	if clay.UI(clay.ID(button.id))(
 	{
 		layout = {
@@ -149,7 +152,13 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 
 player_channel_button :: proc() {
 	if player_channel_id == "" {return}
-	avatar_button(clay.ID("player-channel"), player_channel_avatar, PLAYER_AVATAR_SIZE, 8)
+	avatar_button(
+		clay.ID("player-channel"),
+		player_channel_avatar,
+		PLAYER_AVATAR_SIZE,
+		8,
+		COLOR_BADGE[3],
+	)
 }
 
 TIMELINE_ALPHA :: 204 // 80% opacity; keep the knob solid.

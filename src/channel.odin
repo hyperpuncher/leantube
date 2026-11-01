@@ -29,8 +29,16 @@ open_player_channel :: proc() {
 	start_browse(player_channel_id)
 }
 
-avatar_button :: proc(id: clay.ElementId, texture: ^sdl.Texture, size: f32, inset: u16) {
+avatar_button :: proc(
+	id: clay.ElementId,
+	texture: ^sdl.Texture,
+	size: f32,
+	inset: u16,
+	hover_alpha: f32 = 255,
+) {
 	button_size := scaled(size + 2 * f32(inset))
+	hover_color := COLOR_TRACK
+	hover_color[3] = hover_alpha
 	if clay.UI(id)(
 	{
 		layout = {
@@ -40,7 +48,7 @@ avatar_button :: proc(id: clay.ElementId, texture: ^sdl.Texture, size: f32, inse
 			},
 			padding = clay.PaddingAll(spacing(inset)),
 		},
-		backgroundColor = clay.PointerOver(id) ? COLOR_TRACK : clay.Color{},
+		backgroundColor = clay.PointerOver(id) ? hover_color : clay.Color{},
 		cornerRadius = clay.CornerRadiusAll(scaled(f32(inset) * 2)),
 	},
 	) {

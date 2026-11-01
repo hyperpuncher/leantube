@@ -476,6 +476,50 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	model.seek_done(&timeline)
 	assert(timeline.position_ms == duration_ms / 2)
 	snapshot(renderer, surface, "player-paused")
+	// Sample the fill outside each icon or avatar, before and after hover.
+	hover_ids := [4]string{"pause", "slower", "faster", "player-channel"}
+	background: [4]u8
+	for id, i in hover_ids {
+		box := clay.GetElementData(clay.ID(id)).boundingBox
+		assert(
+			sdl.ReadSurfacePixel(
+				surface,
+				i32(box.x + box.width / 2),
+				i32(box.y + scaled(4)),
+				&background[i],
+				nil,
+				nil,
+				nil,
+			),
+		)
+	}
+	for id, i in hover_ids {
+		box := clay.GetElementData(clay.ID(id)).boundingBox
+		clay.SetPointerState({box.x + box.width / 2, box.y + box.height / 2}, false)
+		name := fmt.aprintf("player-hover-%s", id)
+		snapshot(renderer, surface, name)
+		delete(name)
+		assert(
+			sdl.ReadSurfacePixel(
+				surface,
+				i32(box.x + box.width / 2),
+				i32(box.y + scaled(4)),
+				&red,
+				nil,
+				nil,
+				nil,
+			),
+		)
+		color := id == "player-channel" ? COLOR_TRACK : COLOR_HOVER
+		alpha := COLOR_BADGE[3] / 255
+		expected := color[0] * alpha + f32(background[i]) * (1 - alpha)
+		assert(
+			math.abs(f32(red) - expected) <= 2,
+			"player hover must blend with the picture behind it",
+		)
+	}
+	clay.SetPointerState({-1, -1}, false)
+	assert(render(renderer))
 	panel := clay.GetElementData(clay.ID("controls")).boundingBox
 	play_button := clay.GetElementData(clay.ID("pause")).boundingBox
 	key(sdl.K_RETURN)
