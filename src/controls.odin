@@ -115,7 +115,7 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 		return
 	}
 	if activate {
-		if duration_ms > 0 && clay.PointerOver(clay.ID("timeline")) {
+		if duration_ms > 0 && timeline_hovered() {
 			box := clay.GetElementData(clay.ID("timeline")).boundingBox
 			if box.width > 0 {
 				fraction := clamp((point[0] - box.x) / box.width, 0, 1)
@@ -129,14 +129,21 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 	}
 }
 
-TIMELINE_HEIGHT :: 28
+TIMELINE_HEIGHT :: 44
 TIMELINE_TRACK :: 4
+TIMELINE_TRACK_HOVER :: 8
 TIMELINE_KNOB :: 14
+TIMELINE_KNOB_HOVER :: 24
+
+timeline_hovered :: proc() -> bool {return(
+		clay.PointerOver(clay.ID("timeline")) ||
+		clay.PointerOver(clay.ID("timeline-knob")) \
+	)}
 
 timeline_span :: proc(
 	id: clay.ElementId,
 	start_ms, end_ms: f64,
-	width: f32,
+	width, height: f32,
 	color: clay.Color,
 	layer: i16,
 ) {
@@ -145,11 +152,11 @@ timeline_span :: proc(
 		layout = {
 			sizing = {
 				width = clay.SizingFixed(f32((end_ms - start_ms) / duration_ms) * width),
-				height = clay.SizingFixed(scaled(TIMELINE_TRACK)),
+				height = clay.SizingFixed(height),
 			},
 		},
 		backgroundColor = color,
-		cornerRadius = clay.CornerRadiusAll(scaled(TIMELINE_TRACK / 2)),
+		cornerRadius = clay.CornerRadiusAll(height / 2),
 		floating = {
 			attachTo = .Parent,
 			offset = {f32(start_ms / duration_ms) * width, 0},
@@ -163,6 +170,9 @@ timeline_span :: proc(
 // The track is wide and the knob marks the position; a click seeks to it.
 timeline_bar :: proc() {
 	width := max(0, view_width - scaled(96))
+	hovered := timeline_hovered()
+	height := scaled(hovered ? TIMELINE_TRACK_HOVER : TIMELINE_TRACK)
+	knob := scaled(hovered ? TIMELINE_KNOB_HOVER : TIMELINE_KNOB)
 	if clay.UI(clay.ID("timeline"))(
 	{
 		layout = {
@@ -176,17 +186,16 @@ timeline_bar :: proc() {
 	) {
 		if clay.UI(clay.ID("timeline-track"))(
 		{
-			layout = {
-				sizing = {
-					width = clay.SizingGrow({}),
-					height = clay.SizingFixed(scaled(TIMELINE_TRACK)),
-				},
-			},
+			layout = {sizing = {width = clay.SizingGrow({}), height = clay.SizingFixed(height)}},
 			backgroundColor = COLOR_TRACK,
-			cornerRadius = clay.CornerRadiusAll(scaled(TIMELINE_TRACK / 2)),
+			cornerRadius = clay.CornerRadiusAll(height / 2),
 		},
 		) {
 			if duration_ms > 0 {
+				start := clamp(timeline.buffer_start_ms, 0, duration_ms)
+				end := clamp(timeline.buffer_end_ms, start, duration_ms)
+				if end >
+				   start {timeline_span(clay.ID("timeline-buffered"), start, end, width, height, COLOR_BUFFERED, 1)}
 				for segment, i in sponsor_segments {
 					if sb.can_skip(segment, duration_ms) {
 						timeline_span(
@@ -194,15 +203,23 @@ timeline_bar :: proc() {
 							segment.start_ms,
 							segment.end_ms,
 							width,
+							height,
 							COLOR_SPONSOR,
-							1,
+							2,
 						)
 					}
 				}
 				position := clamp(model.display_position(timeline), 0, duration_ms)
 				// Progress stays above markers, including when paused inside a segment.
-				timeline_span(clay.ID("timeline-progress"), 0, position, width, COLOR_ACCENT, 2)
-				knob := scaled(TIMELINE_KNOB)
+				timeline_span(
+					clay.ID("timeline-progress"),
+					0,
+					position,
+					width,
+					height,
+					COLOR_ACCENT,
+					3,
+				)
 				if clay.UI(clay.ID("timeline-knob"))(
 				{
 					layout = {
@@ -214,9 +231,9 @@ timeline_bar :: proc() {
 						attachTo = .Parent,
 						offset = {
 							f32(position / duration_ms) * width - knob / 2,
-							(scaled(TIMELINE_TRACK) - knob) / 2,
+							(height - knob) / 2,
 						},
-						zIndex = 3,
+						zIndex = 4,
 						pointerCaptureMode = .Passthrough,
 					},
 				},

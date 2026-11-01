@@ -1,8 +1,19 @@
 package model
 
 Timeline :: struct {
-	position_ms:    f64,
-	seek_target_ms: f64,
+	position_ms:                    f64,
+	seek_target_ms:                 f64,
+	buffer_start_ms, buffer_end_ms: f64,
+}
+
+// Both audio and video must be available for a range to be buffered.
+set_buffered_range :: proc(time: ^Timeline, start_ms, end_ms, duration_ms: f64) -> bool {
+	start := max(0, start_ms)
+	end := max(start, end_ms)
+	if duration_ms > 0 {start = min(start, duration_ms); end = min(end, duration_ms)}
+	if time.buffer_start_ms == start && time.buffer_end_ms == end {return false}
+	time.buffer_start_ms, time.buffer_end_ms = start, end
+	return true
 }
 
 // Show the requested position at once, before the decoder reports it.

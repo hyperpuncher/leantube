@@ -95,6 +95,7 @@ key :: proc(code: sdl.Keycode, window: ^sdl.Window = nil) {
 seek_to :: proc(target: f64) -> bool {
 	if !player_seek(target) {return false}
 	timeline.seek_target_ms = target
+	timeline.buffer_start_ms, timeline.buffer_end_ms = 0, 0
 	return true
 }
 

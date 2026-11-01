@@ -1,6 +1,7 @@
 #+test
 package main
 
+import clay "../vendor/clay"
 import "./model"
 import sb "./sponsorblock"
 import "core:strings"
@@ -202,6 +203,14 @@ decoded_covers_upload_and_stale_results_keep_the_current_texture :: proc(t: ^tes
 
 @(test)
 playing_controls_hide_only_while_playing :: proc(t: ^testing.T) {
+	previous_context := clay.GetCurrentContext()
+	memory := make([]u8, int(clay.MinMemorySize()))
+	clay.Initialize(
+		clay.CreateArenaWithCapacityAndMemory(uint(len(memory)), raw_data(memory)),
+		{1920, 1080},
+		{handler = clay_error},
+	)
+	defer {clay.SetCurrentContext(previous_context); delete(memory)}
 	saved_browsing, saved_paused, saved_loaded := browsing, paused, loaded
 	saved_until := controls_until
 	defer {

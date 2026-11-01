@@ -328,6 +328,7 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	key(sdl.K_RETURN)
 	assert(!browsing && loaded && paused)
 	check_sponsor_timeline(renderer, surface)
+	check_buffered_timeline(renderer, surface)
 	// A pending seek must move the knob and the time before the decoder replies.
 	knob_before := clay.GetElementData(clay.ID("timeline-knob")).boundingBox
 	timeline.seek_target_ms = duration_ms / 2

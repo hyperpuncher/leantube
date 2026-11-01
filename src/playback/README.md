@@ -19,6 +19,8 @@ the reader requires FFmpeg library majors 63, 63, and 61. opening a session chec
 
 each packet queue is limited to 20 seconds. consumers use the shared 3-second startup and rebuffer threshold. curl keeps at most 1 MiB of response data per track. packet queues, curl buffers, socket buffers, and native decoder memory are separate limits.
 
+the timeline shows buffered media through the earlier audio/video packet end. it updates while paused and clears on a seek. the display uses available media timestamps, not an estimate from transfer speed.
+
 transport controls are `ffmpeg`, `curl-reuse` for HTTP/1.1, and `curl-h3` for HTTP/3 only. HTTP/3 failure does not silently select another protocol. partial transfers can retry once on a fresh connection. temporary redirects do not replace the source URL for later ranges.
 
 with decoder pre-roll enabled, the reader accepts H.264, HEVC, VP9, or AV1 video and AAC-LC audio. it retains video packets needed after a seek and resets framing so a new decoder gets the required parameter sets. the app selects formats within the installed decoder capability limits. AV1 was reported unavailable on the tested B9.

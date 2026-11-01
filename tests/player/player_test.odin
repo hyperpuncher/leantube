@@ -70,6 +70,7 @@ decoder_feed :: proc(_: ^Starfish, t: ^reader.Track, limit: f64) -> bool {
 	return true
 }
 resolve_selected :: proc() {}
+player_controls_visible :: proc() -> bool {return true}
 
 prepare_player :: proc(end: f64) {
 	fake_open, fake_close, fake_pause, fake_eos = 0, 0, 0, 0
@@ -198,4 +199,23 @@ paused_load_completes_ui_without_a_timestamp_callback :: proc(t: ^testing.T) {
 	testing.expect_value(t, fake_status.frame_ns, i64(-1))
 	testing.expect_value(t, timeline.seek_target_ms, f64(-1))
 	testing.expect_value(t, timeline.position_ms, f64(2000))
+}
+
+@(test)
+buffered_range_uses_the_shorter_track_and_updates_while_paused :: proc(t: ^testing.T) {
+	prepare_player(4)
+	defer stop_playback()
+	paused = true
+	player_reader.tracks[0].end = 8
+	player_reader.tracks[1].end = 3
+	poll_player()
+	testing.expect_value(t, timeline.buffer_start_ms, f64(0))
+	testing.expect_value(t, timeline.buffer_end_ms, f64(3000))
+	player_reader.tracks[1].end = 7
+	dirty = false
+	poll_player()
+	testing.expect_value(t, timeline.buffer_end_ms, f64(7000))
+	testing.expect(t, dirty)
+	stop_playback()
+	testing.expect(t, timeline.buffer_start_ms == 0 && timeline.buffer_end_ms == 0)
 }

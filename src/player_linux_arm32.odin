@@ -160,7 +160,10 @@ poll_player :: proc() {
 		queue.len(a.packets) > 0
 	starved := (!v.eof && vb < 0.05) || (!a.eof && ab < 0.05)
 	no_tail := v.eof && a.eof && (queue.len(v.packets) == 0 || queue.len(a.packets) == 0)
+	buffer_end := min(v.end, a.end) * 1000
 	sync.mutex_unlock(&a.mutex); sync.mutex_unlock(&v.mutex)
+	if model.set_buffered_range(&timeline, player_clock * 1000, buffer_end, duration_ms) &&
+	   player_controls_visible() {dirty = true}
 	if player_api == nil && no_tail {
 		if player_clock > 0 {return_to_grid = true} else {player_failed()}
 		return

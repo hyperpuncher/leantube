@@ -85,12 +85,16 @@ controls_until: u64
 show_player_controls :: proc() {controls_until = sdl.GetTicks() + PLAYER_CONTROLS_MS}
 
 player_controls_visible :: proc() -> bool {
-	return paused || !loaded || sdl.GetTicks() < controls_until
+	return(
+		paused ||
+		!loaded ||
+		sdl.GetTicks() < controls_until ||
+		clay.PointerOver(clay.ID("controls")) \
+	)
 }
 
 expire_player_controls :: proc() {
-	if browsing || paused || !loaded || controls_until == 0 {return}
-	if sdl.GetTicks() < controls_until {return}
+	if browsing || controls_until == 0 || player_controls_visible() {return}
 	controls_until = 0
 	dirty = true
 }

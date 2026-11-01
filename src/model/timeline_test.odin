@@ -45,3 +45,20 @@ pending_seek_is_displayed_before_the_decoder_reports_it :: proc(t: ^testing.T) {
 	seek_done(&seek)
 	testing.expect_value(t, display_position(seek), f64(62_000))
 }
+
+@(test)
+buffered_range_clamps_to_media_and_reports_changes :: proc(t: ^testing.T) {
+	time := Timeline {
+		seek_target_ms = -1,
+	}
+	testing.expect(t, set_buffered_range(&time, -100, 25000, 20000))
+	testing.expect_value(t, time.buffer_start_ms, f64(0))
+	testing.expect_value(t, time.buffer_end_ms, f64(20000))
+	testing.expect(t, !set_buffered_range(&time, 0, 25000, 20000))
+	testing.expect(t, set_buffered_range(&time, 30000, 40000, 20000))
+	testing.expect(t, time.buffer_start_ms == 20000 && time.buffer_end_ms == 20000)
+	testing.expect(t, set_buffered_range(&time, 12000, 9000, 20000))
+	testing.expect(t, time.buffer_start_ms == 12000 && time.buffer_end_ms == 12000)
+	testing.expect(t, set_buffered_range(&time, 12000, 32000, 0))
+	testing.expect_value(t, time.buffer_end_ms, f64(32000))
+}
