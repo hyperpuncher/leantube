@@ -6,6 +6,24 @@ import "core:strings"
 import sdl "vendor:sdl3"
 
 channel_avatar: ^sdl.Texture
+player_channel_id: string
+player_channel_avatar: ^sdl.Texture
+
+clear_player_channel :: proc() {
+	delete(player_channel_id); player_channel_id = ""
+	if player_channel_avatar != nil {
+		sdl.DestroyTexture(player_channel_avatar)
+		player_channel_avatar = nil
+	}
+}
+
+open_player_channel :: proc() {
+	if player_channel_id == "" {return}
+	stop_playback()
+	// start_browse copies the ID before clear_catalog releases it.
+	start_browse(player_channel_id)
+}
+
 channel_focus: bool
 channel_cursor: int
 browse_params, browse_filter: string

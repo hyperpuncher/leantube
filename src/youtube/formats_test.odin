@@ -5,7 +5,7 @@ import "core:testing"
 
 @(test)
 player_selects_highest_supported_resolution_frame_rate_and_hdr :: proc(t: ^testing.T) {
-	data := `{"videoDetails":{"lengthSeconds":"123"},"playabilityStatus":{"status":"OK"},"streamingData":{"adaptiveFormats":[
+	data := `{"videoDetails":{"lengthSeconds":"123","channelId":"UC-example","title":"Example video"},"playabilityStatus":{"status":"OK"},"streamingData":{"adaptiveFormats":[
 	{"mimeType":"audio/mp4; codecs=\"mp4a.40.2\"","bitrate":128000,"xtags":"ChEKBWFjb250EghvcmlnaW5hbAoNCgRsYW5nEgVlbi1VUw","audioTrack":{"audioIsDefault":false},"url":"https://media.example/original"},
 	{"mimeType":"audio/mp4; codecs=\"mp4a.40.2\"","bitrate":256000,"xtags":"ChQKBWFjb250EgtkdWJiZWQtYXV0bwoNCgRsYW5nEgVkZS1ERQ","audioTrack":{"audioIsDefault":true},"url":"https://media.example/dub"},
 	{"mimeType":"audio/mp4; codecs=\"mp4a.40.2\"","bitrate":256000,"isDrc":true,"url":"https://media.example/drc"},
@@ -17,15 +17,17 @@ player_selects_highest_supported_resolution_frame_rate_and_hdr :: proc(t: ^testi
 	]}}`
 	limits := []Video_Limit{{"vp9", 4096, 2304, 60}, {"av1", 0, 0, 0}}
 	stream, error := parse_player(data, limits)
-	defer delete(stream.url); defer delete(stream.audio_url)
+	defer stream_destroy(&stream)
 	testing.expect_value(t, error, .None)
+	testing.expect_value(t, stream.channel_id, "UC-example")
+	testing.expect_value(t, stream.title, "Example video")
 	testing.expect_value(t, stream.url, "https://media.example/hdr")
 	testing.expect_value(t, stream.audio_url, "https://media.example/original")
 	testing.expect(t, stream.width == 3840 && stream.height == 2160)
 	testing.expect_value(t, stream.duration_ms, f64(123000))
 	// A more capable device is not limited to the tested TV's resolution.
 	larger, larger_error := parse_player(data, {{"av1", 7680, 4320, 60}})
-	defer delete(larger.url); defer delete(larger.audio_url)
+	defer stream_destroy(&larger)
 	testing.expect_value(t, larger_error, .None)
 	testing.expect_value(t, larger.width, 7680)
 }
@@ -37,7 +39,7 @@ combined_audio_does_not_reduce_separate_video_quality :: proc(t: ^testing.T) {
 	"adaptiveFormats":[{"mimeType":"video/webm; codecs=\"vp9\"","width":3840,"height":2160,"fps":60,"url":"https://media.example/video"}],
 	"formats":[{"mimeType":"video/mp4; codecs=\"avc1, mp4a.40.2\"","width":640,"height":360,"fps":30,"url":"https://media.example/audio"}]}}`,
 	)
-	defer delete(stream.url); defer delete(stream.audio_url)
+	defer stream_destroy(&stream)
 	testing.expect_value(t, error, .None)
 	testing.expect_value(t, stream.width, 3840)
 	testing.expect_value(t, stream.audio_url, "https://media.example/audio")

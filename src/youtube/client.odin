@@ -22,7 +22,15 @@ Stream :: struct {
 	width:       int,
 	height:      int,
 	audio_url:   string,
+	channel_id:  string,
+	title:       string,
 	duration_ms: f64,
+}
+
+stream_destroy :: proc(stream: ^Stream) {
+	delete(stream.url); delete(stream.audio_url)
+	delete(stream.channel_id); delete(stream.title)
+	stream^ = {}
 }
 
 // Client profiles follow yt-dlp's YouTube extractor. No account cookies or

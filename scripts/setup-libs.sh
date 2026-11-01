@@ -88,7 +88,7 @@ cmake -S scripts/platform -B "$root/build/platform" -G Ninja \
 	-DSOURCE_ROOT="$root/src" -DCMAKE_SYSTEM_NAME=Linux \
 	-DCMAKE_TOOLCHAIN_FILE="$WEBOS_SDK/share/buildroot/toolchainfile.cmake" \
 	-DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-	-DCMAKE_C_FLAGS="$cpu"
+	-DCMAKE_C_FLAGS="$cpu" -DCMAKE_CXX_FLAGS="$cpu"
 cmake --build "$root/build/platform" --parallel "$jobs"
 for library in SDL:SDL3 SDL_ttf:SDL3_ttf SDL_image:SDL3_image; do
 	component=${library%%:*}

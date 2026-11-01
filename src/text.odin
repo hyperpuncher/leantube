@@ -13,20 +13,22 @@ Text_Style :: enum u16 {
 	Caption,
 	Heading,
 	Title,
+	Player_Title,
 	Mono_Small,
 	Mono_Body,
 }
 BASE_TEXT_SIZES :: [Text_Style]u16 {
-	.Body       = 32,
-	.Small      = 26,
-	.Caption    = 20,
-	.Heading    = 36,
-	.Title      = 56,
-	.Mono_Small = 20,
-	.Mono_Body  = 32,
+	.Body         = 32,
+	.Small        = 26,
+	.Caption      = 20,
+	.Heading      = 36,
+	.Title        = 56,
+	.Player_Title = 48,
+	.Mono_Small   = 20,
+	.Mono_Body    = 32,
 }
 text_sizes := BASE_TEXT_SIZES
-fonts: [Text_Style]^ttf.Font
+fonts, emoji_fonts: [Text_Style]^ttf.Font
 text_engine: ^ttf.TextEngine
 
 open_text :: proc(renderer: ^sdl.Renderer) -> bool {
@@ -41,13 +43,29 @@ open_text :: proc(renderer: ^sdl.Renderer) -> bool {
 	}
 	text_engine = ttf.CreateRendererTextEngineWithProperties(properties)
 	if text_engine == nil {return false}
+	// System emoji are optional. Missing fonts must not prevent startup.
+	emoji := ttf.OpenFont(EMOJI_FONT_PATH, f32(text_sizes[.Body]))
+	defer if emoji != nil {ttf.CloseFont(emoji)}
 	for size, style in text_sizes {
 		mono := style == .Mono_Small || style == .Mono_Body
 		file := mono ? "GeistMono-Regular.ttf" : "Geist.ttf"
 		path := fmt.caprintf("%s/fonts/%s", app_directory, file)
-		fonts[style] = ttf.OpenFont(path, f32(size))
+		// Geist's seventh named instance is Bold (700), as in its font metadata.
+		face: sdl.Sint64 = style == .Player_Title ? 7 << 16 : 0
+		configured :=
+			sdl.SetStringProperty(properties, ttf.PROP_FONT_CREATE_FILENAME_STRING, path) &&
+			sdl.SetFloatProperty(properties, ttf.PROP_FONT_CREATE_SIZE_FLOAT, f32(size)) &&
+			sdl.SetNumberProperty(properties, ttf.PROP_FONT_CREATE_FACE_NUMBER, face)
 		delete(path)
+		if !configured {return false}
+		fonts[style] = ttf.OpenFontWithProperties(properties)
 		if fonts[style] == nil {return false}
+		if emoji != nil {
+			emoji_fonts[style] = ttf.CopyFont(emoji)
+			if emoji_fonts[style] == nil ||
+			   !ttf.SetFontSize(emoji_fonts[style], f32(size)) ||
+			   !ttf.AddFallbackFont(fonts[style], emoji_fonts[style]) {return false}
+		}
 	}
 	return true
 }
@@ -55,6 +73,9 @@ open_text :: proc(renderer: ^sdl.Renderer) -> bool {
 resize_text :: proc() -> bool {
 	for base, style in BASE_TEXT_SIZES {
 		size := u16(max(1, math.round(f32(base) * ui_scale)))
+		if emoji_fonts[style] != nil && !ttf.SetFontSize(emoji_fonts[style], f32(size)) {
+			return false
+		}
 		if !ttf.SetFontSize(fonts[style], f32(size)) {return false}
 		text_sizes[style] = size
 	}
@@ -137,6 +158,7 @@ fit_wrapped :: proc(
 close_text :: proc() {
 	if text_engine != nil {ttf.DestroyRendererTextEngine(text_engine); text_engine = nil}
 	for font in fonts {ttf.CloseFont(font)}
-	fonts = {}
+	for font in emoji_fonts {ttf.CloseFont(font)}
+	fonts, emoji_fonts = {}, {}
 	if ttf.WasInit() != 0 {ttf.Quit()}
 }

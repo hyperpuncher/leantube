@@ -7,6 +7,7 @@ src/xkbcommon acc4d5f7c3cbba5f9f8d08d8bdbeede84ecede46792f47929aa9321873385528 h
 src/SDL 9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3 https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz
 src/SDL_ttf 63547d58d0185c833213885b635a2c0548201cc8f301e6587c0be1a67e1e045d https://github.com/libsdl-org/SDL_ttf/releases/download/release-3.2.2/SDL3_ttf-3.2.2.tar.gz
 src/SDL_ttf/external/freetype 93cd47eb719c325107f2d3cf087d06299e944c3b48a40b55537302304dea1dd5 https://download.savannah.gnu.org/releases/freetype/freetype-2.15.0.tar.xz
+src/SDL_ttf/external/harfbuzz a448dd6c22d8e1e1cf39438c662251c1f97f810b8780eed4a6d6ada948c99ddc https://codeload.github.com/harfbuzz/harfbuzz/tar.gz/564bf9818a18709776856533829c0c04950773d6
 src/SDL_image e8223b424bc7541cf84ffff5cf7e4f24ec3711c60462cb1bd6dc1d7bd7f25477 https://github.com/libsdl-org/SDL_image/releases/download/release-3.4.8/SDL3_image-3.4.8.tar.gz
 src/SDL_image/external/libwebp e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564 https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0.tar.gz
 src/openssl 50c17baf54cb008f6ce42d50deb4b28050a1aad711636cabd4b241c7e90cc2fd https://github.com/openssl/openssl/releases/download/openssl-4.1.0/openssl-4.1.0.tar.gz

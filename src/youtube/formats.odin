@@ -27,7 +27,7 @@ supported_video :: proc(codec: string, width, height, fps: int, limits: []Video_
 	return false
 }
 
-// Return separate direct sources. Media URLs remain owned by the caller.
+// Return separate direct sources. Returned strings remain owned by the caller.
 parse_player :: proc(data: string, limits: []Video_Limit = nil) -> (stream: Stream, error: Error) {
 	value, err := json.parse(data)
 	if err != .None {return {}, .Invalid_Response}
@@ -90,6 +90,10 @@ parse_player :: proc(data: string, limits: []Video_Limit = nil) -> (stream: Stre
 	}
 	if stream.url == "" {delete(audio.url); return {}, .No_Direct_Stream}
 	stream.audio_url = audio.url
+	channel_id, _ := field(field(value, "videoDetails"), "channelId").(json.String)
+	stream.channel_id = strings.clone(string(channel_id))
+	title, _ := field(field(value, "videoDetails"), "title").(json.String)
+	stream.title = strings.clone(string(title))
 	seconds, _ := numeric(field(field(value, "videoDetails"), "lengthSeconds"))
 	if seconds > 0 {stream.duration_ms = seconds * 1000}
 	return

@@ -160,7 +160,7 @@ main :: proc() {
 			"FLOW",
 			"Big Buck Bunny 60fps 4K - Official Blender Foundation Short Film",
 			"café and a longer title for layout checks",
-			"Spring - Blender Open Movie",
+			"Spring - Blender Open Movie 🐶 🚀 🇺🇦",
 		}
 		count := 24
 		// Test an incomplete final row.
@@ -332,6 +332,9 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	before_player := scroll.scrollPosition^[1]
 	key(sdl.K_RETURN)
 	assert(!browsing && loaded && paused)
+	player_channel_id = strings.clone("UC-example")
+	player_channel_avatar = load_texture(renderer, "tests/ui/cover.webp")
+	assert(player_channel_avatar != nil)
 	check_sponsor_timeline(renderer, surface)
 	check_buffered_timeline(renderer, surface)
 	// A pending seek must move the knob and the time before the decoder replies.

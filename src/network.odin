@@ -16,6 +16,7 @@ Network_Request :: struct {
 		Search,
 		Browse,
 		Resolve,
+		Player_Channel,
 		Use_Account,
 		Login_Start,
 		Login_Poll,
@@ -91,7 +92,8 @@ player_controls_visible :: proc() -> bool {
 		paused ||
 		!loaded ||
 		sdl.GetTicks() < controls_until ||
-		clay.PointerOver(clay.ID("controls")) \
+		clay.PointerOver(clay.ID("controls")) ||
+		clay.PointerOver(clay.ID("player-header")) \
 	)
 }
 
@@ -119,8 +121,7 @@ free_network_result :: proc(result: ^Network_Result) {
 	model.card_actions_destroy(&result.actions)
 	delete(result.bytes)
 	sdl.DestroySurface(result.surface)
-	delete(result.stream.url)
-	delete(result.stream.audio_url)
+	yt.stream_destroy(&result.stream)
 	delete(result.segments)
 	delete(result.login_code)
 	delete(result.login_url)
@@ -143,13 +144,13 @@ network_stopping :: proc() -> bool {return chan.is_closed(network_requests)}
 
 network_main :: proc(_: ^thread.Thread) {
 	covers: [dynamic]struct {
-		source: string,
-		index:  int,
-		avatar: bool,
+		source:         string,
+		index:          int,
+		avatar:         bool,
+		page, playback: u32,
 	}
 	defer {for cover in covers {delete(cover.source)}; delete(covers)}
 	next: int
-	cover_page: u32
 	session_auth: Auth_Token
 	defer {free_auth_token(&session_auth); yt.set_access_token("")}
 	session_account: u32
@@ -179,8 +180,9 @@ network_main :: proc(_: ^thread.Thread) {
 				if !post_network_result(
 					{
 						kind = covers[index].avatar ? .Channel_Avatar : .Cover,
-						page = cover_page,
+						page = covers[index].page,
 						index = covers[index].index,
+						playback = covers[index].playback,
 						surface = surface,
 					},
 				) {return}
@@ -219,7 +221,7 @@ network_main :: proc(_: ^thread.Thread) {
 					bytes = avatar,
 				},
 			) {return}
-		case .Search, .Browse, .Card_Action:
+		case .Search, .Browse, .Card_Action, .Player_Channel:
 			if session_auth.access_token != "" && sdl.GetTicks() >= refresh_at {
 				if refresh_auth(&network_client, &session_auth) {
 					yt.set_access_token(session_auth.access_token)
@@ -232,6 +234,27 @@ network_main :: proc(_: ^thread.Thread) {
 					) {return}
 				}
 				refresh_at = sdl.GetTicks() + u64(max(session_auth.expires_in - 60, 30)) * 1000
+			}
+			if request.kind == .Player_Channel {
+				channel, _, visitor := yt.browse(
+					&network_client,
+					request.text,
+					visitor_data = visitor_data,
+				)
+				defer model.catalog_destroy(&channel)
+				delete(visitor)
+				if channel.channel.avatar_url != "" {
+					append(
+						&covers,
+						{
+							source = strings.clone(channel.channel.avatar_url),
+							avatar = true,
+							page = request.page,
+							playback = request.playback,
+						},
+					)
+				}
+				continue
 			}
 			if request.kind == .Card_Action {
 				actions, error := yt.perform_card_action(&network_client, request.action)
@@ -265,7 +288,6 @@ network_main :: proc(_: ^thread.Thread) {
 			delete(visitor_data)
 			visitor_data = visitor
 			if request.continuation == "" {
-				cover_page = request.page
 				next = 0
 				for cover in covers {delete(cover.source)}
 				clear(&covers)
@@ -273,7 +295,11 @@ network_main :: proc(_: ^thread.Thread) {
 			if catalog.channel.avatar_url != "" {
 				append(
 					&covers,
-					{source = strings.clone(catalog.channel.avatar_url), avatar = true},
+					{
+						source = strings.clone(catalog.channel.avatar_url),
+						avatar = true,
+						page = request.page,
+					},
 				)
 			}
 			for &video, i in catalog.videos {
@@ -285,6 +311,7 @@ network_main :: proc(_: ^thread.Thread) {
 							video.thumbnail_url != "" ? video.thumbnail_url : video.id,
 						),
 						index = video.cover_index,
+						page = request.page,
 					},
 				)
 			}
@@ -440,6 +467,7 @@ submit_network :: proc(request: Network_Request) -> bool {
 	return false
 }
 clear_catalog :: proc(keep_channel: bool = false) {
+	clear_player_channel()
 	close_card_menu()
 	catalog_revision += 1
 	for &texture in textures {
@@ -542,6 +570,7 @@ start_search :: proc(query: string = "Linus Tech Tips", keep_history: bool = fal
 }
 resolve_selected :: proc(position_ms: f64 = 0, start_paused: bool = false) {
 	if selected < 0 || selected >= len(catalog.videos) {return}
+	clear_player_channel()
 	playback += 1
 	playback_requested_at = sdl.GetTicks()
 	resolving = true
@@ -693,6 +722,10 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 			library_focus_pending = true
 		case .Cover, .Channel_Avatar:
 			slot := &channel_avatar
+			if result.kind == .Channel_Avatar && result.playback != 0 {
+				if browsing || result.playback != playback {continue}
+				slot = &player_channel_avatar
+			}
 			if result.kind == .Cover {
 				index := -1
 				for video, i in catalog.videos {
@@ -720,7 +753,24 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				delete(sponsor_segments)
 				sponsor_segments = result.segments
 				result.segments = nil
+				if result.stream.title != "" {
+					delete(catalog.videos[selected].title)
+					catalog.videos[selected].title = result.stream.title
+					result.stream.title = ""
+				}
+				player_channel_id = result.stream.channel_id
+				result.stream.channel_id = ""
 				load_video(result.stream, renderer, result.position_ms, result.start_paused)
+				if player_channel_id != "" {
+					_ = submit_network(
+						{
+							kind = .Player_Channel,
+							page = page,
+							playback = playback,
+							text = strings.clone(player_channel_id),
+						},
+					)
+				}
 				show_player_controls()
 			}
 		case:

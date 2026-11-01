@@ -51,6 +51,25 @@ set_color :: proc(renderer: ^sdl.Renderer, color: clay.Color) -> bool {
 	return sdl.SetRenderDrawColor(renderer, u8(color[0]), u8(color[1]), u8(color[2]), u8(color[3]))
 }
 
+player_fade :: proc(renderer: ^sdl.Renderer, id: string, top, bottom: f32) -> bool {
+	box := clay.GetElementData(clay.ID(id)).boundingBox
+	vertices := [4]sdl.Vertex {
+		{{box.x, box.y}, {0, 0, 0, top}, {}},
+		{{box.x + box.width, box.y}, {0, 0, 0, top}, {}},
+		{{box.x + box.width, box.y + box.height}, {0, 0, 0, bottom}, {}},
+		{{box.x, box.y + box.height}, {0, 0, 0, bottom}, {}},
+	}
+	indices := [6]i32{0, 1, 2, 0, 2, 3}
+	return sdl.RenderGeometry(
+		renderer,
+		nil,
+		raw_data(vertices[:]),
+		len(vertices),
+		raw_data(indices[:]),
+		len(indices),
+	)
+}
+
 render :: proc(renderer: ^sdl.Renderer, wheel: f32 = 0, dt: f32 = 1.0 / 60) -> bool {
 	if !refresh_view(renderer) {return false}
 	if login_screen {
@@ -71,10 +90,11 @@ render :: proc(renderer: ^sdl.Renderer, wheel: f32 = 0, dt: f32 = 1.0 / 60) -> b
 	// Each scroll update must have a layout. Idle updates without layouts
 	// make Clay discard the container and its saved scroll position.
 	if browsing {clay.UpdateScrollContainers(false, {0, wheel}, dt)}
+	controls_visible := !browsing && player_controls_visible()
 	clay.BeginLayout()
 	if browsing {
 		grid_layout()
-	} else if player_controls_visible() {
+	} else if controls_visible {
 		elapsed = model.time_label(model.display_position(timeline))
 		total = model.time_label(duration_ms, "--:--")
 		quality = model.quality_label(stream_width, stream_height)
@@ -82,6 +102,9 @@ render :: proc(renderer: ^sdl.Renderer, wheel: f32 = 0, dt: f32 = 1.0 / 60) -> b
 		player_layout(elapsed, total, speed, quality)
 	}
 	commands := clay.EndLayout(0)
+	if controls_visible &&
+	   (!player_fade(renderer, "player-header", 0.9, 0) ||
+			   !player_fade(renderer, "controls", 0, 1)) {return false}
 	if browsing && library_focus_pending {
 		library_focus_pending = false
 		if reveal_selected_video() {

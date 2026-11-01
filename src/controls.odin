@@ -115,6 +115,7 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 		return
 	}
 	if activate {
+		if clay.PointerOver(clay.ID("player-channel")) {open_player_channel(); return}
 		if duration_ms > 0 && timeline_hovered() {
 			box := clay.GetElementData(clay.ID("timeline")).boundingBox
 			if box.width > 0 {
@@ -126,6 +127,34 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 		for button in control_buttons {
 			if clay.PointerOver(clay.ID(button.id)) {key(button.key); break}
 		}
+	}
+}
+
+player_channel_button :: proc() {
+	if player_channel_id == "" {return}
+	if clay.UI(clay.ID("player-channel"))(
+	{
+		layout = {
+			sizing = {width = clay.SizingFixed(scaled(64)), height = clay.SizingFixed(scaled(64))},
+			padding = clay.PaddingAll(spacing(8)),
+		},
+		backgroundColor = clay.PointerOver(clay.ID("player-channel")) ? COLOR_HOVER : clay.Color{},
+		cornerRadius = clay.CornerRadiusAll(scaled(32)),
+	},
+	) {
+		if clay.UI()(
+		{
+			layout = {
+				sizing = {
+					width = clay.SizingFixed(scaled(48)),
+					height = clay.SizingFixed(scaled(48)),
+				},
+			},
+			image = {imageData = rawptr(player_channel_avatar)},
+			backgroundColor = COLOR_SURFACE,
+			cornerRadius = clay.CornerRadiusAll(scaled(24)),
+		},
+		) {}
 	}
 }
 
@@ -253,6 +282,25 @@ player_layout :: proc(elapsed, total, speed, quality: string) {
 	},
 	) {
 		if !loaded {centered_spinner()}
+		if clay.UI(clay.ID("player-header"))(
+		{
+			layout = {
+				sizing = {width = clay.SizingGrow({}), height = clay.SizingFit({})},
+				padding = padding(48, 48, 32, 32),
+				childGap = spacing(24),
+				childAlignment = {y = .Center},
+			},
+		},
+		) {
+			if clay.UI()(
+			{layout = {sizing = {width = clay.SizingGrow({})}}, clip = {horizontal = true}},
+			) {
+				if selected >= 0 && selected < len(catalog.videos) {
+					label(catalog.videos[selected].title, .Player_Title, wrap = .Words)
+				}
+			}
+			player_channel_button()
+		}
 		if clay.UI()({layout = {sizing = {height = clay.SizingGrow({})}}}) {}
 		if clay.UI(clay.ID("controls"))(
 		{
@@ -262,19 +310,8 @@ player_layout :: proc(elapsed, total, speed, quality: string) {
 				padding = padding(48, 48, 24, 24),
 				childGap = spacing(16),
 			},
-			backgroundColor = COLOR_PANEL,
-			cornerRadius = {topLeft = scaled(24), topRight = scaled(24)},
 		},
 		) {
-			if clay.UI()(
-			{
-				layout = {
-					sizing = {width = clay.SizingGrow({}), height = clay.SizingFixed(scaled(44))},
-					childAlignment = {y = .Center},
-				},
-				clip = {horizontal = true, vertical = true},
-			},
-			) {if loaded {label(catalog.videos[selected].title, .Body)}}
 			timeline_bar()
 			if clay.UI()(
 			{

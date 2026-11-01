@@ -23,7 +23,7 @@ main :: proc() {
 	for id in ([]string{"C5WDBA2i9nE", "DN953UW8iJ8"}) {
 		stream, player_error := yt.resolve(&client, id, visitor)
 		assert(player_error == .None, "direct source resolution failed")
-		defer delete(stream.url); defer delete(stream.audio_url)
+		defer yt.stream_destroy(&stream)
 		assert(stream.width > 0 && stream.height > 0 && stream.audio_url != "")
 		for url in ([]string{stream.url, stream.audio_url}) {
 			response, cdn_error := http.request(
