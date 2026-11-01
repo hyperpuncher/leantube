@@ -253,6 +253,20 @@ main :: proc() {
 
 check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	snapshot(renderer, surface, "start")
+	// Keyboard input must clear the old mouse hover, not leave two cards lit.
+	hovered_card := clay.GetElementData(clay.ID("video", 0)).boundingBox
+	clay.SetPointerState(
+		{hovered_card.x + hovered_card.width / 2, hovered_card.y + scaled(8)},
+		false,
+	)
+	assert(clay.PointerOver(clay.ID("video", 0)))
+	event: sdl.Event
+	event.type = .KEY_DOWN
+	event.key.key = sdl.K_RIGHT
+	handle_event(renderer, event)
+	assert(selected == 1)
+	assert(!clay.PointerOver(clay.ID("video", 0)), "keyboard input must clear mouse hover")
+	key(sdl.K_LEFT)
 	assert(!clay.GetElementData(clay.ID("search")).found)
 	// Use real font measurements, including UTF-8 and an explicit final line.
 	for sample in ([]string{"short", "café café café café café café", "a long channel name that must end with an ellipsis"}) {

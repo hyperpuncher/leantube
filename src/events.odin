@@ -1,5 +1,6 @@
 package main
 
+import clay "../vendor/clay"
 import sdl "vendor:sdl3"
 
 handle_event :: proc(renderer: ^sdl.Renderer, event: sdl.Event) -> (wheel: f32) {
@@ -14,6 +15,7 @@ handle_event :: proc(renderer: ^sdl.Renderer, event: sdl.Event) -> (wheel: f32) 
 		code := input_key(event.key.raw, event.key.key)
 		ok := code == sdl.K_RETURN || code == sdl.K_KP_ENTER || code == sdl.K_SPACE
 		if ok && event.key.repeat {return}
+		clay.SetPointerState({-1, -1}, false)
 		if ok && can_press_card() {
 			if !card_press.active {begin_card_press(false, sdl.GetTicks())}
 		} else {
