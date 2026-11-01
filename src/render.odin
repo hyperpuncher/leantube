@@ -59,7 +59,7 @@ set_color :: proc(renderer: ^sdl.Renderer, color: clay.Color) -> bool {
 // be stretched into visible stripes.
 PLAYER_FADE_ALPHA :: 216 // 85% opacity in SDL's 8-bit alpha.
 fade_textures: [2]^sdl.Texture
-fade_sizes: [2]sdl.Point
+fade_heights: [2]i32
 
 bayer_value :: proc(x, y: int) -> u8 {
 	quad := [4]u8{0, 2, 3, 1}
@@ -72,36 +72,39 @@ bayer_value :: proc(x, y: int) -> u8 {
 }
 
 // Rebuild only when the layout size changes.
-open_fade :: proc(renderer: ^sdl.Renderer, slot: int, width, height: f32) -> bool {
-	size := sdl.Point{i32(math.round(width)), max(2, i32(math.round(height)))}
-	if fade_textures[slot] != nil && fade_sizes[slot] == size {return true}
+open_fade :: proc(renderer: ^sdl.Renderer, slot: int, height: f32) -> bool {
+	rows := max(2, i32(math.round(height)))
+	if fade_textures[slot] != nil && fade_heights[slot] == rows {return true}
 	if fade_textures[slot] != nil {
 		sdl.DestroyTexture(fade_textures[slot])
 		fade_textures[slot] = nil
 	}
-	columns, rows := int(size.x), int(size.y)
-	pixels := make([]u8, columns * rows * 4)
+	// Tile the eight-pixel dither period, never stretch it horizontally.
+	columns :: 8
+	pixels := make([]u8, columns * int(rows) * 4)
 	defer delete(pixels)
-	for y in 0 ..< rows {
+	for y in 0 ..< int(rows) {
+		// Bake the header flip so SDL can tile both fades directly.
+		source_y := slot == 1 ? int(rows) - 1 - y : y
 		// Smoothstep with less than one alpha level of ordered dither.
-		t := f32(y) / f32(rows - 1)
+		t := f32(source_y) / f32(rows - 1)
 		alpha := t * t * (3 - 2 * t) * 255
 		for x in 0 ..< columns {
-			threshold := (f32(bayer_value(x, y)) + 0.5) / 64
+			threshold := (f32(bayer_value(x, source_y)) + 0.5) / 64
 			base := (y * columns + x) * 4
 			pixels[base + 3] = u8(clamp(alpha + threshold, 0, 255))
 		}
 	}
-	texture := sdl.CreateTexture(renderer, .RGBA32, .STATIC, size.x, size.y)
+	texture := sdl.CreateTexture(renderer, .RGBA32, .STATIC, columns, rows)
 	if texture == nil {return false}
-	if !sdl.UpdateTexture(texture, nil, raw_data(pixels), size.x * 4) ||
+	if !sdl.UpdateTexture(texture, nil, raw_data(pixels), columns * 4) ||
 	   !sdl.SetTextureBlendMode(texture, sdl.BLENDMODE_BLEND) ||
 	   !sdl.SetTextureAlphaMod(texture, PLAYER_FADE_ALPHA) ||
 	   !sdl.SetTextureScaleMode(texture, .NEAREST) {
 		sdl.DestroyTexture(texture)
 		return false
 	}
-	fade_textures[slot], fade_sizes[slot] = texture, size
+	fade_textures[slot], fade_heights[slot] = texture, rows
 	return true
 }
 
@@ -117,18 +120,10 @@ player_fade :: proc(renderer: ^sdl.Renderer, id: string, flip: bool, extend: f32
 	box := clay.GetElementData(clay.ID(id)).boundingBox
 	if !flip {box.y -= extend}
 	box.height += extend
-	if !open_fade(renderer, int(flip), box.width, box.height) {return false}
+	if !open_fade(renderer, int(flip), box.height) {return false}
 	texture := fade_textures[int(flip)]
 	rect := sdl.FRect{box.x, box.y, box.width, box.height}
-	return sdl.RenderTextureRotated(
-		renderer,
-		texture,
-		nil,
-		&rect,
-		0,
-		nil,
-		flip ? .VERTICAL : .NONE,
-	)
+	return sdl.RenderTextureTiled(renderer, texture, nil, 1, &rect)
 }
 
 render :: proc(renderer: ^sdl.Renderer, wheel: f32 = 0, dt: f32 = 1.0 / 60) -> bool {
