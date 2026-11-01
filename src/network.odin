@@ -720,9 +720,16 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 		if result.page != page {continue}
 		#partial switch result.kind {
 		case .Card_Action:
-			if !card_menu || result.index != card_menu_revision {continue}
+			if (!card_menu && !card_menu_waiting) || result.index != card_menu_revision {continue}
 			card_menu_waiting = false
-			if result.error != .None {
+			if !card_menu {
+				cover := watch_later_cover
+				close_card_menu()
+				if result.error == .None {
+					watch_later_cover = cover
+					watch_later_saved_until = sdl.GetTicks() + 1000
+				} else {notice = "Could not save to Watch later; try again"}
+			} else if result.error != .None {
 				card_menu_error = "action failed; try again"
 			} else if result.append {
 				model.card_actions_destroy(&card_menu_actions)

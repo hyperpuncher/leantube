@@ -2,6 +2,7 @@ package main
 
 import clay "../vendor/clay"
 import "./model"
+import yt "./youtube"
 import sdl "vendor:sdl3"
 
 CARD_HOLD_MS :: 650
@@ -17,6 +18,8 @@ card_menu_actions: [dynamic]model.Card_Action
 card_menu_waiting: bool
 card_menu_revision: int
 card_menu_error: string
+watch_later_cover := -1
+watch_later_saved_until: u64
 
 can_press_card :: proc() -> bool {
 	return(
@@ -55,6 +58,10 @@ finish_card_press :: proc(pointer: bool, now: u64) {
 }
 
 poll_card_press :: proc(now: u64) {
+	if watch_later_saved_until != 0 && now >= watch_later_saved_until {
+		watch_later_saved_until = 0
+		dirty = true
+	}
 	if !card_press.active {return}
 	if !valid_card_press() {card_press.active = false; return}
 	if now - card_press.started < CARD_HOLD_MS {return}
@@ -63,6 +70,7 @@ poll_card_press :: proc(now: u64) {
 }
 
 close_card_menu :: proc() {
+	watch_later_cover, watch_later_saved_until = -1, 0
 	card_press.active = false
 	card_menu = false
 	card_menu_waiting = false
@@ -81,6 +89,24 @@ open_card_menu :: proc() {
 	if len(card_menu_actions) == 0 {notice = "no actions available for this card"; return}
 	card_menu = true
 	card_menu_selected = 0
+}
+
+// Use the existing action request and pending state without opening a popup.
+save_watch_later :: proc(video_id: string) {
+	if card_menu_waiting {return}
+	if !signed_in {start_login(); return}
+	action, ok := yt.watch_later_action(video_id)
+	if !ok {return}
+	close_card_menu()
+	watch_later_cover = catalog.videos[selected].cover_index
+	notice = ""
+	append(&card_menu_actions, action)
+	card_menu_selected = 0
+	activate_card_action()
+	if !card_menu_waiting {
+		notice = card_menu_error
+		close_card_menu()
+	}
 }
 
 activate_card_action :: proc() {

@@ -2,7 +2,81 @@ package main
 
 import clay "../vendor/clay"
 import "./model"
+import "core:sync/chan"
 import sdl "vendor:sdl3"
+
+check_watch_later_ui :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
+	saved_signed_in, saved_notice := signed_in, notice
+	signed_in = true
+	network_requests, _ = chan.create(chan.Chan(Network_Request), 1, context.allocator)
+	network_results, _ = chan.create(chan.Chan(Network_Result), 1, context.allocator)
+	defer {
+		stop_network()
+		close_card_menu()
+		signed_in, notice = saved_signed_in, saved_notice
+		clay.SetPointerState({-1, -1}, false)
+		assert(render(renderer))
+	}
+	assert(render(renderer))
+	assert(!clay.GetElementData(clay.ID("watch-later", 0)).found)
+	cover := clay.GetElementData(clay.ID("cover", 0)).boundingBox
+	controls_pointer(renderer, cover.x + cover.width / 2, cover.y + scaled(16), false, false)
+	snapshot(renderer, surface, "watch-later-hover")
+	button := clay.GetElementData(clay.ID("watch-later", 0))
+	assert(button.found)
+	x := button.boundingBox.x + button.boundingBox.width / 2
+	y := button.boundingBox.y + button.boundingBox.height / 2
+	controls_pointer(renderer, x, y, false, false)
+	assert(render(renderer))
+	assert(clay.GetElementData(clay.ID("watch-later", 0)).found)
+	// Clicking the overlay must submit one save, never start playback.
+	controls_pointer(renderer, x, y, true, true)
+	controls_pointer(renderer, x, y, true, true)
+	finish_card_press(true, sdl.GetTicks())
+	request, ok := chan.try_recv(network_requests)
+	assert(ok && request.kind == .Card_Action && request.action.target == "WL")
+	defer free_network_request(&request)
+	_, duplicate := chan.try_recv(network_requests)
+	assert(!duplicate && card_menu_waiting && !card_menu && browsing && !loaded)
+	// A failed save stays retryable without reloading the feed.
+	chan.send(
+		network_results,
+		Network_Result {
+			kind = .Card_Action,
+			page = page,
+			index = request.index,
+			error = .Transport,
+		},
+	)
+	poll_network(renderer)
+	assert(!card_menu_waiting && notice != "" && !search_loading)
+	controls_pointer(renderer, x, y, true, true)
+	retry, retry_ok := chan.try_recv(network_requests)
+	assert(retry_ok)
+	defer free_network_request(&retry)
+	chan.send(
+		network_results,
+		Network_Result{kind = .Card_Action, page = page, index = retry.index},
+	)
+	poll_network(renderer)
+	assert(
+		notice == "" &&
+		watch_later_saved_until > sdl.GetTicks() &&
+		!card_menu_waiting &&
+		!card_menu &&
+		browsing &&
+		!loaded &&
+		!search_loading,
+	)
+	snapshot(renderer, surface, "watch-later-saved")
+	assert(
+		clay.GetElementData(clay.ID("cover", 0)).boundingBox == cover,
+		"saving must not move the grid",
+	)
+	poll_card_press(watch_later_saved_until)
+	assert(watch_later_saved_until == 0)
+	snapshot(renderer, surface, "watch-later-reset")
+}
 
 check_card_menu_ui :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	// This fixture has no usable mutation payloads. It only checks real layout,

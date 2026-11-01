@@ -213,6 +213,7 @@ main :: proc() {
 				model.Video {
 					title = fmt.aprintf("video %02d · %s", i + 1, titles[i % len(titles)]),
 					cover_index = i,
+					id = i == 0 ? strings.clone("DN953UW8iJ8") : "",
 					duration_ms = 100000,
 					watched_percent = i == 0 ? 35 : i == 1 ? 100 : 0,
 					channel = fmt.aprintf("channel %02d", i + 1),
@@ -282,6 +283,7 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	assert(!clay.GetElementData(clay.ID("search")).found)
 	key(sdl.K_AC_BACK)
 	assert(running && browsing, "short back at the root must not close the app")
+	check_watch_later_ui(renderer, surface)
 	// Use real font measurements, including UTF-8 and an explicit final line.
 	for sample in ([]string{"short", "café café café café café café", "a long channel name that must end with an ellipsis"}) {
 		fit, owned := fit_text(fonts[.Small], sample, 160)

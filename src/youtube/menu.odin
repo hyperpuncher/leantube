@@ -59,6 +59,35 @@ card_action :: proc(label: string, endpoint: json.Value) -> (action: model.Card_
 	return action, true
 }
 
+// Match YouTube.js PlaylistManager.addVideos, using the shared edit endpoint.
+watch_later_action :: proc(video_id: string) -> (model.Card_Action, bool) {
+	if !video_id_valid(video_id) {return {}, false}
+	request := struct {
+		ctx:         struct {
+			client: Client_Context,
+		} `json:"context"`,
+		playlist_id: string `json:"playlistId"`,
+		actions:     [1]struct {
+			action, addedVideoId: string,
+		},
+	} {
+		ctx = {
+			client = {clientName = "TVHTML5", clientVersion = TV_VERSION, hl = "en", gl = "US"},
+		},
+		playlist_id = "WL",
+		actions = {{action = "ACTION_ADD_VIDEO", addedVideoId = video_id}},
+	}
+	bytes, error := json.marshal(request)
+	if error != nil {return {}, false}
+	return {
+			kind = .Edit_Playlist,
+			label = strings.clone("Save to Watch later"),
+			target = strings.clone("WL"),
+			payload = string(bytes),
+		},
+		true
+}
+
 parse_card_actions :: proc(value: json.Value) -> (actions: [dynamic]model.Card_Action) {
 	#partial switch item in value {
 	case json.Array:

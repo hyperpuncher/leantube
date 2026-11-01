@@ -5,6 +5,7 @@ import "./model"
 import "core:c"
 import "core:math"
 import "core:strings"
+import sdl "vendor:sdl3"
 import ttf "vendor:sdl3/ttf"
 
 library_focus_pending := true
@@ -184,6 +185,40 @@ video_card :: proc(index: int) {
 			cornerRadius = corners,
 		},
 		) {
+			if video.id != "" &&
+			   video.browse_id == "" &&
+			   clay.PointerOver(clay.ID("video", u32(index))) {
+				id := clay.ID("watch-later", u32(index))
+				color := clay.PointerOver(id) ? COLOR_HOVER : COLOR_BADGE
+				color[3] = COLOR_BADGE[3]
+				if clay.UI(id)(
+				{
+					layout = {
+						sizing = {
+							width = clay.SizingFixed(scaled(48)),
+							height = clay.SizingFixed(scaled(48)),
+						},
+						childAlignment = {x = .Center, y = .Center},
+					},
+					backgroundColor = color,
+					cornerRadius = clay.CornerRadiusAll(scaled(8)),
+					floating = {
+						attachTo = .Parent,
+						attachment = {element = .RightTop, parent = .RightTop},
+						offset = {-scaled(8), scaled(8)},
+						clipTo = .AttachedParent,
+						zIndex = 1,
+						pointerCaptureMode = .Passthrough,
+					},
+				},
+				) {
+					glyph: Icon = .Watch_Later
+					if video.cover_index == watch_later_cover {
+						if card_menu_waiting {glyph = .Spinner} else if watch_later_saved_until > sdl.GetTicks() {glyph = .Check}
+					}
+					icon(glyph, 32)
+				}
+			}
 			if clay.UI(clay.ID("duration", u32(index)))(
 			{
 				floating = {

@@ -27,7 +27,10 @@ card_menu_keeps_only_supported_actions_and_request_fields :: proc(t: ^testing.T)
 	testing.expect_value(t, actions[0].target, "WL")
 	testing.expect_value(t, actions[2].kind, .Browse)
 	testing.expect_value(t, actions[2].target, "UC-example")
-	for index in ([]int{0, 1, 3}) {
+	quick, quick_ok := watch_later_action("DN953UW8iJ8")
+	if !testing.expect(t, quick_ok) {return}
+	append(&actions, quick)
+	for index in ([]int{0, 1, 3, 4}) {
 		request, err := json.parse(actions[index].payload)
 		if !testing.expect_value(t, err, .None) {continue}
 		defer json.destroy_value(request)
@@ -37,8 +40,9 @@ card_menu_keeps_only_supported_actions_and_request_fields :: proc(t: ^testing.T)
 		).(json.String)
 		testing.expect_value(t, string(client_name), "TVHTML5")
 		object, _ := request.(json.Object)
-		testing.expect_value(t, len(object), index == 0 ? 3 : 2)
-		if index == 0 {
+		playlist_edit := index == 0 || index == 4
+		testing.expect_value(t, len(object), playlist_edit ? 3 : 2)
+		if playlist_edit {
 			id, _ := field(request, "playlistId").(json.String)
 			testing.expect_value(t, string(id), "WL")
 			edits, _ := field(request, "actions").(json.Array)
