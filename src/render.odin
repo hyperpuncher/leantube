@@ -201,6 +201,11 @@ render_commands :: proc(
 	input: clay.ClayArray(clay.RenderCommand),
 ) -> bool {
 	commands := input
+	used_texts: int
+	defer {
+		for value in rendered_text[used_texts:] {ttf.DestroyText(value)}
+		resize(&rendered_text, used_texts)
+	}
 	clips := make([dynamic]sdl.Rect)
 	defer {delete(clips); _ = sdl.SetRenderClipRect(renderer, nil)}
 	append(&clips, sdl.Rect{0, 0, i32(view_width), i32(view_height)})
@@ -297,12 +302,12 @@ render_commands :: proc(
 			defer if owned {delete(display)}
 			if display == "" {continue}
 			color := text.textColor
-			value := ttf.CreateText(text_engine, font, raw_data(display), c.size_t(len(display)))
+			value := frame_text(used_texts, font, display)
 			if value == nil {return false}
+			used_texts += 1
 			ok :=
 				ttf.SetTextColor(value, u8(color[0]), u8(color[1]), u8(color[2]), u8(color[3])) &&
 				ttf.DrawRendererText(value, math.round(box.x), math.round(box.y))
-			ttf.DestroyText(value)
 			if !ok {return false}
 		case .ScissorStart:
 			parent := clips[len(clips) - 1]

@@ -30,6 +30,21 @@ BASE_TEXT_SIZES :: [Text_Style]u16 {
 text_sizes := BASE_TEXT_SIZES
 fonts, emoji_fonts: [Text_Style]^ttf.Font
 text_engine: ^ttf.TextEngine
+// Reuse visible text slots in draw order. SDL owns each slot's string.
+rendered_text: [dynamic]^ttf.Text
+
+frame_text :: proc(index: int, font: ^ttf.Font, display: string) -> ^ttf.Text {
+	if index == len(rendered_text) {
+		value := ttf.CreateText(text_engine, font, raw_data(display), c.size_t(len(display)))
+		if value == nil {return nil}
+		append(&rendered_text, value)
+	}
+	value := rendered_text[index]
+	if ttf.GetTextFont(value) != font && !ttf.SetTextFont(value, font) {return nil}
+	if string(cstring(value.text)) != display &&
+	   !ttf.SetTextString(value, raw_data(display), c.size_t(len(display))) {return nil}
+	return value
+}
 
 open_text :: proc(renderer: ^sdl.Renderer) -> bool {
 	if !ttf.Init() {return false}
@@ -156,6 +171,8 @@ fit_wrapped :: proc(
 }
 
 close_text :: proc() {
+	for value in rendered_text {ttf.DestroyText(value)}
+	delete(rendered_text); rendered_text = nil
 	if text_engine != nil {ttf.DestroyRendererTextEngine(text_engine); text_engine = nil}
 	for font in fonts {ttf.CloseFont(font)}
 	for font in emoji_fonts {ttf.CloseFont(font)}
