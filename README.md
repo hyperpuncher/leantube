@@ -1,19 +1,24 @@
 # leantube
 
-native YouTube client for rooted LG webOS TVs, built with Odin, Clay, SDL3, and
-Wayland.
+lightweight native YouTube client for webOS
 
-```sh
-bun install
-just setup
-just install
-just run
-```
+## built with
 
-playback uses the highest available quality with the original audio track.
+- [odin](https://odin-lang.org/)
+- [sdl3](https://www.libsdl.org/)
+- [clay](https://github.com/nicbarker/clay)
+- [sponsorblock](https://sponsor.ajay.app/)
 
-the package targets ARMv7-A with NEON and the ARM32 soft-float ABI.
-tested on LG B9 with webOS 4.9.
+## install
 
-sponsor segments come from [SponsorBlock](https://sponsor.ajay.app/) under
-[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).
+### homebrew channel
+
+1. open Homebrew Channel and go to **Settings → Repositories → Add repository**.
+2. enter this repository URL:
+
+    ```text
+    https://github.com/hyperpuncher/leantube/releases/latest/download/repo.json
+    ```
+
+3. select **Add repository**, then return to the app list.
+4. open **LeanTube** and select **Install**.
