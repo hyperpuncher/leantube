@@ -142,6 +142,7 @@ player_channel_button :: proc() {
 	avatar_button(clay.ID("player-channel"), player_channel_avatar, PLAYER_AVATAR_SIZE, 8)
 }
 
+TIMELINE_ALPHA :: 204 // 80% opacity; keep the knob solid.
 TIMELINE_HEIGHT :: 44
 TIMELINE_TRACK :: 6
 TIMELINE_TRACK_HOVER :: 12
@@ -160,6 +161,8 @@ timeline_span :: proc(
 	color: clay.Color,
 	layer: i16,
 ) {
+	fill := color
+	fill[3] = TIMELINE_ALPHA
 	if clay.UI(id)(
 	{
 		layout = {
@@ -168,7 +171,7 @@ timeline_span :: proc(
 				height = clay.SizingFixed(height),
 			},
 		},
-		backgroundColor = color,
+		backgroundColor = fill,
 		cornerRadius = clay.CornerRadiusAll(height / 2),
 		floating = {
 			attachTo = .Parent,
@@ -182,6 +185,8 @@ timeline_span :: proc(
 
 // The track is wide and the knob marks the position; a click seeks to it.
 timeline_bar :: proc() {
+	track_color := COLOR_TRACK
+	track_color[3] = TIMELINE_ALPHA
 	width := max(0, view_width - scaled(96))
 	hovered := timeline_hovered()
 	height := scaled(hovered ? TIMELINE_TRACK_HOVER : TIMELINE_TRACK)
@@ -200,7 +205,7 @@ timeline_bar :: proc() {
 		if clay.UI(clay.ID("timeline-track"))(
 		{
 			layout = {sizing = {width = clay.SizingGrow({}), height = clay.SizingFixed(height)}},
-			backgroundColor = COLOR_TRACK,
+			backgroundColor = track_color,
 			cornerRadius = clay.CornerRadiusAll(height / 2),
 		},
 		) {

@@ -20,10 +20,18 @@ check_timeline_pixel :: proc(surface: ^sdl.Surface, fraction: f32, expected: cla
 			nil,
 		),
 	)
-	assert(
-		red == u8(expected[0]) && green == u8(expected[1]) && blue == u8(expected[2]),
-		"timeline marker or progress color is incorrect",
-	)
+	// Translucent segments blend with the fade and lower track layers.
+	// A sponsor marker sits over the gray track or buffer, not the progress.
+	alpha := f32(TIMELINE_ALPHA) / 255
+	background_max := expected == COLOR_SPONSOR ? COLOR_BUFFERED[0] : 255
+	for value, i in ([3]u8{red, green, blue}) {
+		low := expected[i] * alpha
+		high := low + background_max * (1 - alpha)
+		assert(
+			f32(value) >= math.floor(low) - 1 && f32(value) <= math.ceil(high) + 1,
+			"timeline marker or progress color is incorrect",
+		)
+	}
 }
 
 check_sponsor_timeline :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
