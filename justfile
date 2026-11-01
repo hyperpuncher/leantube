@@ -1,5 +1,6 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 set dotenv-load
+export PATH := "node_modules/.bin:" + env_var("PATH")
 
 app_id := `jq -r .id app/appinfo.json`
 app_version := `jq -r .version app/appinfo.json`

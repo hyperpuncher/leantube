@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Sourced by project scripts. Run them from the project root through just.
+# Prefer the pinned SDK tools over any global installation.
+export PATH="$PWD/node_modules/.bin:$PATH"
 : "${WEBOS_TOOLCHAIN:=$PWD/.cache/toolchain}"
 WEBOS_TOOLCHAIN=$(realpath -m "$WEBOS_TOOLCHAIN")
 export WEBOS_TOOLCHAIN

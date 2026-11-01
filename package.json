@@ -1,6 +1,10 @@
 {
 	"private": true,
 	"devDependencies": {
-		"@types/bun": "latest"
+		"@types/bun": "latest",
+		"@webos-tools/cli": "3.2.6"
+	},
+	"patchedDependencies": {
+		"@webos-tools/cli@3.2.6": "patches/@webos-tools%2Fcli@3.2.6.patch"
 	}
 }

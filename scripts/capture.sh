@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source scripts/env.sh
 payload='{"path":"/tmp/leantube-capture.png","method":"DISPLAY","format":"PNG"}'
 if [[ -n "${1:-}${2:-}" ]]; then
 	payload=$(jq -c --argjson width "$1" --argjson height "$2" '. + {width:$width,height:$height}' <<< "$payload")

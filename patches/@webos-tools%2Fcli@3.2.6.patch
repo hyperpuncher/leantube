@@ -1,0 +1,14 @@
+diff --git a/lib/base/novacom.js b/lib/base/novacom.js
+index f79ad4e2fe823ea443cd5e761137ecad42afb401..e3451aef0f56a484e0989e28d70dbfd701917a07 100644
+--- a/lib/base/novacom.js
++++ b/lib/base/novacom.js
+@@ -725,6 +725,9 @@ const async = require('async'),
+          * @param {Function} next common-js callback
+          */
+         put: function(inPath, outPath, next) {
++            if (this.target.files !== 'sftp') {
++                return this.streamPut(outPath, fs.createReadStream(inPath), next);
++            }
+             log.info("novacom#Session()#put()", "uploding into device:", outPath, "from host:", inPath);
+             const self = this;
+             let inStream;
