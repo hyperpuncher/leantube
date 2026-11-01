@@ -121,8 +121,10 @@ decoder_open :: proc(
 		true,
 	) {release_display(); sf_destroy(api); free(status); return nil, nil}
 	sf_foreground(api)
+	// We own packet input and seeks. Use seamless client-side rate changes,
+	// not a pipeline seek that flushes the packets already supplied to appsrc.
 	body := fmt.caprintf(
-		`{{"args":[{{"mediaTransportType":"BUFFERSTREAM","option":{{"appId":"%s","queryPosition":false,"externalStreamingInfo":{{"contents":{{"format":"RAW","provider":"Chrome","codec":{{"video":"%s","audio":"AAC"}},"esInfo":{{"pauseAtDecodeTime":false,"seperatedPTS":true,"ptsToDecode":%d,"videoWidth":%d,"videoHeight":%d,"videoFpsValue":%d,"videoFpsScale":%d}},"aacInfo":{{"channels":%d,"format":"adts","frequency":%.3f,"profile":2}}}},"restartStreaming":false,"totalStreamSize":256,"bufferingCtrInfo":{{"preBufferByte":0,"bufferMinLevel":0,"bufferMaxLevel":0,"qBufferLevelAudio":0,"qBufferLevelVideo":0,"srcBufferLevelAudio":{{"minimum":1024,"maximum":1048576}},"srcBufferLevelVideo":{{"minimum":1024,"maximum":8388608}}}}}},"adaptiveStreaming":{{"audioOnly":false,"maxWidth":%d,"maxHeight":%d,"maxFrameRate":%.6f}}}}}}]}}`,
+		`{{"args":[{{"mediaTransportType":"BUFFERSTREAM","option":{{"appId":"%s","queryPosition":false,"transmission":{{"trickType":"client-side"}},"externalStreamingInfo":{{"contents":{{"format":"RAW","provider":"Chrome","codec":{{"video":"%s","audio":"AAC"}},"esInfo":{{"pauseAtDecodeTime":false,"seperatedPTS":true,"ptsToDecode":%d,"videoWidth":%d,"videoHeight":%d,"videoFpsValue":%d,"videoFpsScale":%d}},"aacInfo":{{"channels":%d,"format":"adts","frequency":%.3f,"profile":2}}}},"restartStreaming":false,"totalStreamSize":256,"bufferingCtrInfo":{{"preBufferByte":0,"bufferMinLevel":0,"bufferMaxLevel":0,"qBufferLevelAudio":0,"qBufferLevelVideo":0,"srcBufferLevelAudio":{{"minimum":1024,"maximum":1048576}},"srcBufferLevelVideo":{{"minimum":1024,"maximum":8388608}}}}}},"adaptiveStreaming":{{"audioOnly":false,"maxWidth":%d,"maxHeight":%d,"maxFrameRate":%.6f}}}}}}]}}`,
 		APP_ID,
 		native_video_codec(v.codec),
 		i64(target * 1e9),

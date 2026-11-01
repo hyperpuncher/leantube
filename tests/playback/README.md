@@ -8,6 +8,8 @@ shared packet reading, HTTP range requests, AAC framing, and session ownership a
 
 a session owns both source URLs, both workers, and both packet queues. both paced and decoder tests use the same open, seek, stop, and close operations. stopping joins the workers before storage is released. opening a session checks the FFmpeg library versions and installs the URL-safe log callback before workers start.
 
+`just bench-reference fetch PLAYER.json START_SECONDS DURATION_SECONDS OUTPUT.yuv ITAG` fetches reference frames from the selected format. the final format ID is optional; without it, the helper uses an available 4K VP9 format. `just bench-reference match OUTPUT.yuv START_SECONDS PICTURE.png` reports the closest source frame. use elapsed time between captures to measure visible speed.
+
 supported transport controls are `ffmpeg`, `curl-reuse` (HTTP/1.1), and `curl-h3` (HTTP/3 only). the old request-size, parallel-range, URL-query-range, aligned-range, and fresh-connection variants have been removed. private historical results are retained.
 
 ## prepare
@@ -47,7 +49,7 @@ startup and rebuffering use the same 3-second threshold. packet queues keep the 
 
 `presentation_updates` counts native timestamp reports, not displayed frames. some firmware reports these only about five times per second. verify visible pictures separately and compare their content with source frames before claiming a playback speed. a decoder counter alone is not display proof. check audible audio too.
 
-the normal app now selects direct sources using the installed decoder capability limits and uses this reader and decoder. first managed-app TV tests have displayed 4K SDR and 4K60 PQ HDR at 1×. speed changes have a known timestamp/feed stall; the integration is not complete. source and license details for the C interface are in the vendored Starfish documentation.
+the normal app now selects direct sources using the installed decoder capability limits and uses this reader and decoder. first managed-app TV tests have displayed 4K SDR and 4K60 PQ HDR at 1×. buffer-stream loads now use client-side trick play to avoid flushing app-fed packets on rate changes. the original build stalled at 1080p29.97; captured-frame comparisons with the fix measured about 0.50×, 0.99×, and 1.97× at requested speeds of 0.5×, 1×, and 2×. pause, resume, and seeks also passed. a 4K60 run at 2× measured below target, so higher decoder loads need separate checks. audio synchronization still needs a listening check. source and license details for the C interface are in the vendored Starfish documentation.
 
 ## raw transport
 

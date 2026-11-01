@@ -14,7 +14,8 @@ async function ffmpeg(args: string[]) {
 
 const [command, ...args] = Bun.argv.slice(2);
 if (command === "fetch") {
-	const [playerPath, startText, durationText, output] = args;
+	const [playerPath, startText, durationText, output, itagText] = args;
+	const itag = itagText === undefined ? undefined : Number(itagText);
 	const start = Number(startText);
 	const duration = Number(durationText);
 	if (
@@ -22,18 +23,22 @@ if (command === "fetch") {
 		!output ||
 		!Number.isFinite(start) ||
 		start < 0 ||
-		!(duration > 0)
+		!(duration > 0) ||
+		(itag !== undefined && (!Number.isSafeInteger(itag) || itag <= 0))
 	) {
 		throw Error(
-			"expected: fetch PLAYER_JSON START_SECONDS DURATION_SECONDS OUTPUT_YUV",
+			"expected: fetch PLAYER_JSON START_SECONDS DURATION_SECONDS OUTPUT_YUV [ITAG]",
 		);
 	}
 	const player = await Bun.file(playerPath).json();
 	const video = player.streamingData?.adaptiveFormats?.find(
-		(format: { itag?: number; url?: string }) => format.itag === 313 && format.url,
+		(format: { itag?: number; url?: string }) =>
+			(itag === undefined
+				? format.itag === 313 || format.itag === 315
+				: format.itag === itag) && format.url,
 	);
 	if (!video || !video.url.startsWith("https://"))
-		throw Error("VP9 reference stream missing");
+		throw Error("reference stream missing");
 	await ffmpeg([
 		"-request_size",
 		"1048576",

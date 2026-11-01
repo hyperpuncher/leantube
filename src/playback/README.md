@@ -27,7 +27,9 @@ with decoder pre-roll enabled, the reader accepts H.264, HEVC, VP9, or AV1 video
 
 the normal app uses this reader and native decoder through managed app startup. it does not write HLS playlists or run a local media server. playback at 1× has displayed 4K SDR and 4K60 PQ HDR on the TV, with user confirmation of video and audio. pause, resume, and forward/backward seeks have also been checked.
 
-known issue: changing speed can stop native timestamp reports. the reader then stops feeding beyond its lookahead and playback can stall after a short period of smooth motion. this also occurs on 25 fps video. the cause is not established as a hardware limit. this is a known limitation of the current integration. do not treat a successful rate reply or a displayed speed label as proof of playback speed.
+buffer-stream loads set `option.transmission.trickType` to `client-side`. LeanTube owns the packet input and seeks. this setting selects seamless native rate changes instead of a pipeline seek that flushes the supplied packets and can stall playback. the original timestamp callbacks, one-second feed window, and buffer limits stay unchanged.
+
+TV frame comparisons at 1080p29.97 measured 0.50×, 0.99×, and 1.97× for requested speeds of 0.5×, 1×, and 2×. pause, resume, and seeks were also checked. a 4K60 stress run at 2× remained below the requested speed. test decoder load separately from rate-control correctness. do not treat a successful rate reply or a displayed speed label as proof of playback speed. audio synchronization needs a listening check.
 
 curl uses its OpenSSL QUIC backend, which upstream marks experimental. delivery success on one source does not prove reliability on every network.
 
