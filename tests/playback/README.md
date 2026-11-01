@@ -49,7 +49,7 @@ startup and rebuffering use the same 3-second threshold. packet queues keep the 
 
 `presentation_updates` counts native timestamp reports, not displayed frames. some firmware reports these only about five times per second. verify visible pictures separately and compare their content with source frames before claiming a playback speed. a decoder counter alone is not display proof. check audible audio too.
 
-the normal app now selects direct sources using the installed decoder capability limits and uses this reader and decoder. first managed-app TV tests have displayed 4K SDR and 4K60 PQ HDR at 1×. buffer-stream loads now use client-side trick play to avoid flushing app-fed packets on rate changes. the original build stalled at 1080p29.97; captured-frame comparisons with the fix measured about 0.50×, 0.99×, and 1.97× at requested speeds of 0.5×, 1×, and 2×. pause, resume, and seeks also passed. a 4K60 run at 2× measured below target, so higher decoder loads need separate checks. audio synchronization still needs a listening check. source and license details for the C interface are in the vendored Starfish documentation.
+the normal app selects direct sources using the installed decoder capability limits and uses this reader and decoder. source and license details for the C interface are in the vendored Starfish documentation.
 
 ## raw transport
 

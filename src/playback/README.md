@@ -29,8 +29,6 @@ the normal app uses this reader and native decoder through managed app startup. 
 
 buffer-stream loads set `option.transmission.trickType` to `client-side`. LeanTube owns the packet input and seeks. this setting selects seamless native rate changes instead of a pipeline seek that flushes the supplied packets and can stall playback. the original timestamp callbacks, one-second feed window, and buffer limits stay unchanged.
 
-TV frame comparisons at 1080p29.97 measured 0.50×, 0.99×, and 1.97× for requested speeds of 0.5×, 1×, and 2×. pause, resume, and seeks were also checked. a 4K60 stress run at 2× remained below the requested speed. test decoder load separately from rate-control correctness. do not treat a successful rate reply or a displayed speed label as proof of playback speed. audio synchronization needs a listening check.
-
 curl uses its OpenSSL QUIC backend, which upstream marks experimental. delivery success on one source does not prove reliability on every network.
 
 ## tests
