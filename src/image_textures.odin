@@ -139,35 +139,35 @@ append_image_request :: proc(
 	return false
 }
 
-// Restore all hits before the next frame. Only misses go to the worker.
-queue_catalog_images :: proc() {
+// Restore cached images for new cards. Queue only missing images.
+queue_catalog_images :: proc(first_cover: int) {
 	jobs: [dynamic]Image_Request
-	restored := int(
-		append_image_request(
-			&jobs,
-			catalog.channel.avatar_url,
-			&channel_avatar,
-			-1,
-			2 * CHANNEL_AVATAR_SIZE,
-		),
-	)
-	batch_size := max(1, grid_columns) * 2
-	for first := 0; first < len(catalog.videos); first += batch_size {
-		batch := catalog.videos[first:min(first + batch_size, len(catalog.videos))]
+	restored := 0
+	if first_cover == 0 {
+		restored = int(
+			append_image_request(
+				&jobs,
+				catalog.channel.avatar_url,
+				&channel_avatar,
+				-1,
+				2 * CHANNEL_AVATAR_SIZE,
+			),
+		)
+	}
+	for video in catalog.videos {
+		index := video.cover_index
+		if index < first_cover {continue}
 		for avatar in ([2]bool{false, true}) {
-			for video in batch {
-				index := video.cover_index
-				slot := avatar ? &card_avatars[index] : &textures[index]
-				restored += int(
-					append_image_request(
-						&jobs,
-						card_image_source(video, avatar),
-						slot,
-						index,
-						avatar ? 2 * CARD_AVATAR_SIZE : 0,
-					),
-				)
-			}
+			slot := avatar ? &card_avatars[index] : &textures[index]
+			restored += int(
+				append_image_request(
+					&jobs,
+					card_image_source(video, avatar),
+					slot,
+					index,
+					avatar ? 2 * CARD_AVATAR_SIZE : 0,
+				),
+			)
 		}
 	}
 	fmt.printf("images restored=%d queued=%d\n", restored, len(jobs))

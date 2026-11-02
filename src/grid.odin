@@ -128,23 +128,6 @@ grid_layout :: proc() {
 						}
 					}
 				}
-				if catalog.continuation != "" {
-					if clay.UI(clay.ID("load-more"))(
-					{
-						layout = {
-							sizing = {
-								width = clay.SizingGrow({}),
-								height = clay.SizingFixed(scaled(64)),
-							},
-							childAlignment = {x = .Center, y = .Center},
-						},
-						backgroundColor = COLOR_SURFACE,
-						cornerRadius = clay.CornerRadiusAll(scaled(12)),
-					},
-					) {
-						if search_loading {icon(.Spinner, 32)} else {label("Load more", .Small)}
-					}
-				}
 			}
 		}
 		if account_menu {account_menu_layout()}

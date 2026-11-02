@@ -98,10 +98,6 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 			if activate {edit_search(sdl.GetRenderWindow(renderer))}
 			return
 		}
-		if clay.PointerOver(clay.ID("load-more")) {
-			if activate {load_more()}
-			return
-		}
 		if channel_pointer(activate) {return}
 		for video, i in catalog.videos {
 			if clay.PointerOver(clay.ID("watch-later", u32(i))) {

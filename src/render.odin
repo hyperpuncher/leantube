@@ -188,6 +188,15 @@ render :: proc(renderer: ^sdl.Renderer, wheel: f32 = 0, dt: f32 = 1.0 / 60) -> b
 		grid_layout()
 		commands = clay.EndLayout(0)
 	}
+	// Keep two screens in reserve for both remote and wheel scrolling.
+	if browsing && notice == "" {
+		scroll := clay.GetScrollContainerData(clay.ID("library-scroll"))
+		if scroll.found &&
+		   scroll.contentDimensions.height + scroll.scrollPosition^[1] <=
+			   scroll.scrollContainerDimensions.height * 3 {
+			load_more()
+		}
+	}
 	ok := render_commands(renderer, commands)
 	if ok && browsing {preserve_catalog_images()}
 	return ok

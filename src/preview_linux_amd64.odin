@@ -355,6 +355,7 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	for index in ([2]int{0, 2}) {
 		avatar := clay.GetElementData(clay.ID("card-avatar", u32(index))).boundingBox
 		assert(avatar.width == scaled(40))
+		if avatar.y + avatar.height / 2 >= view_height {continue}
 		assert(
 			sdl.ReadSurfacePixel(
 				surface,
@@ -420,6 +421,12 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 		assert(text_sizes[.Body] == BASE_TEXT_SIZES[.Body] * 2)
 	}
 	if os.args[1] == "1440p" {assert(grid_columns == 4)}
+	// Pagination must start before the final row, without moving the view or
+	// replacing thumbnails when the texture arrays grow.
+	network_requests, _ = chan.create(chan.Chan(Network_Request), 1, context.allocator)
+	network_results, _ = chan.create(chan.Chan(Network_Result), 1, context.allocator)
+	browse_id = strings.clone("FEsubscriptions")
+	catalog.continuation = strings.clone("next-page")
 	for direction in ([]int{1, -1}) {
 		for step in 1 ..= 4 {
 			key(direction > 0 ? sdl.K_DOWN : sdl.K_UP)
@@ -449,7 +456,69 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 				assert(before == after, "moving to a visible row must not scroll")
 			}
 		}
+		if direction > 0 {
+			if !search_loading {
+				scroll := clay.GetScrollContainerData(clay.ID("library-scroll"))
+				scroll.scrollPosition^[1] =
+					-scroll.contentDimensions.height + scroll.scrollContainerDimensions.height * 2
+				assert(render(renderer))
+			}
+			request, ready := chan.try_recv(network_requests)
+			assert(ready && request.kind == .Browse && request.continuation == "next-page")
+			free_network_request(&request)
+			assert(selected / grid_columns < (len(catalog.videos) - 1) / grid_columns)
+			before := clay.GetScrollContainerData(clay.ID("library-scroll")).scrollPosition^[1]
+			first_cover := len(catalog.videos)
+			result := Network_Result {
+				kind   = .Catalog,
+				page   = page,
+				append = true,
+			}
+			for i in 0 ..< 18 {
+				append(
+					&result.catalog.videos,
+					model.Video {
+						title = fmt.aprintf("next-page video %d", i),
+						cover_index = first_cover + i,
+						thumbnail_url = strings.clone("https://images.example/next-page"),
+						duration_ms = 100000,
+						duration_label = model.time_label(100000),
+					},
+				)
+			}
+			chan.send(network_results, result)
+			poll_network(renderer)
+			images, queued := chan.try_recv(network_requests)
+			assert(queued && images.kind == .Images && len(images.images) == 18)
+			for image in images.images {assert(image.index >= first_cover)}
+			free_network_request(&images)
+			assert(render(renderer))
+			assert(
+				clay.GetScrollContainerData(clay.ID("library-scroll")).scrollPosition^[1] ==
+				before,
+				"adding a page must not pull wheel scrolling back to the selection",
+			)
+		}
 	}
+	assert(!clay.GetElementData(clay.ID("load-more")).found)
+	first_cover = clay.GetElementData(clay.ID("cover", 0)).boundingBox
+	assert(
+		sdl.ReadSurfacePixel(
+			surface,
+			i32(first_cover.x + first_cover.width / 2),
+			i32(first_cover.y + first_cover.height / 2),
+			&red,
+			nil,
+			nil,
+			nil,
+		),
+	)
+	assert(
+		red == 80,
+		"an earlier thumbnail must still be displayed after loading more and scrolling back up",
+	)
+	stop_network()
+	delete(browse_id); browse_id = ""
 	// The last card, wheel scrolling, and a round trip through the player must
 	// use the same retained scroll state, without pulling focus to the pointer.
 	selected = len(catalog.videos) - 1

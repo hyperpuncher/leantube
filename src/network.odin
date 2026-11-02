@@ -7,6 +7,7 @@ import sb "./sponsorblock"
 import yt "./youtube"
 import "core:fmt"
 import "core:math"
+import "core:sort"
 import "core:strings"
 import "core:sync/chan"
 import "core:thread"
@@ -243,6 +244,10 @@ network_main :: proc(_: ^thread.Thread) {
 		case .Images:
 			append(&covers, ..request.images[:])
 			clear(&request.images)
+			// New thumbnails go before pending avatar lookups, in feed order.
+			sort.merge_sort_proc(covers[next:], proc(a, b: Image_Request) -> int {
+				return int(a.target > 0) - int(b.target > 0)
+			})
 		case .Use_Account:
 			yt.watch_history_destroy(&history)
 			history_playback = 0
@@ -765,6 +770,7 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				reload_feed()
 			}
 		case .Catalog:
+			first_cover := result.append ? len(catalog.videos) : 0
 			search_loading = false
 			if result.error !=
 			   .None {notice = "could not load this page; try again"; dirty = true; continue}
@@ -807,10 +813,10 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 			resize(&textures, len(catalog.videos))
 			resize(&card_avatars, len(catalog.videos))
 			if browse_id == "FEsubscriptions" {sort_subscriptions(result.append)}
-			queue_catalog_images()
+			queue_catalog_images(first_cover)
 			catalog_revision += 1
 			notice = ""
-			library_focus_pending = true
+			if !result.append {library_focus_pending = true}
 		case .Cover, .Channel_Avatar:
 			slot := &channel_avatar
 			if result.kind == .Channel_Avatar && result.playback != 0 {

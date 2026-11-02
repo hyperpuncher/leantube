@@ -63,7 +63,6 @@ key :: proc(code: sdl.Keycode, window: ^sdl.Window = nil) {
 		case sdl.K_UP:
 			selected = model.grid_move(selected, len(catalog.videos), 0, -1, grid_columns)
 		case sdl.K_DOWN:
-			if selected / grid_columns == (len(catalog.videos) - 1) / grid_columns {load_more()}
 			selected = model.grid_move(selected, len(catalog.videos), 0, 1, grid_columns)
 		}
 	} else {
