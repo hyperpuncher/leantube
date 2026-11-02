@@ -519,6 +519,32 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	)
 	stop_network()
 	delete(browse_id); browse_id = ""
+	// A new display order must keep each fitted title with its card.
+	last_index := len(catalog.videos) - 1
+	catalog.videos[0], catalog.videos[last_index] = catalog.videos[last_index], catalog.videos[0]
+	catalog_revision += 1
+	assert(render(renderer))
+	clay.BeginLayout()
+	grid_layout()
+	commands := clay.EndLayout(0)
+	found_title := false
+	for i in 0 ..< commands.length {
+		command := clay.RenderCommandArray_Get(&commands, i)
+		if command.commandType != .Text {continue}
+		text := command.renderData.text.stringContents
+		if string(text.chars[:text.length]) == catalog.videos[0].title {found_title = true}
+	}
+	assert(found_title, "sorting must not attach another card's fitted title")
+	catalog.videos[0], catalog.videos[last_index] = catalog.videos[last_index], catalog.videos[0]
+	catalog_revision += 1
+	// A width change still needs fresh fitting, even with no new cards.
+	cached_title := strings.clone(card_labels[1].title)
+	width := card_labels_width
+	labels_build(scaled(80))
+	assert(card_labels[1].title != cached_title)
+	delete(cached_title)
+	labels_build(width)
+	assert(render(renderer))
 	// The last card, wheel scrolling, and a round trip through the player must
 	// use the same retained scroll state, without pulling focus to the pointer.
 	selected = len(catalog.videos) - 1

@@ -549,6 +549,7 @@ queue_watch_history :: proc(
 }
 
 clear_catalog :: proc(keep_channel: bool = false) {
+	labels_release()
 	clear_player_channel()
 	close_card_menu()
 	catalog_revision += 1
@@ -848,6 +849,7 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				sponsor_segments = result.segments
 				result.segments = nil
 				if result.stream.title != "" {
+					if result.stream.title != catalog.videos[selected].title {labels_release()}
 					delete(catalog.videos[selected].title)
 					catalog.videos[selected].title = result.stream.title
 					result.stream.title = ""

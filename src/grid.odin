@@ -16,6 +16,7 @@ library_focus_pending := true
 Card_Label :: struct {
 	title, channel, meta: string,
 }
+// Like image slots, fitted labels use the original feed index, not display order.
 card_labels: [dynamic]Card_Label
 card_labels_revision := -1
 card_labels_width: f32
@@ -28,24 +29,22 @@ labels_release :: proc() {
 }
 
 labels_build :: proc(width: f32) {
-	labels_release()
+	if card_labels_scale != ui_scale ||
+	   math.abs(width - card_labels_width) >= 0.5 {labels_release()}
+	first_cover := len(card_labels)
+	resize(&card_labels, len(catalog.videos))
 	for video in catalog.videos {
+		if video.cover_index < first_cover {continue}
 		title, title_owned := fit_wrapped(fonts[.Small], video.title, c.int(width), 2)
 		channel_width :=
 			width - (model.video_channel_id(video) != "" ? scaled(CARD_AVATAR_SIZE + 16) : 0)
 		channel, channel_owned := fit_text(fonts[.Caption], video.channel, c.int(channel_width))
 		meta, meta_owned := fit_text(fonts[.Caption], video.meta, c.int(width))
-		append(
-			&card_labels,
-			Card_Label {
-				title = strings.clone(title),
-				channel = strings.clone(channel),
-				meta = strings.clone(meta),
-			},
-		)
-		if title_owned {delete(title)}
-		if channel_owned {delete(channel)}
-		if meta_owned {delete(meta)}
+		card_labels[video.cover_index] = {
+			title   = title_owned ? title : strings.clone(title),
+			channel = channel_owned ? channel : strings.clone(channel),
+			meta    = meta_owned ? meta : strings.clone(meta),
+		}
 	}
 	card_labels_width = width
 	card_labels_scale = ui_scale
@@ -140,10 +139,10 @@ video_card :: proc(index: int) {
 	channel_id := model.video_channel_id(video)
 	corners := clay.CornerRadiusAll(scaled(12))
 	title, channel, meta := video.title, video.channel, video.meta
-	if index < len(card_labels) {
-		title = card_labels[index].title
-		channel = card_labels[index].channel
-		meta = card_labels[index].meta
+	if video.cover_index < len(card_labels) {
+		title = card_labels[video.cover_index].title
+		channel = card_labels[video.cover_index].channel
+		meta = card_labels[video.cover_index].meta
 	}
 	focus :=
 		!rail_focus && !channel_focus && !search_editing && index == selected ? COLOR_HOVER : clay.PointerOver(clay.ID("video", u32(index))) ? COLOR_SURFACE : clay.Color{}
