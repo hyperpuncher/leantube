@@ -30,9 +30,8 @@ lightweight native YouTube client for webOS
 `just package-legacy` writes its IPK under `build/legacy/` without TV access.
 The normal build/package tasks keep the newer lifecycle defaults.
 
-The legacy profile uses native lifecycle interface version 1 (`registerNativeApp`)
-and defaults unset Wayland environment variables to `/tmp/xdg` and `wayland-0`.
-It does not create compositor directories or replace firmware libraries. Both
+The legacy profile uses native lifecycle interface version 1 (`registerNativeApp`).
+It does not replace firmware libraries. Both
 profiles select the Starfish C++ string ABI by available symbols and bundle the
 SDK C++ runtime app-locally. The installed EGL adapter is retained. The UJ630V
 ACB task-pointer signatures were checked against its firmware, not inferred
@@ -61,12 +60,9 @@ Measured on the UJ630V (webOS 3.5), mostly via the official LG network remote:
 - Not yet verified by a viewer: audio output, A/V sync, smoothness, aspect fit,
   and physical OK/Back.
 
-Legacy Starfish firmware has no video-capability query. The legacy profile
-offers only formats decoded and frame-checked on the UJ630V: H264 up to
-1080p60 and VP9 (including Profile 2 HDR10) up to 2160p60. It applies them when
-the firmware codec configuration is readable (intersected with its limits) or,
-inside the webOS 3.x app jail, when the system property service reports a UHD
-panel. Otherwise it falls back to H264 up to 1080p30. HEVC is not offered
+Legacy Starfish firmware has no video-capability query, so the legacy profile
+offers exactly the formats decoded and frame-checked on the UJ630V: H264 up to
+1080p60 and VP9 (including Profile 2 HDR10) up to 2160p60. HEVC is not offered
 because YouTube supplied no HEVC formats to test. AV1 is never offered: the
 UJ630V accepted an AV1 load and advanced its clock but displayed black.
 

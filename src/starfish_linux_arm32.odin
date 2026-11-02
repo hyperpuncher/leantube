@@ -52,8 +52,6 @@ foreign starfish {
 	// JSON: position is in milliseconds; retainLastRenderedFrame:true keeps the picture.
 	@(link_name = "StarfishMediaAPIs_seek")
 	sf_seek :: proc(_: ^Starfish, _: cstring) -> bool ---
-	@(link_name = "StarfishMediaAPIs_legacyLimits")
-	sf_legacy_limits :: proc() -> bool ---
 	@(link_name = "StarfishMediaAPIs_videoLimits")
 	sf_video_limits :: proc(_: cstring, _: ^c.int, _: ^c.int, _: ^c.int) -> bool ---
 	@(link_name = "StarfishMediaAPIs_unload")

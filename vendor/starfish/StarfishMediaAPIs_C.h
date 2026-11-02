@@ -71,8 +71,6 @@ bool StarfishMediaAPIs_play(StarfishMediaAPIs_C *api);
 // LeanTube additions. Missing optional LG APIs return false.
 bool StarfishMediaAPIs_setPlayRate(StarfishMediaAPIs_C *api, const char *message);
 bool StarfishMediaAPIs_seek(StarfishMediaAPIs_C *api, const char *message);
-// True only on BUFFERSTREAM firmware without a capability query.
-bool StarfishMediaAPIs_legacyLimits(void);
 bool StarfishMediaAPIs_videoLimits(const char *codec, int32_t *width, int32_t *height, int32_t *fps);
 
 bool StarfishMediaAPIs_pushEOS(StarfishMediaAPIs_C *api);

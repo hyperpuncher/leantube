@@ -81,23 +81,12 @@ window_state_changing :: proc "c" (data, surface: rawptr, state: u32) {}
 
 attach_window :: proc(app_id: cstring, display, surface: rawptr) -> bool {
 	window_display, window_surface = display, surface
-	if display == nil || surface == nil {
-		fmt.eprintln("Wayland window handles missing:", display != nil, surface != nil)
-		return false
-	}
+	if display == nil || surface == nil {return false}
 	window_registry = wl_display_get_registry(display)
 	wl_proxy_add_listener(window_registry, &registry_listener, nil)
-	roundtrip := wl_display_roundtrip(display)
-	if roundtrip < 0 || window_shell == nil || window_role_shell == nil {
-		fmt.eprintln(
-			"Wayland shell discovery failed:",
-			roundtrip,
-			wl_display_get_error(display),
-			window_shell != nil,
-			window_role_shell != nil,
-		)
-		return false
-	}
+	if wl_display_roundtrip(display) < 0 ||
+	   window_shell == nil ||
+	   window_role_shell == nil {return false}
 
 	// Match SDL-webOS: wl_shell supplies the role; the LG shell adds properties.
 	window_role_surface = wl_shell_get_shell_surface(window_role_shell, surface)

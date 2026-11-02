@@ -7,7 +7,6 @@ import yt "./youtube"
 import "core:c"
 import "core:fmt"
 import "core:math"
-import "core:os"
 import "core:strings"
 import "core:sync"
 import sdl "vendor:sdl3"
@@ -26,46 +25,32 @@ native_video_codec :: proc(codec: string) -> cstring {
 	return nil
 }
 
-LEGACY_CODEC_CONFIG :: "/etc/umediaserver/device_codec_capability_config.json"
+// Formats decoded and frame-checked through Starfish on a webOS 3.5 UJ630V,
+// whose firmware has no capability query. HEVC is untested; AV1 shows black.
+@(rodata)
+LEGACY_LIMITS := [4]yt.Video_Limit {
+	{"h264", 1920, 1080, 60},
+	{"hevc", 0, 0, 0},
+	{"vp9", 3840, 2160, 60},
+	{"av1", 0, 0, 0},
+}
 
-// Native apps are jailed on webOS 3.x and usually cannot read the firmware
-// codec configuration. The UHD system property then selects the verified profile.
 init_player :: proc() {
-	legacy_config: string
-	legacy, uhd := sf_legacy_limits(), false
-	if legacy {
-		if data, read_error := os.read_entire_file(LEGACY_CODEC_CONFIG, context.temp_allocator);
-		   read_error == nil {
-			legacy_config = string(data)
-		} else {
-			uhd = query_uhd_panel()
-		}
-		fmt.printf("native legacy codec config=%v uhd=%v\n", legacy_config != "", uhd)
-	}
 	for codec, i in ([]string{"h264", "hevc", "vp9", "av1"}) {
-		width, height, fps: c.int
-		ok := sf_video_limits(native_video_codec(codec), &width, &height, &fps)
-		playback_limits[i] = {
-			codec = codec,
-		}
-		if ok {playback_limits[i] = {codec, int(width), int(height), int(fps)}}
-		if legacy {
-			limit: yt.Video_Limit
-			verified: bool
-			if legacy_config != "" {
-				limit, verified = yt.legacy_video_limit(legacy_config, codec)
-			} else if uhd {
-				limit, verified = yt.legacy_uhd_limit(codec)
+		when WEBOS_LEGACY {
+			playback_limits[i] = LEGACY_LIMITS[i]
+		} else {
+			width, height, fps: c.int
+			playback_limits[i] = {
+				codec = codec,
 			}
-			if verified {
-				ok = true
-				playback_limits[i] = limit
+			if sf_video_limits(native_video_codec(codec), &width, &height, &fps) {
+				playback_limits[i] = {codec, int(width), int(height), int(fps)}
 			}
 		}
 		fmt.printf(
-			"native codec=%s available=%v width=%d height=%d fps=%d\n",
+			"native codec=%s width=%d height=%d fps=%d\n",
 			codec,
-			ok,
 			playback_limits[i].width,
 			playback_limits[i].height,
 			playback_limits[i].fps,

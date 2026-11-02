@@ -26,6 +26,7 @@ App_State :: enum {
 Play_State :: enum {
 	Loaded,
 }
+WEBOS_LEGACY :: false
 acb_id: c.long
 playback_limits: [4]yt.Video_Limit
 running, paused, loaded, browsing, resolving, return_to_grid, dirty, library_focus_pending: bool
@@ -50,8 +51,6 @@ queue_watch_history :: proc(_: string, _: f64, position: f64, _: u32, _: u32, _:
 }
 
 sf_video_limits :: proc(_: cstring, _: ^c.int, _: ^c.int, _: ^c.int) -> bool {return false}
-sf_legacy_limits :: proc() -> bool {return false}
-query_uhd_panel :: proc() -> bool {return false}
 AcbAPI_setSinkType :: proc(_: c.long, _: c.int) -> bool {return false}
 AcbAPI_setState :: proc(_: c.long, _: App_State, _: Play_State, _: ^c.long) -> c.int {return 0}
 sf_play :: proc(_: ^Starfish) -> bool {sync.atomic_store(&fake_status.playing, 1); return true}

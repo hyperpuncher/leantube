@@ -59,57 +59,6 @@ no_supported_video_does_not_return_audio_or_manifest_as_video :: proc(t: ^testin
 }
 
 @(test)
-legacy_profile_caps_firmware_config_to_verified_formats :: proc(t: ^testing.T) {
-	config := `{"videoCodecs":[
-	{"name":"H.264","maxWidth":4096,"maxHeight":2160,"maxFrameRate":60},
-	{"name":"HEVC","maxWidth":4096,"maxHeight":2160,"maxFrameRate":60},
-	{"name":"VP9","maxWidth":4096,"maxHeight":2160,"maxFrameRate":60},
-	{"name":"AV1","maxWidth":3840,"maxHeight":2160,"maxFrameRate":60}]}`
-	h264, h264_ok := legacy_video_limit(config, "h264")
-	testing.expect(t, h264_ok)
-	testing.expect_value(t, h264, Video_Limit{"h264", 1920, 1080, 60})
-	vp9, vp9_ok := legacy_video_limit(config, "vp9")
-	testing.expect(t, vp9_ok)
-	testing.expect_value(t, vp9, Video_Limit{"vp9", 3840, 2160, 60})
-	_, hevc_ok := legacy_video_limit(config, "hevc")
-	testing.expect(t, !hevc_ok)
-	_, av1_ok := legacy_video_limit(config, "av1")
-	testing.expect(t, !av1_ok)
-	// A smaller firmware entry lowers the verified profile.
-	small, small_ok := legacy_video_limit(
-		`{"videoCodecs":[{"name":"VP9","maxWidth":1920,"maxHeight":1088,"maxFrameRate":30}]}`,
-		"vp9",
-	)
-	testing.expect(t, small_ok)
-	testing.expect_value(t, small, Video_Limit{"vp9", 1920, 1088, 30})
-	// Absent, malformed or incomplete entries keep the conservative fallback.
-	_, absent_ok := legacy_video_limit(
-		`{"videoCodecs":[{"name":"H.264","maxWidth":1920,"maxHeight":1080,"maxFrameRate":60}]}`,
-		"vp9",
-	)
-	testing.expect(t, !absent_ok)
-	_, malformed_ok := legacy_video_limit(`{`, "h264")
-	testing.expect(t, !malformed_ok)
-	_, incomplete_ok := legacy_video_limit(
-		`{"videoCodecs":[{"name":"VP9","maxWidth":3840}]}`,
-		"vp9",
-	)
-	testing.expect(t, !incomplete_ok)
-	_, empty_ok := legacy_video_limit("", "h264")
-	testing.expect(t, !empty_ok)
-	uhd_vp9, uhd_vp9_ok := legacy_uhd_limit("vp9")
-	testing.expect(t, uhd_vp9_ok)
-	testing.expect_value(t, uhd_vp9, Video_Limit{"vp9", 3840, 2160, 60})
-	uhd_h264, uhd_h264_ok := legacy_uhd_limit("h264")
-	testing.expect(t, uhd_h264_ok)
-	testing.expect_value(t, uhd_h264, Video_Limit{"h264", 1920, 1080, 60})
-	_, uhd_hevc_ok := legacy_uhd_limit("hevc")
-	testing.expect(t, !uhd_hevc_ok)
-	_, uhd_av1_ok := legacy_uhd_limit("av1")
-	testing.expect(t, !uhd_av1_ok)
-}
-
-@(test)
 legacy_profile_selects_vp9_4k60_and_rejects_av1 :: proc(t: ^testing.T) {
 	data := `{"playabilityStatus":{"status":"OK"},"streamingData":{"adaptiveFormats":[
 	{"mimeType":"audio/mp4; codecs=\"mp4a.40.2\"","bitrate":128000,"url":"https://media.example/audio"},

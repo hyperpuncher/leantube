@@ -3,12 +3,10 @@
 #include <StarfishMediaAPIs.h>
 
 #include <dlfcn.h>
-#include <cstring>
 
 extern "C" bool starfish_feed_modern(StarfishMediaAPIs *, const char *, char *, size_t);
 extern "C" bool starfish_feed_legacy(StarfishMediaAPIs *, const char *, char *, size_t);
-extern "C" bool starfish_limits_modern(const char *, int32_t *, int32_t *, int32_t *);
-extern "C" bool starfish_limits_legacy(const char *, int32_t *, int32_t *, int32_t *);
+extern "C" bool starfish_limits(const char *, int32_t *, int32_t *, int32_t *);
 
 static bool modern_strings() {
     return dlsym(RTLD_DEFAULT, "_ZN17StarfishMediaAPIs4FeedB5cxx11EPKc") != nullptr;
@@ -79,31 +77,8 @@ bool StarfishMediaAPIs_seek(StarfishMediaAPIs_C *api, const char *message) {
            _ZN17StarfishMediaAPIs4SeekEPKc(&api->inner, message);
 }
 
-bool StarfishMediaAPIs_legacyLimits(void) {
-    return !modern_strings() &&
-           !dlsym(RTLD_DEFAULT, "_ZN3smp4util21getMaxVideoResolutionESsPiS1_S1_") &&
-           dlsym(RTLD_DEFAULT, "_ZN17StarfishMediaAPIs4FeedEPKc");
-}
-
 bool StarfishMediaAPIs_videoLimits(const char *codec, int32_t *width, int32_t *height, int32_t *fps) {
-    if (!codec || !width || !height || !fps) return false;
-    const bool modern = modern_strings();
-    const char *symbol = modern
-        ? "_ZN3smp4util21getMaxVideoResolutionENSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEPiS7_S7_"
-        : "_ZN3smp4util21getMaxVideoResolutionESsPiS1_S1_";
-    if (dlsym(RTLD_DEFAULT, symbol)) {
-        auto query = modern ? starfish_limits_modern : starfish_limits_legacy;
-        return query(codec, width, height, fps);
-    }
-    // Older BUFFERSTREAM firmware has no capability query. Do not infer 4K,
-    // HDR, VP9 or AV1 support from the model or the presence of a decoder name.
-    if (StarfishMediaAPIs_legacyLimits() && std::strcmp(codec, "H264") == 0) {
-        *width = 1920;
-        *height = 1080;
-        *fps = 30;
-        return true;
-    }
-    return false;
+    return starfish_limits(codec, width, height, fps);
 }
 
 bool StarfishMediaAPIs_pushEOS(StarfishMediaAPIs_C *api) {

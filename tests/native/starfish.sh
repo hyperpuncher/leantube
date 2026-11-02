@@ -7,12 +7,12 @@ for abi in 0 1; do
 	"$cxx" "${flags[@]}" -fPIC -Itests/native -D_GLIBCXX_USE_CXX11_ABI="$abi" \
 		-c vendor/starfish/string_abi.cpp -o "build/native-starfish/string-$abi.o"
 done
-for variant in legacy modern legacy-no-limits modern-no-limits legacy-reject modern-reject; do
+for variant in legacy modern modern-no-limits modern-reject; do
 	abi=0
 	extra=()
 	if [[ $variant == modern* ]]; then abi=1; fi
-	if [[ $variant == *-no-limits ]]; then extra=(-DNO_LIMITS); fi
-	if [[ $variant == modern-no-limits ]]; then extra+=(-DMODERN_NO_LIMITS); fi
+	# Legacy firmware has no capability query.
+	if [[ $variant == legacy || $variant == *-no-limits ]]; then extra=(-DNO_LIMITS); fi
 	if [[ $variant == *-reject ]]; then extra=(-DREJECT_LIMITS); fi
 	"$cxx" "${flags[@]}" -shared -fPIC -Itests/native -D_GLIBCXX_USE_CXX11_ABI="$abi" \
 		"${extra[@]}" tests/native/starfish_fixture.cpp -o "build/native-starfish/lib$variant.so"

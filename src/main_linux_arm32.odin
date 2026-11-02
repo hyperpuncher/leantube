@@ -57,15 +57,7 @@ reply :: proc "c" (_: rawptr, message: rawptr, _: rawptr) -> bool {
 }
 
 main :: proc() {
-	when WEBOS_LEGACY {
-		// Honor launcher overrides; never create or change compositor directories.
-		for pair in ([][2]string{{"XDG_RUNTIME_DIR", "/tmp/xdg"}, {"WAYLAND_DISPLAY", "wayland-0"}}) {
-			value, found := os.lookup_env(pair[0], context.allocator)
-			delete(value)
-			if !found {if os.set_env(pair[0], pair[1]) != nil {return}}
-		}
-		_ = sdl.SetHint("SDL_WEBOS_LEGACY_SEAT", "1")
-	}
+	when WEBOS_LEGACY {_ = sdl.SetHint("SDL_WEBOS_LEGACY_SEAT", "1")}
 	benchmark_reader_entry()
 	_ = sdl.SetHint(sdl.HINT_VIDEO_DRIVER, "wayland")
 	_ = sdl.SetAppMetadata("LeanTube", APP_VERSION, APP_ID)

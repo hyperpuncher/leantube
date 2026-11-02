@@ -33,7 +33,6 @@ WL_Seat_Listener :: struct {
 foreign import wayland "system:wayland-client"
 foreign wayland {
 	wl_display_roundtrip :: proc(display: rawptr) -> c.int ---
-	wl_display_get_error :: proc(display: rawptr) -> c.int ---
 	wl_display_flush :: proc(display: rawptr) -> c.int ---
 	wl_proxy_add_listener :: proc(proxy, listener, data: rawptr) -> c.int ---
 	wl_proxy_destroy :: proc(proxy: rawptr) ---

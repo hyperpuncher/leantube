@@ -22,19 +22,11 @@ int main() {
     assert(StarfishMediaAPIs_feed(api, "Ok", reply, 1));
     assert(reply[0] == '\0');
     int32_t width = 0, height = 0, fps = 0;
-#if defined(MODERN_NO_LIMITS) || defined(REJECT_LIMITS)
+#if defined(NO_LIMITS) || defined(REJECT_LIMITS)
     assert(!StarfishMediaAPIs_videoLimits("H264", &width, &height, &fps));
-#elif defined(NO_LIMITS)
-    assert(StarfishMediaAPIs_legacyLimits());
-    assert(!StarfishMediaAPIs_videoLimits("VP9", &width, &height, &fps));
-    assert(StarfishMediaAPIs_videoLimits("H264", &width, &height, &fps));
-    assert(width == 1920 && height == 1080 && fps == 30);
 #else
     assert(StarfishMediaAPIs_videoLimits("H264", &width, &height, &fps));
     assert(width == 3840 && height == 2160 && fps == 60);
-#endif
-#if !defined(NO_LIMITS) || defined(MODERN_NO_LIMITS)
-    assert(!StarfishMediaAPIs_legacyLimits());
 #endif
     assert(!StarfishMediaAPIs_videoLimits("AV1", &width, &height, &fps));
     assert(!StarfishMediaAPIs_videoLimits(nullptr, &width, &height, &fps));
