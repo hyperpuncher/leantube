@@ -16,6 +16,9 @@ Track_State :: struct {
 	ranges_s:                       [][2]f64,
 	packets:                        int,
 	end_of_input, sponsor_boundary: bool,
+	codec:                          string,
+	width, height, transfer:        int,
+	fps:                            f64,
 }
 
 track_state :: proc(track: ^reader.Track, ranges: [][2]f64) -> Track_State {
@@ -40,6 +43,9 @@ track_state :: proc(track: ^reader.Track, ranges: [][2]f64) -> Track_State {
 	state.ahead_s = reader.ahead(track, player_clock)
 	state.packets = queue.len(track.packets)
 	state.end_of_input, state.sponsor_boundary = track.eof, track.at_limit
+	state.codec, state.fps = track.codec, track.fps
+	state.width, state.height = int(track.width), int(track.height)
+	state.transfer = int(track.color_transfer)
 	return state
 }
 
@@ -56,6 +62,7 @@ write_control_state :: proc(stopped: bool = false) {
 		paused:                                                  bool,
 		video, audio:                                            Track_State,
 		last_transition:                                         Player_Transition,
+		frames_presented, frames_dropped:                        i64,
 	} {
 		pid                = int(posix.getpid()),
 		version            = APP_VERSION,
@@ -82,6 +89,8 @@ write_control_state :: proc(stopped: bool = false) {
 		if player_status != nil {
 			frame := sync.atomic_load(&player_status.frame_ns)
 			if frame >= 0 {state.native_position_ms = f64(frame) / 1e6}
+			state.frames_presented = sync.atomic_load(&player_status.presentation_updates)
+			state.frames_dropped = sync.atomic_load(&player_status.dropped)
 			switch {
 			case sync.atomic_load(&player_status.loaded) == 0:
 				state.phase = "decoder-load"

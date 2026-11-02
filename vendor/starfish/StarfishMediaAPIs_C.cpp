@@ -2,10 +2,17 @@
 
 #include <StarfishMediaAPIs.h>
 
-// Added for LeanTube: query the installed capabilities without exporting C++ types.
-namespace smp { namespace util {
-bool getMaxVideoResolution(std::string, int32_t *, int32_t *, int32_t *) __attribute__((weak));
-} }
+#include <dlfcn.h>
+#include <cstring>
+
+extern "C" bool starfish_feed_modern(StarfishMediaAPIs *, const char *, char *, size_t);
+extern "C" bool starfish_feed_legacy(StarfishMediaAPIs *, const char *, char *, size_t);
+extern "C" bool starfish_limits_modern(const char *, int32_t *, int32_t *, int32_t *);
+extern "C" bool starfish_limits_legacy(const char *, int32_t *, int32_t *, int32_t *);
+
+static bool modern_strings() {
+    return dlsym(RTLD_DEFAULT, "_ZN17StarfishMediaAPIs4FeedB5cxx11EPKc") != nullptr;
+}
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "bugprone-reserved-identifier"
@@ -35,10 +42,10 @@ const char *StarfishMediaAPIs_getMediaID(StarfishMediaAPIs_C *api) {
 }
 
 bool StarfishMediaAPIs_feed(StarfishMediaAPIs_C *api, const char *payload, char *result, size_t resultLen) {
-    auto ret = api->inner.Feed(payload);
-    auto nCopied = ret.copy(result, resultLen - 1, 0);
-    result[nCopied] = '\0';
-    return true;
+    if (!api || !result || resultLen == 0) return false;
+    result[0] = '\0';
+    auto feed = modern_strings() ? starfish_feed_modern : starfish_feed_legacy;
+    return feed(&api->inner, payload, result, resultLen);
 }
 
 bool StarfishMediaAPIs_load(StarfishMediaAPIs_C *api, const char *payload, StarfishMediaAPIs_callbackWithData *callback,
@@ -72,10 +79,31 @@ bool StarfishMediaAPIs_seek(StarfishMediaAPIs_C *api, const char *message) {
            _ZN17StarfishMediaAPIs4SeekEPKc(&api->inner, message);
 }
 
+bool StarfishMediaAPIs_legacyLimits(void) {
+    return !modern_strings() &&
+           !dlsym(RTLD_DEFAULT, "_ZN3smp4util21getMaxVideoResolutionESsPiS1_S1_") &&
+           dlsym(RTLD_DEFAULT, "_ZN17StarfishMediaAPIs4FeedEPKc");
+}
+
 bool StarfishMediaAPIs_videoLimits(const char *codec, int32_t *width, int32_t *height, int32_t *fps) {
-    using Query = bool (*)(std::string, int32_t *, int32_t *, int32_t *);
-    auto query = static_cast<Query>(smp::util::getMaxVideoResolution);
-    return query != nullptr && query(codec, width, height, fps);
+    if (!codec || !width || !height || !fps) return false;
+    const bool modern = modern_strings();
+    const char *symbol = modern
+        ? "_ZN3smp4util21getMaxVideoResolutionENSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEPiS7_S7_"
+        : "_ZN3smp4util21getMaxVideoResolutionESsPiS1_S1_";
+    if (dlsym(RTLD_DEFAULT, symbol)) {
+        auto query = modern ? starfish_limits_modern : starfish_limits_legacy;
+        return query(codec, width, height, fps);
+    }
+    // Older BUFFERSTREAM firmware has no capability query. Do not infer 4K,
+    // HDR, VP9 or AV1 support from the model or the presence of a decoder name.
+    if (StarfishMediaAPIs_legacyLimits() && std::strcmp(codec, "H264") == 0) {
+        *width = 1920;
+        *height = 1080;
+        *fps = 30;
+        return true;
+    }
+    return false;
 }
 
 bool StarfishMediaAPIs_pushEOS(StarfishMediaAPIs_C *api) {

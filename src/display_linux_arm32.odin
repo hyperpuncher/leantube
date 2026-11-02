@@ -24,7 +24,8 @@ foreign acb {
 	AcbAPI_initialize :: proc(id: c.long, player_type: c.int, app_id: cstring, callback: Acb_Callback) -> bool ---
 	AcbAPI_setMediaId :: proc(id: c.long, media_id: cstring) -> bool ---
 	AcbAPI_setSinkType :: proc(id: c.long, sink_type: c.int) -> bool ---
-	// The B9 ABI includes the task output pointer omitted by the SDK header.
+	// B9 and UJ630V firmware both forward the task output pointer (r2).
+	// The SDK header omits it; keep it even on the legacy C++ string ABI.
 	AcbAPI_setMediaVideoData :: proc(id: c.long, payload: cstring, task: ^c.long) -> c.int ---
 	AcbAPI_setState :: proc(id: c.long, app_state: Acb_App_State, play_state: Acb_Play_State, task: ^c.long) -> c.int ---
 	AcbAPI_setDisplayWindow :: proc(id, x, y, width, height: c.long, fullscreen: bool, task: ^c.long) -> c.int ---

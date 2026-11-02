@@ -61,6 +61,20 @@ parse_control :: proc(value: json.Value) -> (command: Control_Command, valid: bo
 	return command, true
 }
 
+lifecycle_event :: proc(root: json.Object, legacy: bool) -> string {
+	if event, found := root["event"].(json.String); found {return string(event)}
+	if legacy {
+		if message, found := root["message"].(json.String); found {return string(message)}
+	}
+	return ""
+}
+
+// Legacy native launches pass the parameters as the top-level argument object.
+launch_parameters :: proc(root: json.Object) -> json.Value {
+	if parameters, found := root["parameters"]; found {return parameters}
+	return root
+}
+
 queue_control :: proc(value: json.Value) {
 	if command, valid := parse_control(value); valid {pending_control = command}
 }

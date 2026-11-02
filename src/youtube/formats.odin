@@ -27,6 +27,51 @@ supported_video :: proc(codec: string, width, height, fps: int, limits: []Video_
 	return false
 }
 
+// Formats decoded and frame-checked through Starfish on a webOS 3.5 UJ630V,
+// which has no capability query. Firmware entries above these stay unverified.
+@(rodata)
+LEGACY_VERIFIED := [?]struct {
+	codec, name: string,
+	limit:       Video_Limit,
+}{{"h264", "H.264", {"h264", 1920, 1080, 60}}, {"vp9", "VP9", {"vp9", 3840, 2160, 60}}}
+
+// Return the verified legacy profile for a UHD panel without readable firmware
+// codec configuration. HEVC and AV1 are never enabled here.
+legacy_uhd_limit :: proc(codec: string) -> (limit: Video_Limit, ok: bool) {
+	for verified in LEGACY_VERIFIED {
+		if verified.codec == codec {return verified.limit, true}
+	}
+	return
+}
+
+// Intersect the firmware codec configuration with formats verified on legacy
+// Starfish. HEVC and AV1 are never enabled here.
+legacy_video_limit :: proc(config: string, codec: string) -> (limit: Video_Limit, ok: bool) {
+	value, err := json.parse(config, parse_integers = true)
+	if err != .None {return}
+	defer json.destroy_value(value)
+	entries, _ := field(value, "videoCodecs").(json.Array)
+	for verified in LEGACY_VERIFIED {
+		if verified.codec != codec {continue}
+		for entry in entries {
+			name, _ := field(entry, "name").(json.String)
+			if string(name) != verified.name {continue}
+			width, w_ok := numeric(field(entry, "maxWidth"))
+			height, h_ok := numeric(field(entry, "maxHeight"))
+			fps, f_ok := numeric(field(entry, "maxFrameRate"))
+			if !w_ok || !h_ok || !f_ok || width <= 0 || height <= 0 || fps <= 0 {return}
+			return {
+					codec,
+					min(int(width), verified.limit.width),
+					min(int(height), verified.limit.height),
+					min(int(fps), verified.limit.fps),
+				},
+				true
+		}
+	}
+	return
+}
+
 // Return separate direct sources. Returned strings remain owned by the caller.
 parse_player :: proc(data: string, limits: []Video_Limit = nil) -> (stream: Stream, error: Error) {
 	value, err := json.parse(data)

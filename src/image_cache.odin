@@ -11,7 +11,9 @@ import "core:strings"
 import sdl "vendor:sdl3"
 
 // Used only by the network worker. Keep the original encoded image bytes.
-IMAGE_CACHE_BYTES :: 256 * 1024 * 1024
+IMAGE_CACHE_MIB :: #config(IMAGE_CACHE_MIB, 256)
+#assert(IMAGE_CACHE_MIB >= 0 && IMAGE_CACHE_MIB <= 256)
+IMAGE_CACHE_BYTES :: IMAGE_CACHE_MIB * 1024 * 1024
 Image_Cache :: struct {
 	directory:     string,
 	maximum_bytes: i64,
@@ -24,7 +26,10 @@ image_cache_path :: proc(cache: Image_Cache, source: string) -> string {
 
 // Reserve space before writing. Hits do not change the download order.
 trim_image_cache :: proc(cache: Image_Cache, incoming_bytes: i64 = 0) -> bool {
-	if cache.directory == "" || incoming_bytes > cache.maximum_bytes {return false}
+	if cache.directory == "" ||
+	   incoming_bytes < 0 ||
+	   cache.maximum_bytes < 0 ||
+	   incoming_bytes > cache.maximum_bytes {return false}
 	// SDL uses libc filesystem APIs; Odin's directory scan requires statx.
 	directory := strings.clone_to_cstring(cache.directory)
 	defer delete(directory)

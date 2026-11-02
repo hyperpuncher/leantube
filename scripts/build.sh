@@ -9,6 +9,19 @@ case "$mode" in
 	bench) odin_flags=(-o:speed -define:PLAYBACK_BENCH=true) ;;
 	*) printf 'usage: %s [dev|release|bench]\n' "$0" >&2; exit 2 ;;
 esac
+profile=${WEBOS_PROFILE:-default}
+case "$profile" in
+	default) ;;
+	legacy) odin_flags+=(-define:WEBOS_LEGACY=true) ;;
+	*) printf 'unknown WEBOS_PROFILE: %s (expected default or legacy)\n' "$profile" >&2; exit 2 ;;
+esac
+cache_mib=${IMAGE_CACHE_MIB:-256}
+if [[ $profile == legacy ]]; then cache_mib=${IMAGE_CACHE_MIB:-16}; fi
+if [[ ! $cache_mib =~ ^(0|[1-9][0-9]{0,2})$ ]] || ((cache_mib > 256)); then
+	printf 'IMAGE_CACHE_MIB must be an integer from 0 through 256\n' >&2
+	exit 2
+fi
+odin_flags+=("-define:IMAGE_CACHE_MIB=$cache_mib")
 if ! command -v ccache >/dev/null; then
 	printf 'ccache is required for cached native builds\n' >&2
 	exit 1
@@ -56,10 +69,17 @@ if [[ ! -f "$prefix/lib/libavformat.so.63" ]]; then
 	printf 'run just setup to build the native playback libraries\n' >&2
 	exit 1
 fi
-# Upstream C ABI adapter only. All playback code remains in Odin.
-ccache "$WEBOS_SDK/bin/arm-webos-linux-gnueabi-g++" -shared -fPIC -std=c++11 -O2 "${cpu[@]}" \
+# Keep each std::string ABI in its own compiler-generated C boundary.
+cxx="$WEBOS_SDK/bin/arm-webos-linux-gnueabi-g++"
+for abi in 0 1; do
+	ccache "$cxx" -c -fPIC -std=c++11 -O2 "${cpu[@]}" -D_GLIBCXX_USE_CXX11_ABI="$abi" \
+		-I"$sysroot/usr/include/starfish-media-pipeline" vendor/starfish/string_abi.cpp \
+		-o "build/obj/starfish-string-$abi.o"
+done
+ccache "$cxx" -shared -fPIC -std=c++11 -O2 "${cpu[@]}" \
 	-I"$sysroot/usr/include/starfish-media-pipeline" vendor/starfish/StarfishMediaAPIs_C.cpp \
-	-lplayerAPIs -Wl,-soname,libplayerAPIs_C.so -o build/obj/libplayerAPIs_C.so
+	build/obj/starfish-string-0.o build/obj/starfish-string-1.o \
+	-lplayerAPIs -ldl -Wl,-soname,libplayerAPIs_C.so -o build/obj/libplayerAPIs_C.so
 reader_libraries=(-L"$prefix/lib" -lavformat -lavcodec -lavutil -Lbuild/obj -lplayerAPIs_C)
 # The ELF loader expands $ORIGIN on the TV, not this shell.
 # shellcheck disable=SC2016
@@ -70,10 +90,16 @@ reader_libraries=(-L"$prefix/lib" -lavformat -lavcodec -lavutil -Lbuild/obj -lpl
 	-l:libcurl.so.4 -l:libssl.so.4 -l:libcrypto.so.4 -lz -lm -lpthread -ldl -lrt -latomic \
 	-Wl,--disable-new-dtags,-rpath,'$ORIGIN/lib' -o "build/app/$app_main"
 cp -a app/. build/app/
+if [[ $profile == legacy ]]; then
+	jq '.nativeLifeCycleInterfaceVersion = 1' app/appinfo.json > build/app/appinfo.json
+fi
 mkdir -p build/app/lib
 cp -a "$WEBOS_PLATFORM/runtime/." build/app/lib/
 cp -a "$WEBOS_PLATFORM/licenses/." build/app/licenses/
 cp build/obj/libplayerAPIs_C.so build/app/lib/
+# Both string ABIs need the SDK's dual-ABI runtime on old firmware. This is
+# app-private and also provides the legacy ABI required by firmware libraries.
+cp -L "$("$cxx" -print-file-name=libstdc++.so.6)" build/app/lib/libstdc++.so.6
 for library in libavformat.so.63 libavcodec.so.63 libavutil.so.61; do
 	cp -L "$prefix/lib/$library" "build/app/lib/$library"
 done

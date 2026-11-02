@@ -11,3 +11,30 @@ index c779a63..8de4847 100644
          Wayland_data_offer_destroy(seat->data_device->selection_offer);
          seat->data_device->selection_offer = NULL;
          Wayland_data_offer_notify_from_mimes(NULL, false);
+--- a/src/video/wayland/SDL_waylandvideo.c
++++ b/src/video/wayland/SDL_waylandvideo.c
+@@ -1237,6 +1237,14 @@
+     Wayland_SortOutputs(vid);
+     for(int i = 0; i < vid->output_count; ++i) {
+         SDL_DisplayData *d = vid->output_list[i];
++        /* Some older compositors advertise wl_output v2 but omit done.
++         * The initialization roundtrip has already collected the current mode.
++         * Leave outputs with complete protocol events entirely unchanged.
++         */
++        if (!d->placeholder.internal && d->pixel_width > 0 && d->pixel_height > 0) {
++            d->wl_output_done_count = (d->xdg_output != NULL);
++            handle_wl_output_done(d, d->output);
++        }
+         d->display = SDL_AddVideoDisplay(&d->placeholder, false);
+         SDL_free(d->placeholder.name);
+         SDL_zero(d->placeholder);
+@@ -1296,6 +1304,8 @@
+         Wayland_add_display(d, id, SDL_min(version, SDL_WL_OUTPUT_VERSION));
+     } else if (SDL_strcmp(interface, "wl_seat") == 0) {
+-        struct wl_seat *seat = wl_registry_bind(d->registry, id, &wl_seat_interface, SDL_min(SDL_WL_SEAT_VERSION, version));
++        /* LG's older native SDL binds seats at v1, despite advertising v4. */
++        const Uint32 seat_version = SDL_GetHintBoolean("SDL_WEBOS_LEGACY_SEAT", false) ? 1 : SDL_min(SDL_WL_SEAT_VERSION, version);
++        struct wl_seat *seat = wl_registry_bind(d->registry, id, &wl_seat_interface, seat_version);
+         Wayland_DisplayCreateSeat(d, seat, id);
+     } else if (SDL_strcmp(interface, "xdg_wm_base") == 0) {
+         d->shell.xdg = wl_registry_bind(d->registry, id, &xdg_wm_base_interface, SDL_min(version, 7));
