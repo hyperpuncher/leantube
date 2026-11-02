@@ -7,6 +7,7 @@ import yt "./youtube"
 import "core:c"
 import "core:fmt"
 import "core:math"
+import "core:strings"
 import "core:sync"
 import sdl "vendor:sdl3"
 
@@ -56,6 +57,33 @@ Player_Transition :: struct {
 }
 player_transition: Player_Transition
 
+Player_History :: struct {
+	id:                                 string,
+	account, playback:                  u32,
+	start, position, reported_position: f64,
+}
+player_history: Player_History
+
+report_player_history :: proc(finished: bool = false) {
+	h := &player_history
+	if h.id == "" ||
+	   h.account != account_revision ||
+	   !signed_in ||
+	   h.position < 0 ||
+	   (h.position == h.reported_position && !finished) {return}
+	if duration_ms > 0 {
+		for &video in catalog.videos {
+			if video.id == h.id {
+				video.watched_percent =
+					finished ? 100 : f32(clamp(h.position * 1000 / duration_ms * 100, 0, 100))
+			}
+		}
+	}
+	if queue_watch_history(h.id, h.start, h.position, h.account, h.playback, finished) {
+		h.reported_position, h.start = h.position, h.position
+	}
+}
+
 player_failed :: proc(stage: string = "native") {
 	fmt.eprintf(
 		"player failure stage=%s reader=%d native=%d\n",
@@ -100,6 +128,16 @@ load_video :: proc(
 		started_ms = sdl.GetTicks(),
 	}
 	player_clock = start / 1000
+	if signed_in {
+		player_history = {
+			id                = strings.clone(catalog.videos[selected].id),
+			account           = account_revision,
+			playback          = playback,
+			start             = player_clock,
+			position          = -1,
+			reported_position = -1,
+		}
+	}
 	player_applied_rate = 1
 	player_bound, player_buffering, player_eos = false, false, false
 	player_last_play = 0
@@ -120,6 +158,9 @@ start_video :: proc() {
 }
 
 stop_playback :: proc() {
+	report_player_history()
+	delete(player_history.id)
+	player_history = {}
 	// Stop network input before unloading the decoder. Callback storage stays
 	// live until native unload completion, including on load failure.
 	if player_reader != nil {reader.stop(player_reader)}
@@ -137,6 +178,7 @@ stop_playback :: proc() {
 player_pause :: proc(value: bool) -> bool {
 	if player_reader == nil {return false}
 	if player_api != nil && value && !sf_pause(player_api) {return false}
+	if value {report_player_history()}
 	paused = value
 	player_progress_at = sdl.GetTicks()
 	return true
@@ -159,6 +201,7 @@ player_rate :: proc(value: f64) -> bool {
 player_seek :: proc(target: f64) -> bool {
 	if math.is_nan(target) || math.is_inf(target) || target < 0 {return false}
 	if player_reader == nil || return_to_grid {return false}
+	report_player_history()
 	if duration_ms > 0 &&
 	   (target >= duration_ms ||
 			   sb.skip_target(sponsor_segments[:], target, duration_ms) >= duration_ms) {
@@ -174,6 +217,7 @@ player_seek :: proc(target: f64) -> bool {
 	player_transition.unload_ms = sdl.GetTicks() - player_transition.started_ms
 	player_api, player_status = nil, nil
 	player_clock = target / 1000
+	player_history.start, player_history.position = player_clock, -1
 	generation := sync.atomic_load(&player_reader.state.generation)
 	reader.seek(player_reader, player_clock, player_read_end(target))
 	player_transition.queue_kept = generation == sync.atomic_load(&player_reader.state.generation)
@@ -315,7 +359,13 @@ poll_player :: proc() {
 		}
 		next := max(player_clock, f64(frame) / 1e9)
 		if next != player_clock || !loaded {
-			if next != player_clock {player_progress_at = now}
+			if next != player_clock {
+				player_progress_at = now
+				if !paused && !player_buffering {
+					player_history.position = next
+					if player_history.reported_position < 0 {report_player_history()}
+				}
+			}
 			player_clock = next
 			timeline.position_ms = next * 1000
 			if timeline.seek_target_ms >= 0 {model.seek_done(&timeline)}
@@ -339,7 +389,7 @@ poll_player :: proc() {
 	if sync.atomic_load(&status.ended) != 0 {
 		if s.state.skip_end > 0 {
 			if !paused {finish_sponsor_span()}
-		} else {return_to_grid = true}
+		} else {report_player_history(true); return_to_grid = true}
 		return
 	}
 	if paused {player_progress_at = now}

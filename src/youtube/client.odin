@@ -45,6 +45,7 @@ TV_AGENT :: "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/25.lts.30.1034943-gold (
 Profile :: enum {
 	Web,
 	TV,
+	History,
 	Android,
 	VisionOS,
 }
@@ -404,13 +405,13 @@ api_post :: proc(
 	defer delete(url)
 	headers: []string = {"Content-Type: application/json", "Origin: https://www.youtube.com"}
 	#partial switch profile {
-	case .TV:
+	case .TV, .History:
 		headers = {
 			"Content-Type: application/json",
 			"Origin: https://www.youtube.com",
 			"X-YouTube-Client-Name: 7",
-			"X-YouTube-Client-Version: " + TV_VERSION,
-			"User-Agent: " + TV_AGENT,
+			profile == .History ? "X-YouTube-Client-Version: " + HISTORY_TV_VERSION : "X-YouTube-Client-Version: " + TV_VERSION,
+			profile == .History ? "User-Agent: " + HISTORY_TV_AGENT : "User-Agent: " + TV_AGENT,
 		}
 	case .Android:
 		headers = {
@@ -435,7 +436,7 @@ api_post :: proc(
 	// Odin defers run at block exit. Keep this string until the request returns.
 	authorization: string
 	defer delete(authorization)
-	if access_token != "" && profile == .TV {
+	if access_token != "" && (profile == .TV || profile == .History) {
 		authorization = fmt.aprintf("Authorization: Bearer %s", access_token)
 		append(&request_headers, authorization)
 	}

@@ -31,9 +31,12 @@ Network_Request :: struct {
 		Login_Start,
 		Login_Poll,
 		Card_Action,
+		Watch_History,
 	},
 	page, playback: u32,
 	position_ms:    f64,
+	history_start:  f64,
+	finished:       bool,
 	start_paused:   bool,
 	text:           string,
 	continuation:   string,
@@ -194,9 +197,13 @@ network_main :: proc(_: ^thread.Thread) {
 	refresh_at: u64
 	visitor_data: string
 	defer delete(visitor_data)
-	for !chan.is_closed(network_requests) {
+	history: yt.Watch_History
+	defer yt.watch_history_destroy(&history)
+	history_playback: u32
+	history_timestamp: i64
+	for {
 		request, ready := chan.try_recv(network_requests)
-		if !ready && next < len(covers) {
+		if !ready && next < len(covers) && !network_stopping() {
 			index := next
 			next += 1
 			source := covers[index].source
@@ -215,25 +222,30 @@ network_main :: proc(_: ^thread.Thread) {
 			surface := load_cached_image(cache, &network_client, source, covers[index].target)
 			if surface != nil {
 				if !post_network_result(
-					{
-						kind = covers[index].target > 0 ? .Channel_Avatar : .Cover,
-						page = covers[index].page,
-						index = covers[index].index,
-						playback = covers[index].playback,
-						surface = surface,
-					},
-				) {return}
+					   {
+						   kind = covers[index].target > 0 ? .Channel_Avatar : .Cover,
+						   page = covers[index].page,
+						   index = covers[index].index,
+						   playback = covers[index].playback,
+						   surface = surface,
+					   },
+				   ) &&
+				   !network_stopping() {return}
 			}
 			continue
 		}
 		if !ready {request, ready = chan.recv(network_requests)}
 		if !ready {return}
 		defer free_network_request(&request)
+		// On shutdown, finish queued history reports without loading more pages or images.
+		if network_stopping() && request.kind != .Watch_History {continue}
 		switch request.kind {
 		case .Images:
 			append(&covers, ..request.images[:])
 			clear(&request.images)
 		case .Use_Account:
+			yt.watch_history_destroy(&history)
+			history_playback = 0
 			free_auth_token(&session_auth)
 			session_auth = request.auth_token
 			request.auth_token = {}
@@ -256,19 +268,53 @@ network_main :: proc(_: ^thread.Thread) {
 					surface = avatar,
 				},
 			) {return}
-		case .Search, .Browse, .Card_Action, .Player_Channel:
+		case .Search, .Browse, .Card_Action, .Player_Channel, .Watch_History:
+			if request.kind == .Watch_History &&
+			   (request.account != session_account || session_auth.access_token == "") {continue}
 			if session_auth.access_token != "" && sdl.GetTicks() >= refresh_at {
 				if refresh_auth(&network_client, &session_auth) {
 					yt.set_access_token(session_auth.access_token)
-					if !post_network_result(
-						{
-							kind = .Account,
-							account = session_account,
-							auth_token = clone_auth_token(session_auth),
-						},
-					) {return}
+					if !network_stopping() &&
+					   !post_network_result(
+							   {
+								   kind = .Account,
+								   account = session_account,
+								   auth_token = clone_auth_token(session_auth),
+							   },
+						   ) {return}
 				}
 				refresh_at = sdl.GetTicks() + u64(max(session_auth.expires_in - 60, 30)) * 1000
+			}
+			if request.kind == .Watch_History {
+				error: yt.Error
+				if history_playback != request.playback {
+					yt.watch_history_destroy(&history)
+					if history_timestamp == 0 {
+						history_timestamp = yt.fetch_signature_timestamp(&network_client)
+					}
+					history, error = yt.fetch_watch_history(
+						&network_client,
+						request.text,
+						visitor_data,
+						history_timestamp,
+					)
+					if error == .None {
+						history_playback = request.playback
+					} else {
+						history_timestamp = 0
+					}
+				}
+				if error == .None {
+					error = yt.report_watch_history(
+						&network_client,
+						&history,
+						request.history_start,
+						request.position_ms / 1000,
+						request.finished,
+					)
+				}
+				if error != .None {fmt.eprintf("watch history update failed: %v\n", error)}
+				continue
 			}
 			if request.kind == .Player_Channel {
 				append(
@@ -475,6 +521,28 @@ submit_network :: proc(request: Network_Request) -> bool {
 	free_network_request(&request)
 	return false
 }
+
+// Background reports must not discard foreground navigation or account commands.
+queue_watch_history :: proc(
+	id: string,
+	start, position: f64,
+	account, generation: u32,
+	finished: bool,
+) -> bool {
+	request := Network_Request {
+		kind          = .Watch_History,
+		text          = strings.clone(id),
+		account       = account,
+		playback      = generation,
+		history_start = start,
+		position_ms   = position * 1000,
+		finished      = finished,
+	}
+	if chan.try_send(network_requests, request) {return true}
+	free_network_request(&request)
+	return false
+}
+
 clear_catalog :: proc(keep_channel: bool = false) {
 	clear_player_channel()
 	close_card_menu()

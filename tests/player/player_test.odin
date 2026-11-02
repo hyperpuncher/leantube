@@ -13,7 +13,7 @@ import sdl "vendor:sdl3"
 
 PLAYBACK_BENCH :: #config(PLAYBACK_BENCH, false)
 
-// Only the external LG boundary is replaced. Queues and player code are real.
+// Only the LG and history-request boundaries are replaced. Decoder queues and player code are real.
 Starfish :: struct {}
 Decoder_Status :: struct {
 	loaded, error, playing, ended: i32,
@@ -38,6 +38,14 @@ fake_api: Starfish
 fake_status: Decoder_Status
 fake_open, fake_close, fake_pause, fake_eos: int
 fake_full, fake_close_failure, fake_rate_audio: bool
+signed_in: bool
+account_revision, playback: u32
+fake_history_positions: [dynamic]f64
+
+queue_watch_history :: proc(_: string, _: f64, position: f64, _: u32, _: u32, _: bool) -> bool {
+	append(&fake_history_positions, position)
+	return true
+}
 
 sf_video_limits :: proc(_: cstring, _: ^c.int, _: ^c.int, _: ^c.int) -> bool {return false}
 AcbAPI_setSinkType :: proc(_: c.long, _: c.int) -> bool {return false}
@@ -75,6 +83,7 @@ player_controls_visible :: proc() -> bool {return true}
 prepare_player :: proc(end: f64) {
 	fake_open, fake_close, fake_pause, fake_eos = 0, 0, 0, 0
 	fake_full, fake_close_failure, fake_rate_audio = false, false, false
+	signed_in = false
 	player_api, player_status = nil, nil
 	player_reader = new(reader.Session)
 	for &t in player_reader.tracks {
@@ -96,6 +105,58 @@ prepare_player :: proc(end: f64) {
 		seek_target_ms = -1,
 	}
 	duration_ms = 10000
+}
+
+@(test)
+history_reports_presented_positions_and_does_not_record_paused_seeks :: proc(t: ^testing.T) {
+	prepare_player(4)
+	append(
+		&catalog.videos,
+		model.Video{id = strings.clone("other")},
+		model.Video{id = strings.clone("C5WDBA2i9nE")},
+	)
+	defer model.catalog_destroy(&catalog)
+	signed_in = true
+	account_revision = 1
+	player_history = {
+		id                = strings.clone("C5WDBA2i9nE"),
+		account           = 1,
+		playback          = 2,
+		position          = -1,
+		reported_position = -1,
+	}
+	defer {stop_playback(); signed_in = false; account_revision = 0; delete(fake_history_positions)
+		fake_history_positions = nil}
+	poll_player()
+	testing.expect_value(t, len(fake_history_positions), 0)
+	sync.atomic_store(&fake_status.frame_ns, 1_000_000_000)
+	poll_player()
+	testing.expect_value(t, len(fake_history_positions), 1)
+	testing.expect_value(t, fake_history_positions[0], f64(1))
+	_ = player_pause(true)
+	sync.atomic_store(&fake_status.frame_ns, 2_000_000_000)
+	poll_player()
+	testing.expect_value(t, len(fake_history_positions), 1)
+	_ = player_pause(false)
+	sync.atomic_store(&fake_status.frame_ns, 2_500_000_000)
+	poll_player()
+	testing.expect(
+		t,
+		len(fake_history_positions) == 1,
+		"continuous playback must not queue more reports",
+	)
+	_ = player_pause(true)
+	testing.expect_value(t, len(fake_history_positions), 2)
+	testing.expect_value(t, fake_history_positions[1], f64(2.5))
+	_ = player_seek(3000)
+	stop_playback()
+	testing.expect(
+		t,
+		len(fake_history_positions) == 2,
+		"a paused seek must not report an unwatched position",
+	)
+	testing.expect_value(t, catalog.videos[0].watched_percent, f32(0))
+	testing.expect_value(t, catalog.videos[1].watched_percent, f32(25))
 }
 
 @(test)
