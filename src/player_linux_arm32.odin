@@ -359,6 +359,7 @@ poll_player :: proc() {
 		}
 		next := max(player_clock, f64(frame) / 1e9)
 		if next != player_clock || !loaded {
+			if player_controls_visible() {dirty = true}
 			if next != player_clock {
 				player_progress_at = now
 				if !paused && !player_buffering {
@@ -370,7 +371,6 @@ poll_player :: proc() {
 			timeline.position_ms = next * 1000
 			if timeline.seek_target_ms >= 0 {model.seek_done(&timeline)}
 			loaded = !player_buffering
-			dirty = true
 		}
 		sync.atomic_store(&s.state.position, player_clock)
 		for &t in s.tracks {sync.mutex_lock(&t.mutex); sync.cond_signal(&t.changed); sync.mutex_unlock(&t.mutex)}

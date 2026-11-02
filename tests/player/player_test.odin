@@ -37,7 +37,7 @@ sponsor_segments: [dynamic]sb.Segment
 fake_api: Starfish
 fake_status: Decoder_Status
 fake_open, fake_close, fake_pause, fake_eos: int
-fake_full, fake_close_failure, fake_rate_audio: bool
+fake_full, fake_close_failure, fake_rate_audio, fake_controls_visible: bool
 signed_in: bool
 account_revision, playback: u32
 fake_history_positions: [dynamic]f64
@@ -78,11 +78,12 @@ decoder_feed :: proc(_: ^Starfish, t: ^reader.Track, limit: f64) -> bool {
 	return true
 }
 resolve_selected :: proc() {}
-player_controls_visible :: proc() -> bool {return true}
+player_controls_visible :: proc() -> bool {return paused || !loaded || fake_controls_visible}
 
 prepare_player :: proc(end: f64) {
 	fake_open, fake_close, fake_pause, fake_eos = 0, 0, 0, 0
 	fake_full, fake_close_failure, fake_rate_audio = false, false, false
+	fake_controls_visible = true
 	signed_in = false
 	player_api, player_status = nil, nil
 	player_reader = new(reader.Session)
@@ -170,8 +171,15 @@ startup_waits_for_three_seconds_and_eos_waits_for_native_completion :: proc(t: ^
 	poll_player()
 	testing.expect_value(t, fake_open, 1)
 	testing.expect_value(t, fake_eos, 0)
+	fake_controls_visible, dirty = false, false
 	sync.atomic_store(&fake_status.frame_ns, 3_100_000_000)
 	poll_player(); poll_player()
+	testing.expect(t, loaded && dirty, "the first displayed frame must remove the loading UI")
+	dirty = false
+	sync.atomic_store(&fake_status.frame_ns, 3_150_000_000)
+	poll_player()
+	testing.expect_value(t, player_clock, f64(3.15))
+	testing.expect(t, !dirty, "playback must advance without redrawing hidden controls")
 	testing.expect_value(t, fake_eos, 1)
 	testing.expect(t, !return_to_grid)
 	poll_player()
