@@ -45,7 +45,7 @@ label :: proc(
 
 loading_active :: proc() -> bool {
 	if login_screen {return login_waiting || login_next_poll > 0}
-	return browsing ? search_loading || card_menu_waiting : !loaded
+	return browsing ? (search_loading && len(catalog.videos) == 0) || card_menu_waiting : !loaded
 }
 
 // Preview screenshots can use white, so a fade has no dark video behind it.

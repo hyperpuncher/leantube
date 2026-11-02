@@ -465,6 +465,7 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 			}
 			request, ready := chan.try_recv(network_requests)
 			assert(ready && request.kind == .Browse && request.continuation == "next-page")
+			assert(!loading_active(), "background pagination must not animate an unchanged grid")
 			free_network_request(&request)
 			assert(selected / grid_columns < (len(catalog.videos) - 1) / grid_columns)
 			before := clay.GetScrollContainerData(clay.ID("library-scroll")).scrollPosition^[1]
@@ -709,6 +710,7 @@ check_search_flow :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	for state in 0 ..< 3 {
 		key(sdl.K_RETURN)
 		assert(search_loading && !search_editing && len(catalog.videos) == 0)
+		assert(loading_active(), "initial loading must still animate its spinner")
 		if state == 0 {snapshot(renderer, surface, "search-loading")}
 		request, ready := chan.try_recv(network_requests)
 		assert(ready && request.text == "Linus Tech Tips")
