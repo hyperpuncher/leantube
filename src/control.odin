@@ -81,6 +81,8 @@ apply_control :: proc(window: ^sdl.Window = nil) {
 		clear_catalog()
 		id := string(command.video_id[:])
 		append(&catalog.videos, model.Video{id = strings.clone(id), title = strings.clone(id)})
+		resize(&textures, 1)
+		resize(&card_avatars, 1)
 		selected = 0
 		resolve_selected(command.position_ms, command.paused)
 	case .Seek:
