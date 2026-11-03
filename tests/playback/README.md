@@ -43,7 +43,7 @@ LEANTUBE_READER_RCVBUF=524288 just bench-decoder PLAYER.json RESULT.jsonl curl-h
 
 this optional test uses the shared Odin reader and bounded packet queues. FFmpeg adds ADTS framing to the original AAC access units; it does not re-encode them. the small upstream C interface calls the installed LG decoder library. the player, packet ownership, clocks, control, and seek handling are Odin code.
 
-the test opens its own native Wayland window. it runs explicitly through SSH, not through the normal app launcher. Back or SIGTERM closes it. Space and the media Play/Pause keys control pause. a seek keeps the FFmpeg inputs open, clears both packet queues, retains video keyframe pre-roll, and recreates the native decoder session. native unload completion is required before another decoder session starts.
+the test opens its own native Wayland window. it runs explicitly through SSH, not through the normal app launcher. Back or SIGTERM closes it. Space and the media Play/Pause keys control pause. a seek keeps the FFmpeg inputs and native decoder open, clears both packet queues, retains video keyframe pre-roll, and asks the native seek API to retain the last rendered frame. native unload completion is required before another video starts.
 
 startup and rebuffering use the same 3-second threshold. packet queues keep the 20-second limit. the native pipeline also has app-source limits of 8 MiB for video and 1 MiB for audio. decoder buffers and GPU memory are additional. peak RSS is not the total playback memory use.
 

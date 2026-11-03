@@ -25,7 +25,9 @@ the app uses `curl-auto`: libcurl prefers HTTP/3 with its normal connection fall
 
 explicit diagnostic controls are `ffmpeg`, `curl-reuse` for HTTP/1.1, `curl-h3` for HTTP/3 only, and `curl-auto` for the app behavior. strict HTTP/3 diagnostics do not switch protocols.
 
-with decoder pre-roll enabled, the reader accepts H.264, HEVC, VP9, or AV1 video and AAC-LC audio. it retains video packets needed after a seek and resets framing so a new decoder gets the required parameter sets. the app selects formats within the installed decoder capability limits. AV1 was reported unavailable on the tested B9.
+with decoder pre-roll enabled, the reader accepts H.264, HEVC, VP9, or AV1 video and AAC-LC audio. it retains video packets needed after a seek and resets framing so the decoder receives the required parameter sets again. the app selects formats within the installed decoder capability limits. AV1 was reported unavailable on the tested B9.
+
+seeks pause and retarget the existing native decoder with `retainLastRenderedFrame`. the display window, last picture, and decoder stay alive. only stopping or changing the video unloads the pipeline.
 
 the normal app uses this reader and native decoder through managed app startup. it does not write HLS playlists or run a local media server. playback at 1× has displayed 4K SDR and 4K60 PQ HDR on the TV, with user confirmation of video and audio. pause, resume, and forward/backward seeks have also been checked.
 

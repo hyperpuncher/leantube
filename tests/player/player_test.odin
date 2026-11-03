@@ -6,6 +6,7 @@ import sb "../../src/sponsorblock"
 import yt "../../src/youtube"
 import "core:c"
 import queue "core:container/queue"
+import "core:encoding/json"
 import "core:strings"
 import "core:sync"
 import "core:testing"
@@ -16,8 +17,8 @@ PLAYBACK_BENCH :: #config(PLAYBACK_BENCH, false)
 // Only the LG and history-request boundaries are replaced. Decoder queues and player code are real.
 Starfish :: struct {}
 Decoder_Status :: struct {
-	loaded, error, playing, ended: i32,
-	frame_ns:                      i64,
+	loaded, error, playing, ended, resetting: i32,
+	frame_ns:                                 i64,
 }
 App_State :: enum {
 	Foreground,
@@ -37,7 +38,8 @@ sponsor_segments: [dynamic]sb.Segment
 fake_api: Starfish
 fake_status: Decoder_Status
 fake_open, fake_close, fake_pause, fake_eos: int
-fake_full, fake_close_failure, fake_rate_audio, fake_controls_visible: bool
+fake_full, fake_seek_failure, fake_rate_audio, fake_controls_visible: bool
+fake_target_ms: i64
 signed_in: bool
 account_revision, playback: u32
 fake_history_positions: [dynamic]f64
@@ -66,9 +68,16 @@ decoder_open :: proc(_: ^reader.Track, _: ^reader.Track, _: f64) -> (^Starfish, 
 	}
 	return &fake_api, &fake_status
 }
-decoder_close :: proc(_: ^Starfish, _: ^Decoder_Status) -> bool {fake_close += 1; return(
-		!fake_close_failure \
-	)}
+decoder_close :: proc(_: ^Starfish, _: ^Decoder_Status) -> bool {fake_close += 1; return true}
+sf_seek :: proc(_: ^Starfish, body: cstring) -> bool {
+	value: struct {
+		position:                i64,
+		retainLastRenderedFrame: bool,
+	}
+	if json.unmarshal(transmute([]u8)string(body), &value) != nil {return false}
+	fake_target_ms = value.position
+	return value.retainLastRenderedFrame && !fake_seek_failure
+}
 decoder_feed :: proc(_: ^Starfish, t: ^reader.Track, limit: f64) -> bool {
 	if fake_full {return true}
 	for reader.current_packet(t) && queue.front(&t.packets).pts <= limit {
@@ -82,7 +91,7 @@ player_controls_visible :: proc() -> bool {return paused || !loaded || fake_cont
 
 prepare_player :: proc(end: f64) {
 	fake_open, fake_close, fake_pause, fake_eos = 0, 0, 0, 0
-	fake_full, fake_close_failure, fake_rate_audio = false, false, false
+	fake_full, fake_seek_failure, fake_rate_audio = false, false, false
 	fake_controls_visible = true
 	signed_in = false
 	player_api, player_status = nil, nil
@@ -190,22 +199,37 @@ startup_waits_for_three_seconds_and_eos_waits_for_native_completion :: proc(t: ^
 }
 
 @(test)
-controls_preserve_pause_audio_rate_and_seek_generation :: proc(t: ^testing.T) {
+controls_preserve_pause_audio_and_retarget_the_existing_decoder :: proc(t: ^testing.T) {
 	prepare_player(4)
 	defer stop_playback()
 	poll_player()
 	testing.expect(t, player_pause(true) && paused)
 	testing.expect_value(t, fake_pause, 1)
-	testing.expect(t, player_rate(1.5) && fake_rate_audio)
+	rate = 1.5
+	testing.expect(t, player_rate(rate) && fake_rate_audio)
 	loaded = true
 	testing.expect(t, player_seek(2000))
-	testing.expect(t, paused && !loaded && player_api == nil)
-	testing.expect_value(t, fake_close, 1)
-	testing.expect_value(t, sync.atomic_load(&player_reader.state.generation), u32(1))
-	testing.expect_value(t, sync.atomic_load(&player_reader.state.seek_target), f64(2))
+	testing.expect(t, paused && !loaded)
 	for &track in player_reader.tracks {testing.expect_value(t, queue.len(track.packets), 0)}
 	testing.expect(t, seek_to(3000) && seek_to(4000))
 	testing.expect_value(t, timeline.seek_target_ms, f64(4000))
+	testing.expect_value(t, fake_target_ms, i64(4000))
+	for &track in player_reader.tracks {
+		track.end = 7
+		queue.push_back(
+			&track.packets,
+			{
+				packet = reader.av_packet_alloc(),
+				pts = 4,
+				end = 7,
+				generation = sync.atomic_load(&player_reader.state.generation),
+			},
+		)
+	}
+	poll_player()
+	testing.expect(t, loaded && paused, "a seek must finish without resuming paused playback")
+	testing.expect_value(t, fake_open, 1)
+	testing.expect_value(t, fake_close, 0)
 }
 
 @(test)
@@ -224,15 +248,16 @@ seek_to_end_and_exhausted_seek_tail_do_not_wait_for_packets :: proc(t: ^testing.
 }
 
 @(test)
-failed_unload_prevents_a_second_decoder :: proc(t: ^testing.T) {
+failed_seek_does_not_reload_the_decoder :: proc(t: ^testing.T) {
 	prepare_player(4)
 	defer stop_playback()
 	poll_player()
-	fake_close_failure = true
+	fake_seek_failure = true
 	loaded = true
 	testing.expect(t, !player_seek(2000))
 	poll_player()
 	testing.expect_value(t, fake_open, 1)
+	testing.expect_value(t, fake_close, 0)
 	testing.expect(t, return_to_grid)
 }
 

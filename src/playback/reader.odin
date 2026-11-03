@@ -243,7 +243,7 @@ read_track :: proc(worker: ^thread.Thread) {
 				if h.cancel.generation != sync.atomic_load(&s.generation) {result = 0; continue}
 				break
 			}
-			// A new decoder needs the parameter sets again after a seek.
+			// A decoder flush needs the parameter sets again after a seek.
 			if mux != nil {
 				avformat_free_context(mux)
 				mux = framing_muxer(format.streams[index].codecpar, framing)

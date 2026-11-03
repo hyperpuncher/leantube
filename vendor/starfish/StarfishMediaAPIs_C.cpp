@@ -15,6 +15,8 @@ extern "C" bool
 _ZN17StarfishMediaAPIs18getAudioBufferSizeERiS0_(StarfishMediaAPIs *api, int *total, int *used) __attribute__((weak));
 extern "C" bool
 _ZN17StarfishMediaAPIs11SetPlayRateEPKc(StarfishMediaAPIs *api, const char *message) __attribute__((weak));
+extern "C" bool
+_ZN17StarfishMediaAPIs4SeekEPKc(StarfishMediaAPIs *api, const char *message) __attribute__((weak));
 #pragma clang diagnostic pop
 
 extern "C" {
@@ -63,6 +65,11 @@ bool StarfishMediaAPIs_play(StarfishMediaAPIs_C *api) {
 bool StarfishMediaAPIs_setPlayRate(StarfishMediaAPIs_C *api, const char *message) {
     if (_ZN17StarfishMediaAPIs11SetPlayRateEPKc == nullptr) return false;
     return _ZN17StarfishMediaAPIs11SetPlayRateEPKc(&api->inner, message);
+}
+
+bool StarfishMediaAPIs_seek(StarfishMediaAPIs_C *api, const char *message) {
+    return _ZN17StarfishMediaAPIs4SeekEPKc != nullptr &&
+           _ZN17StarfishMediaAPIs4SeekEPKc(&api->inner, message);
 }
 
 bool StarfishMediaAPIs_videoLimits(const char *codec, int32_t *width, int32_t *height, int32_t *fps) {

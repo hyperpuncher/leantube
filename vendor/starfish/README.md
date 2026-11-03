@@ -4,7 +4,9 @@ source: https://github.com/mariotaku/ss4s
 
 revision: `dfba721b85420ccabf91dac65be73984bf1865f9`
 
-the C interface is copied from the upstream SMP wrapper. LeanTube adds small calls for playback rate and installed video capability limits. optional LG functions use weak references and return false when unavailable. no playback logic is added to C++.
+the C interface is copied from the upstream SMP wrapper. LeanTube adds small calls for native seeks, playback rate, and installed video capability limits. optional LG functions use weak references and return false when unavailable. no playback logic is added to C++.
+
+the [LeanTube API notes](../../docs/starfish.md) describe the boundary, verified request options, and where to find the broader SDK interface. declared or exported methods are not necessarily usable in every pipeline.
 
 license: LGPL-3.0. the license is in `LICENSE.txt`. the package also includes the GNU GPL version 3 text.
 

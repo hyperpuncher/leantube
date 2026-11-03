@@ -11,6 +11,18 @@ import "core:time"
 
 // The C++ type stays opaque. Only the upstream C interface crosses this boundary.
 Starfish :: struct {}
+// Events handled by LeanTube. Other native events are ignored.
+Starfish_Event :: enum c.int {
+	Frame_Ready   = 0x00, // value is a presentation timestamp in nanoseconds.
+	Error         = 0x12,
+	Error_Text    = 0x13,
+	Loaded        = 0x16,
+	Unloaded      = 0x17,
+	Playing       = 0x1a,
+	Paused        = 0x1b,
+	End_Of_Stream = 0x1c,
+	Dropped_Frame = 0x30,
+}
 Starfish_Callback :: #type proc "c" (kind: c.int, value: i64, text: cstring, user: rawptr)
 foreign import starfish "system:playerAPIs_C"
 foreign starfish {
@@ -22,6 +34,7 @@ foreign starfish {
 	sf_media_id :: proc(_: ^Starfish) -> cstring ---
 	@(link_name = "StarfishMediaAPIs_load")
 	sf_load :: proc(_: ^Starfish, _: cstring, _: Starfish_Callback, _: rawptr) -> bool ---
+	// The bool reports adapter success; reply text reports native acceptance.
 	@(link_name = "StarfishMediaAPIs_feed")
 	sf_feed :: proc(_: ^Starfish, _: cstring, _: [^]u8, _: c.size_t) -> bool ---
 	@(link_name = "StarfishMediaAPIs_notifyForeground")
@@ -32,37 +45,45 @@ foreign starfish {
 	sf_pause :: proc(_: ^Starfish) -> bool ---
 	@(link_name = "StarfishMediaAPIs_pushEOS")
 	sf_eos :: proc(_: ^Starfish) -> bool ---
+	// JSON: playRate is a multiplier; audioOutput:true keeps audio enabled.
 	@(link_name = "StarfishMediaAPIs_setPlayRate")
 	sf_rate :: proc(_: ^Starfish, _: cstring) -> bool ---
+	// JSON: position is in milliseconds; retainLastRenderedFrame:true keeps the picture.
+	@(link_name = "StarfishMediaAPIs_seek")
+	sf_seek :: proc(_: ^Starfish, _: cstring) -> bool ---
 	@(link_name = "StarfishMediaAPIs_videoLimits")
 	sf_video_limits :: proc(_: cstring, _: ^c.int, _: ^c.int, _: ^c.int) -> bool ---
 	@(link_name = "StarfishMediaAPIs_unload")
 	sf_unload :: proc(_: ^Starfish) -> bool ---
 }
 Decoder_Status :: struct {
-	loaded, unloaded, error, playing, ended: i32,
-	presentation_updates, dropped, frame_ns: i64,
+	loaded, unloaded, error, playing, ended, resetting: i32,
+	presentation_updates, dropped, frame_ns:            i64,
 }
 decoder_callback :: proc "c" (kind: c.int, value: i64, text: cstring, user: rawptr) {
 	context = runtime.default_context()
 	s := cast(^Decoder_Status)user
+	event := Starfish_Event(kind)
+	// Ignore old pictures and EOS while the native input is being flushed.
+	if (event == .Frame_Ready || event == .End_Of_Stream) &&
+	   sync.atomic_load(&s.resetting) != 0 {return}
 	// Never log event strings, load requests, or packet pointers.
-	switch kind {
-	case 0:
+	#partial switch event {
+	case .Frame_Ready:
 		sync.atomic_store(&s.frame_ns, value); sync.atomic_add(&s.presentation_updates, 1)
-	case 0x12, 0x13:
+	case .Error, .Error_Text:
 		sync.atomic_store(&s.error, i32(value == 0 ? -1 : value))
-	case 0x16:
+	case .Loaded:
 		sync.atomic_store(&s.loaded, 1)
-	case 0x17:
+	case .Unloaded:
 		sync.atomic_store(&s.unloaded, 1)
-	case 0x1a:
+	case .Playing:
 		sync.atomic_store(&s.playing, 1)
-	case 0x1b:
+	case .Paused:
 		sync.atomic_store(&s.playing, 0)
-	case 0x1c:
+	case .End_Of_Stream:
 		sync.atomic_store(&s.ended, 1)
-	case 0x30:
+	case .Dropped_Frame:
 		sync.atomic_add(&s.dropped, 1)
 	}
 }
@@ -80,7 +101,7 @@ decoder_close :: proc(api: ^Starfish, status: ^Decoder_Status) -> bool {
 		complete,
 	)
 	release_display()
-	// A missing completion is fatal to this diagnostic. Keep callback storage
+	// A missing completion is fatal. Keep callback storage
 	// live until process exit rather than reuse a possibly live native session.
 	if !complete {running = false; return false}
 	sf_destroy(api)
@@ -121,10 +142,11 @@ decoder_open :: proc(
 		true,
 	) {release_display(); sf_destroy(api); free(status); return nil, nil}
 	sf_foreground(api)
+	// Explicit seeks must keep the selected playback rate.
 	// We own packet input and seeks. Use seamless client-side rate changes,
 	// not a pipeline seek that flushes the packets already supplied to appsrc.
 	body := fmt.caprintf(
-		`{{"args":[{{"mediaTransportType":"BUFFERSTREAM","option":{{"appId":"%s","queryPosition":false,"transmission":{{"trickType":"client-side"}},"externalStreamingInfo":{{"contents":{{"format":"RAW","provider":"Chrome","codec":{{"video":"%s","audio":"AAC"}},"esInfo":{{"pauseAtDecodeTime":false,"seperatedPTS":true,"ptsToDecode":%d,"videoWidth":%d,"videoHeight":%d,"videoFpsValue":%d,"videoFpsScale":%d}},"aacInfo":{{"channels":%d,"format":"adts","frequency":%.3f,"profile":2}}}},"restartStreaming":false,"totalStreamSize":256,"bufferingCtrInfo":{{"preBufferByte":0,"bufferMinLevel":0,"bufferMaxLevel":0,"qBufferLevelAudio":0,"qBufferLevelVideo":0,"srcBufferLevelAudio":{{"minimum":1024,"maximum":1048576}},"srcBufferLevelVideo":{{"minimum":1024,"maximum":8388608}}}}}},"adaptiveStreaming":{{"audioOnly":false,"maxWidth":%d,"maxHeight":%d,"maxFrameRate":%.6f}}}}}}]}}`,
+		`{{"args":[{{"mediaTransportType":"BUFFERSTREAM","option":{{"appId":"%s","queryPosition":false,"seekMode":"keep-rate","transmission":{{"trickType":"client-side"}},"externalStreamingInfo":{{"contents":{{"format":"RAW","provider":"Chrome","codec":{{"video":"%s","audio":"AAC"}},"esInfo":{{"pauseAtDecodeTime":false,"seperatedPTS":true,"ptsToDecode":%d,"videoWidth":%d,"videoHeight":%d,"videoFpsValue":%d,"videoFpsScale":%d}},"aacInfo":{{"channels":%d,"format":"adts","frequency":%.3f,"profile":2}}}},"restartStreaming":false,"totalStreamSize":256,"bufferingCtrInfo":{{"preBufferByte":0,"bufferMinLevel":0,"bufferMaxLevel":0,"qBufferLevelAudio":0,"qBufferLevelVideo":0,"srcBufferLevelAudio":{{"minimum":1024,"maximum":1048576}},"srcBufferLevelVideo":{{"minimum":1024,"maximum":8388608}}}}}},"adaptiveStreaming":{{"audioOnly":false,"maxWidth":%d,"maxHeight":%d,"maxFrameRate":%.6f}}}}}}]}}`,
 		APP_ID,
 		native_video_codec(v.codec),
 		i64(target * 1e9),

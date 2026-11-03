@@ -52,8 +52,8 @@ player_clock, player_applied_rate: f64
 player_last_play, player_progress_at: u64
 when PLAYBACK_BENCH {player_report_at: u64}
 Player_Transition :: struct {
-	started_ms, unload_ms, loaded_ms, presentation_ms: u64,
-	queue_kept:                                        bool,
+	started_ms, loaded_ms, presentation_ms: u64,
+	queue_kept:                             bool,
 }
 player_transition: Player_Transition
 
@@ -210,12 +210,19 @@ player_seek :: proc(target: f64) -> bool {
 	player_transition = {
 		started_ms = sdl.GetTicks(),
 	}
-	if player_api != nil && !decoder_close(player_api, player_status) {
-		player_api, player_status = nil, nil
-		player_failed(); return false
+	if player_api != nil {
+		// Keep the decoder, display window, last picture, and playback rate.
+		status := player_status
+		sync.atomic_store(&status.resetting, 1)
+		body := fmt.caprintf(`{{"position":%d,"retainLastRenderedFrame":true}}`, i64(target))
+		retargeted := sf_pause(player_api) && sf_seek(player_api, body)
+		delete(body)
+		sync.atomic_store(&status.frame_ns, -1)
+		sync.atomic_store(&status.ended, 0)
+		sync.atomic_store(&status.playing, 0)
+		sync.atomic_store(&status.resetting, 0)
+		if !retargeted {player_failed("seek"); return false}
 	}
-	player_transition.unload_ms = sdl.GetTicks() - player_transition.started_ms
-	player_api, player_status = nil, nil
 	player_clock = target / 1000
 	player_history.start, player_history.position = player_clock, -1
 	generation := sync.atomic_load(&player_reader.state.generation)
@@ -231,9 +238,9 @@ player_seek :: proc(target: f64) -> bool {
 		reader.ahead(a, player_clock),
 	)
 	sync.mutex_unlock(&a.mutex); sync.mutex_unlock(&v.mutex)
-	player_bound, player_buffering, player_eos = false, false, false
+	player_buffering, player_eos = player_api != nil, false
 	loaded = false
-	player_applied_rate = 1
+	player_last_play = 0
 	player_progress_at = sdl.GetTicks()
 	return true
 }
@@ -279,7 +286,8 @@ poll_player :: proc() {
 		if !paused {finish_sponsor_span()}
 		return
 	}
-	if player_api == nil && no_tail {
+	if no_tail &&
+	   (player_api == nil || (player_buffering && sync.atomic_load(&player_status.frame_ns) < 0)) {
 		if player_clock > 0 {return_to_grid = true} else {player_failed()}
 		return
 	}
@@ -290,7 +298,7 @@ poll_player :: proc() {
 		stream_width, stream_height = int(v.width), int(v.height)
 	}
 	if player_api == nil {
-		if sdl.GetTicks() - player_progress_at > 45000 {player_failed()}
+		if sdl.GetTicks() - player_progress_at > 45000 {player_failed("startup")}
 		return
 	}
 	status := player_status
@@ -393,5 +401,5 @@ poll_player :: proc() {
 		return
 	}
 	if paused {player_progress_at = now}
-	if now - player_progress_at > 45000 {player_failed()}
+	if now - player_progress_at > 45000 {player_failed("progress")}
 }
