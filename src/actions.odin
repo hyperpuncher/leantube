@@ -52,7 +52,7 @@ key :: proc(code: sdl.Keycode, window: ^sdl.Window = nil) {
 		switch code {
 		case sdl.K_ESCAPE, sdl.K_AC_BACK:
 			if rail_active == .Playlists && strings.has_prefix(browse_id, "VL") {
-				start_browse(NAV_BROWSE_IDS[.Playlists])
+				start_browse(NAV_ITEMS[.Playlists].browse_id)
 			}
 		case sdl.K_RETURN, sdl.K_SPACE, sdl.K_KP_ENTER:
 			open_selected()

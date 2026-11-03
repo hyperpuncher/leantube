@@ -333,8 +333,36 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	key(sdl.K_LEFT)
 	assert(rail_focus && selected == 0)
 	snapshot(renderer, surface, "rail-focused")
+	assert(clay.GetElementData(clay.ID("navigation-tooltip", u32(Navigation.Search))).found)
+	grid_before_tooltip := clay.GetElementData(clay.ID("video", 0)).boundingBox
+	rail_cursor = .History
+	snapshot(renderer, surface, "rail-history")
+	history := clay.GetElementData(clay.ID("navigation-item", u32(Navigation.History))).boundingBox
+	tooltip := clay.GetElementData(clay.ID("navigation-tooltip", u32(Navigation.History)))
+	assert(tooltip.found && tooltip.boundingBox.x > history.x + history.width)
+	assert(clay.GetElementData(clay.ID("video", 0)).boundingBox == grid_before_tooltip)
+	assert(
+		sdl.ReadSurfacePixel(
+			surface,
+			i32(tooltip.boundingBox.x + scaled(4)),
+			i32(history.y + history.height / 2),
+			&red,
+			nil,
+			nil,
+			nil,
+		),
+	)
+	assert(red == u8(COLOR_HOVER[0]), "the tooltip must draw above the library")
 	key(sdl.K_RIGHT)
 	assert(!rail_focus && selected == 0)
+	assert(render(renderer))
+	assert(!clay.GetElementData(clay.ID("navigation-tooltip", u32(Navigation.History))).found)
+	clay.SetPointerState({history.x + history.width / 2, history.y + history.height / 2}, false)
+	snapshot(renderer, surface, "rail-history-hover")
+	assert(clay.GetElementData(clay.ID("navigation-tooltip", u32(Navigation.History))).found)
+	clay.SetPointerState({-1, -1}, false)
+	assert(render(renderer))
+	assert(!clay.GetElementData(clay.ID("navigation-tooltip", u32(Navigation.History))).found)
 	check_cover_fill(renderer, surface)
 	assert(render(renderer))
 	first := clay.GetElementData(clay.ID("video", 0)).boundingBox
@@ -743,4 +771,29 @@ check_search_flow :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 		assert(len(catalog.videos) == (state == 2 ? 1 : 0))
 		if state < 2 {key(sdl.K_TAB)}
 	}
+	// History uses the same authenticated browse and continuation path as other feeds.
+	saved_signed_in := signed_in
+	defer {signed_in = saved_signed_in}
+	signed_in = true
+	activate_navigation(.History)
+	history_request, history_ready := chan.try_recv(network_requests)
+	assert(history_ready && history_request.kind == .Browse && history_request.text == "FEhistory")
+	free_network_request(&history_request)
+	chan.send(
+		network_results,
+		Network_Result {
+			kind = .Catalog,
+			page = page,
+			catalog = {continuation = strings.clone("history-next-page")},
+		},
+	)
+	poll_network(renderer)
+	load_more()
+	history_request, history_ready = chan.try_recv(network_requests)
+	assert(
+		history_ready &&
+		history_request.text == "FEhistory" &&
+		history_request.continuation == "history-next-page",
+	)
+	free_network_request(&history_request)
 }

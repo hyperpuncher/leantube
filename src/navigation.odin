@@ -8,27 +8,23 @@ Navigation :: enum {
 	Search,
 	Subscriptions,
 	Watch_Later,
+	History,
 	Home,
 	Playlists,
 	Liked,
 }
-NAV_ICONS := [Navigation]Icon {
-	.Account       = .Account,
-	.Search        = .Search,
-	.Subscriptions = .Subscriptions,
-	.Watch_Later   = .Watch_Later,
-	.Home          = .Home,
-	.Playlists     = .Playlists,
-	.Liked         = .Liked,
-}
-NAV_BROWSE_IDS := [Navigation]string {
-	.Account       = "",
-	.Search        = "",
-	.Home          = "FEwhat_to_watch",
-	.Subscriptions = "FEsubscriptions",
-	.Playlists     = "FEplaylist_aggregation",
-	.Liked         = "VLLL",
-	.Watch_Later   = "VLWL",
+NAV_ITEMS := [Navigation]struct {
+	icon:             Icon,
+	label, browse_id: string,
+} {
+	.Account       = {.Account, "Account", ""},
+	.Search        = {.Search, "Search", ""},
+	.Subscriptions = {.Subscriptions, "Subscriptions", "FEsubscriptions"},
+	.Watch_Later   = {.Watch_Later, "Watch later", "VLWL"},
+	.History       = {.History, "History", "FEhistory"},
+	.Home          = {.Home, "Home", "FEwhat_to_watch"},
+	.Playlists     = {.Playlists, "Playlists", "FEplaylist_aggregation"},
+	.Liked         = {.Liked, "Liked videos", "VLLL"},
 }
 browse_id: string
 rail_focus: bool
@@ -41,7 +37,7 @@ reload_feed :: proc() {
 	} else if rail_active == .Search {
 		if catalog.query != "" {start_search(catalog.query)} else {start_search()}
 	} else {
-		start_browse(NAV_BROWSE_IDS[rail_active])
+		start_browse(NAV_ITEMS[rail_active].browse_id)
 	}
 }
 
@@ -56,12 +52,12 @@ activate_navigation :: proc(item: Navigation, window: ^sdl.Window = nil) {
 		} else {start_login()}
 	case .Search:
 		edit_search(window)
-	case .Subscriptions, .Watch_Later, .Home, .Playlists, .Liked:
+	case .Subscriptions, .Watch_Later, .History, .Home, .Playlists, .Liked:
 		if search_editing {finish_search_input(window)}
 		if !signed_in {start_login(); return}
 		rail_active = item
 		clear_browse_history()
-		start_browse(NAV_BROWSE_IDS[item], remember = false)
+		start_browse(NAV_ITEMS[item].browse_id, remember = false)
 	}
 	dirty = true
 }
@@ -97,13 +93,19 @@ navigation_key :: proc(code: sdl.Keycode, window: ^sdl.Window) -> bool {
 }
 
 navigation_layout :: proc() {
+	// Keep full-size icons; reduce only the gaps on shorter screens.
+	gap := clamp(
+		(view_height - scaled(64 + 72 * len(NAV_ITEMS))) / f32(len(NAV_ITEMS) - 1),
+		0,
+		scaled(20),
+	)
 	if clay.UI(clay.ID("navigation"))(
 	{
 		layout = {
 			sizing = {width = clay.SizingFixed(scaled(128)), height = clay.SizingGrow({})},
 			layoutDirection = .TopToBottom,
 			padding = padding(24, 24, 32, 32),
-			childGap = spacing(20),
+			childGap = u16(gap),
 			childAlignment = {x = .Center},
 		},
 		backgroundColor = COLOR_BACKGROUND,
@@ -137,7 +139,24 @@ navigation_layout :: proc() {
 					cornerRadius = clay.CornerRadiusAll(scaled(33)),
 				},
 				) {
-					if item == .Account {account_button(true)} else {icon(NAV_ICONS[item], 32)}
+					if item ==
+					   .Account {account_button(true)} else {icon(NAV_ITEMS[item].icon, 32)}
+				}
+				if (focused || hover) && !account_menu && !card_menu {
+					if clay.UI(clay.ID("navigation-tooltip", u32(item)))(
+					{
+						layout = {padding = padding(16, 16, 8, 8)},
+						backgroundColor = COLOR_HOVER,
+						cornerRadius = clay.CornerRadiusAll(scaled(8)),
+						floating = {
+							attachTo = .Parent,
+							attachment = {element = .LeftCenter, parent = .RightCenter},
+							offset = {scaled(16), 0},
+							zIndex = 5,
+							pointerCaptureMode = .Passthrough,
+						},
+					},
+					) {label(NAV_ITEMS[item].label, .Small)}
 				}
 			}
 		}
