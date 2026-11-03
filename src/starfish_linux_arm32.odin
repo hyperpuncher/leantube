@@ -4,6 +4,7 @@ import reader "./playback"
 import "base:runtime"
 import "core:c"
 import queue "core:container/queue"
+import "core:encoding/json"
 import "core:fmt"
 import "core:strings"
 import "core:sync"
@@ -117,6 +118,25 @@ decoder_open :: proc(
 ) {
 	config, valid := reader.aac_config(a.audio_config)
 	if !a.audio_config_valid || !valid {return}
+	request := starfish_load_request(
+		{
+			app_id = APP_ID,
+			video_codec = string(native_video_codec(v.codec)),
+			width = v.width,
+			height = v.height,
+			fps_value = v.frame_rate.num,
+			fps_scale = v.frame_rate.den,
+			fps = v.fps,
+			target_seconds = target,
+			audio_rate = config.rate,
+			audio_channels = config.channels,
+		},
+	)
+	data, err := json.marshal(request)
+	if err != nil {return}
+	defer delete(data)
+	body := strings.clone_to_cstring(string(data))
+	defer delete(body)
 	api = sf_create(nil)
 	if api == nil {return}
 	status = new(Decoder_Status)
@@ -142,25 +162,6 @@ decoder_open :: proc(
 		true,
 	) {release_display(); sf_destroy(api); free(status); return nil, nil}
 	sf_foreground(api)
-	// Explicit seeks must keep the selected playback rate.
-	// We own packet input and seeks. Use seamless client-side rate changes,
-	// not a pipeline seek that flushes the packets already supplied to appsrc.
-	body := fmt.caprintf(
-		`{{"args":[{{"mediaTransportType":"BUFFERSTREAM","option":{{"appId":"%s","queryPosition":false,"seekMode":"keep-rate","transmission":{{"trickType":"client-side"}},"externalStreamingInfo":{{"contents":{{"format":"RAW","provider":"Chrome","codec":{{"video":"%s","audio":"AAC"}},"esInfo":{{"pauseAtDecodeTime":false,"seperatedPTS":true,"ptsToDecode":%d,"videoWidth":%d,"videoHeight":%d,"videoFpsValue":%d,"videoFpsScale":%d}},"aacInfo":{{"channels":%d,"format":"adts","frequency":%.3f,"profile":2}}}},"restartStreaming":false,"totalStreamSize":256,"bufferingCtrInfo":{{"preBufferByte":0,"bufferMinLevel":0,"bufferMaxLevel":0,"qBufferLevelAudio":0,"qBufferLevelVideo":0,"srcBufferLevelAudio":{{"minimum":1024,"maximum":1048576}},"srcBufferLevelVideo":{{"minimum":1024,"maximum":8388608}}}}}},"adaptiveStreaming":{{"audioOnly":false,"maxWidth":%d,"maxHeight":%d,"maxFrameRate":%.6f}}}}}}]}}`,
-		APP_ID,
-		native_video_codec(v.codec),
-		i64(target * 1e9),
-		v.width,
-		v.height,
-		v.frame_rate.num,
-		v.frame_rate.den,
-		config.channels,
-		f64(config.rate) / 1000,
-		v.width,
-		v.height,
-		v.fps,
-	)
-	defer delete(body)
 	if !sf_load(api, body, decoder_callback, status) {decoder_close(api, status); return nil, nil}
 	fmt.printf(
 		"{{\"event\":\"decoder_load\",\"codec\":\"%s\",\"width\":%d,\"height\":%d,\"fps\":%.6f,\"transfer\":%d,\"audio_rate\":%d,\"audio_channels\":%d}}\n",

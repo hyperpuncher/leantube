@@ -7,6 +7,8 @@ that the app needs. it does not contain playback logic or replace LG's library.
 
 - `src/starfish_linux_arm32.odin` declares the adapter calls, names the events
   handled by the app, and implements decoder input and lifecycle operations.
+- `src/starfish_request.odin` defines the typed load request and its input values.
+  the standard JSON encoder writes it without manual JSON formatting.
 - `src/player_linux_arm32.odin` owns playback, seeking, pause, rate, and history.
 - `vendor/starfish/StarfishMediaAPIs_C.h` declares the C interface and contains
   the broader event list copied from ss4s.

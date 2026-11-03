@@ -1,0 +1,63 @@
+{
+	"args": [
+		{
+			"mediaTransportType": "BUFFERSTREAM",
+			"option": {
+				"appId": "org.hyperpuncher.leantube",
+				"queryPosition": false,
+				"seekMode": "keep-rate",
+				"transmission": {
+					"trickType": "client-side"
+				},
+				"externalStreamingInfo": {
+					"contents": {
+						"format": "RAW",
+						"provider": "Chrome",
+						"codec": {
+							"video": "VP9",
+							"audio": "AAC"
+						},
+						"esInfo": {
+							"pauseAtDecodeTime": false,
+							"seperatedPTS": true,
+							"ptsToDecode": 84384000000,
+							"videoWidth": 3840,
+							"videoHeight": 2160,
+							"videoFpsValue": 60000,
+							"videoFpsScale": 1001
+						},
+						"aacInfo": {
+							"channels": 2,
+							"format": "adts",
+							"frequency": 44.1,
+							"profile": 2
+						}
+					},
+					"restartStreaming": false,
+					"totalStreamSize": 256,
+					"bufferingCtrInfo": {
+						"preBufferByte": 0,
+						"bufferMinLevel": 0,
+						"bufferMaxLevel": 0,
+						"qBufferLevelAudio": 0,
+						"qBufferLevelVideo": 0,
+						"srcBufferLevelAudio": {
+							"minimum": 1024,
+							"maximum": 1048576
+						},
+						"srcBufferLevelVideo": {
+							"minimum": 1024,
+							"maximum": 8388608
+						}
+					}
+				},
+				"adaptiveStreaming": {
+					"audioOnly": false,
+					"maxWidth": 3840,
+					"maxHeight": 2160,
+					"maxFrameRate": 59.94006
+				}
+			}
+		}
+	]
+}
