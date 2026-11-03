@@ -28,7 +28,9 @@ BASE_TEXT_SIZES :: [Text_Style]u16 {
 	.Mono_Body    = 32,
 }
 text_sizes := BASE_TEXT_SIZES
-fonts, emoji_fonts: [Text_Style]^ttf.Font
+fonts: [Text_Style]^ttf.Font
+// Preserve emoji priority, then use system text fonts for missing glyphs.
+fallback_fonts: [Text_Style][len(FALLBACK_FONT_PATHS)]^ttf.Font
 text_engine: ^ttf.TextEngine
 // Reuse visible text slots in draw order. SDL owns each slot's string.
 rendered_text: [dynamic]^ttf.Text
@@ -58,9 +60,12 @@ open_text :: proc(renderer: ^sdl.Renderer) -> bool {
 	}
 	text_engine = ttf.CreateRendererTextEngineWithProperties(properties)
 	if text_engine == nil {return false}
-	// System emoji are optional. Missing fonts must not prevent startup.
-	emoji := ttf.OpenFont(EMOJI_FONT_PATH, f32(text_sizes[.Body]))
-	defer if emoji != nil {ttf.CloseFont(emoji)}
+	// System fallbacks are optional. Missing fonts must not prevent startup.
+	sources: [len(FALLBACK_FONT_PATHS)]^ttf.Font
+	for path, i in FALLBACK_FONT_PATHS {
+		if string(path) != "" {sources[i] = ttf.OpenFont(path, f32(text_sizes[.Body]))}
+	}
+	defer for source in sources {if source != nil {ttf.CloseFont(source)}}
 	for size, style in text_sizes {
 		mono := style == .Mono_Small || style == .Mono_Body
 		file := mono ? "GeistMono-Regular.ttf" : "Geist.ttf"
@@ -75,11 +80,13 @@ open_text :: proc(renderer: ^sdl.Renderer) -> bool {
 		if !configured {return false}
 		fonts[style] = ttf.OpenFontWithProperties(properties)
 		if fonts[style] == nil {return false}
-		if emoji != nil {
-			emoji_fonts[style] = ttf.CopyFont(emoji)
-			if emoji_fonts[style] == nil ||
-			   !ttf.SetFontSize(emoji_fonts[style], f32(size)) ||
-			   !ttf.AddFallbackFont(fonts[style], emoji_fonts[style]) {return false}
+		for source, i in sources {
+			if source == nil {continue}
+			fallback := ttf.CopyFont(source)
+			fallback_fonts[style][i] = fallback
+			if fallback == nil ||
+			   !ttf.SetFontSize(fallback, f32(size)) ||
+			   !ttf.AddFallbackFont(fonts[style], fallback) {return false}
 		}
 	}
 	return true
@@ -88,8 +95,8 @@ open_text :: proc(renderer: ^sdl.Renderer) -> bool {
 resize_text :: proc() -> bool {
 	for base, style in BASE_TEXT_SIZES {
 		size := u16(max(1, math.round(f32(base) * ui_scale)))
-		if emoji_fonts[style] != nil && !ttf.SetFontSize(emoji_fonts[style], f32(size)) {
-			return false
+		for fallback in fallback_fonts[style] {
+			if fallback != nil && !ttf.SetFontSize(fallback, f32(size)) {return false}
 		}
 		if !ttf.SetFontSize(fonts[style], f32(size)) {return false}
 		text_sizes[style] = size
@@ -175,7 +182,7 @@ close_text :: proc() {
 	delete(rendered_text); rendered_text = nil
 	if text_engine != nil {ttf.DestroyRendererTextEngine(text_engine); text_engine = nil}
 	for font in fonts {ttf.CloseFont(font)}
-	for font in emoji_fonts {ttf.CloseFont(font)}
-	fonts, emoji_fonts = {}, {}
+	for fallbacks in fallback_fonts {for font in fallbacks {if font != nil {ttf.CloseFont(font)}}}
+	fonts, fallback_fonts = {}, {}
 	if ttf.WasInit() != 0 {ttf.Quit()}
 }

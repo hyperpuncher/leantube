@@ -216,7 +216,7 @@ main :: proc() {
 					id = i == 0 ? strings.clone("DN953UW8iJ8") : "",
 					duration_ms = 100000,
 					watched_percent = i == 0 ? 35 : i == 1 ? 100 : 0,
-					channel = fmt.aprintf("channel %02d", i + 1),
+					channel = i == 0 ? strings.clone("Theo - t3․gg") : fmt.aprintf("channel %02d", i + 1),
 					duration_label = model.time_label(100000),
 				},
 			)
@@ -292,6 +292,18 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 		assert(ttf.GetStringSize(fonts[.Small], raw_data(fit), len(fit), &width, nil))
 		assert(width <= 160)
 		if owned {assert(strings.has_suffix(fit, "…"))} else {assert(fit == sample)}
+	}
+	// A dot leader is not an ASCII period. It must use the actual fallback glyph.
+	dot_font: ^ttf.Font
+	for fallback in fallback_fonts[.Caption] {
+		if fallback != nil && ttf.FontHasGlyph(fallback, 0x2024) {dot_font = fallback; break}
+	}
+	if dot_font != nil && !ttf.FontHasGlyph(fonts[.Caption], 0x2024) {
+		dot: string : "․"
+		actual, expected: i32
+		assert(ttf.GetStringSize(fonts[.Caption], raw_data(dot), len(dot), &actual, nil))
+		assert(ttf.GetStringSize(dot_font, raw_data(dot), len(dot), &expected, nil))
+		assert(actual > 0 && actual == expected, "text measurement must use the fallback glyph")
 	}
 	continued, owned := fit_text(fonts[.Small], "short", 160, true)
 	defer if owned {delete(continued)}
