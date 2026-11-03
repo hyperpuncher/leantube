@@ -6,14 +6,19 @@ import sb "./sponsorblock"
 import "core:math"
 import sdl "vendor:sdl3"
 
-check_timeline_pixel :: proc(surface: ^sdl.Surface, fraction: f32, expected: clay.Color) {
-	track := clay.GetElementData(clay.ID("timeline")).boundingBox
+check_timeline_pixel :: proc(
+	surface: ^sdl.Surface,
+	fraction: f32,
+	expected: clay.Color,
+	vertical_fraction: f32 = 0.5,
+) {
+	track := clay.GetElementData(clay.ID("timeline-track")).boundingBox
 	red, green, blue: u8
 	assert(
 		sdl.ReadSurfacePixel(
 			surface,
 			i32(track.x + track.width * fraction),
-			i32(track.y + track.height / 2),
+			i32(track.y + track.height * vertical_fraction),
 			&red,
 			&green,
 			&blue,
@@ -125,6 +130,16 @@ check_buffered_timeline :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) 
 	)
 	check_timeline_pixel(surface, 0.15, COLOR_BUFFERED)
 	check_timeline_pixel(surface, 0.225, COLOR_SPONSOR)
+	// Both ends must fill their top corners, not form rounded caps.
+	marker := clay.GetElementData(clay.ID("sponsor-marker", 0)).boundingBox
+	for edge_x in ([2]f32{math.ceil(marker.x), math.floor(marker.x + marker.width) - 2}) {
+		check_timeline_pixel(
+			surface,
+			(edge_x + 0.5 - hover_track.x) / hover_track.width,
+			COLOR_SPONSOR,
+			(math.ceil(marker.y) + 0.5 - hover_track.y) / hover_track.height,
+		)
+	}
 
 	paused = false
 	controls_until = 1

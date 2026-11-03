@@ -175,6 +175,7 @@ timeline_span :: proc(
 	width, height: f32,
 	color: clay.Color,
 	layer: i16,
+	rounded: bool = true,
 ) {
 	fill := color
 	fill[3] = TIMELINE_ALPHA
@@ -187,7 +188,7 @@ timeline_span :: proc(
 			},
 		},
 		backgroundColor = fill,
-		cornerRadius = clay.CornerRadiusAll(height / 2),
+		cornerRadius = clay.CornerRadiusAll(rounded ? height / 2 : 0),
 		floating = {
 			attachTo = .Parent,
 			offset = {f32(start_ms / duration_ms) * width, 0},
@@ -239,6 +240,7 @@ timeline_bar :: proc() {
 							height,
 							COLOR_SPONSOR,
 							2,
+							rounded = false,
 						)
 					}
 				}
