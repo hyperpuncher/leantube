@@ -14,8 +14,6 @@ Text_Style :: enum u16 {
 	Heading,
 	Title,
 	Player_Title,
-	Mono_Small,
-	Mono_Body,
 }
 BASE_TEXT_SIZES :: [Text_Style]u16 {
 	.Body         = 32,
@@ -24,8 +22,6 @@ BASE_TEXT_SIZES :: [Text_Style]u16 {
 	.Heading      = 36,
 	.Title        = 56,
 	.Player_Title = 48,
-	.Mono_Small   = 20,
-	.Mono_Body    = 32,
 }
 text_sizes := BASE_TEXT_SIZES
 fonts: [Text_Style]^ttf.Font
@@ -66,17 +62,15 @@ open_text :: proc(renderer: ^sdl.Renderer) -> bool {
 		if string(path) != "" {sources[i] = ttf.OpenFont(path, f32(text_sizes[.Body]))}
 	}
 	defer for source in sources {if source != nil {ttf.CloseFont(source)}}
+	path := fmt.caprintf("%s/fonts/Geist.ttf", app_directory)
+	defer delete(path)
 	for size, style in text_sizes {
-		mono := style == .Mono_Small || style == .Mono_Body
-		file := mono ? "GeistMono-Regular.ttf" : "Geist.ttf"
-		path := fmt.caprintf("%s/fonts/%s", app_directory, file)
 		// Geist's sixth named instance is SemiBold (600).
 		face: sdl.Sint64 = style == .Player_Title ? 6 << 16 : 0
 		configured :=
 			sdl.SetStringProperty(properties, ttf.PROP_FONT_CREATE_FILENAME_STRING, path) &&
 			sdl.SetFloatProperty(properties, ttf.PROP_FONT_CREATE_SIZE_FLOAT, f32(size)) &&
 			sdl.SetNumberProperty(properties, ttf.PROP_FONT_CREATE_FACE_NUMBER, face)
-		delete(path)
 		if !configured {return false}
 		fonts[style] = ttf.OpenFontWithProperties(properties)
 		if fonts[style] == nil {return false}

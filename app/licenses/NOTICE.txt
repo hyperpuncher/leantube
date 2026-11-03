@@ -16,8 +16,9 @@ Exception version 3.1. See GPL-3.0.txt and GCC-runtime.txt.
 The bundled fonts use the SIL Open Font License in fonts/OFL.txt.
 Emoji use the installed system font, which is not redistributed.
 Text shaping uses HarfBuzz, under HarfBuzz.txt.
-Geist Mono has been modified: Unicode zero uses the original font's ss09
-plain-zero glyph. All other glyphs and the original font names are retained.
+Geist has been modified: its tnum feature is frozen into the character map,
+so digits use the fixed-width .tf glyphs. Glyphs, metrics, font names, and
+the wght axis are otherwise unchanged. See fonts/Geist.md.
 
 SDL_image loads WebP and JPEG covers and rasterizes SVG icons. It includes
 libwebp, NanoSVG, and stb_image. Their license and patent notices are in this

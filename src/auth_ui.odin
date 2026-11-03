@@ -253,7 +253,7 @@ login_layout :: proc() {
 						},
 					},
 					) {
-						if login_code != "" {label(login_code, .Mono_Body)}
+						if login_code != "" {label(login_code, .Body)}
 					}
 				}
 				if clay.UI()(

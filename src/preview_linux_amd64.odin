@@ -310,6 +310,14 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	assert(strings.has_suffix(continued, "…"))
 	too_narrow, _ := fit_text(fonts[.Small], "text", 1)
 	assert(too_narrow == "")
+	// Times and counts reuse Geist, so every digit must share one advance.
+	advance: c.int
+	for digit in '0' ..= '9' {
+		width: c.int
+		assert(ttf.GetGlyphMetrics(fonts[.Body], u32(digit), nil, nil, nil, nil, &width))
+		if digit == '0' {advance = width}
+		assert(width == advance, "digits must not change width")
+	}
 	// A wrapped title is fitted to two lines and keeps the trailing ellipsis.
 	wrapped, wrapped_owned, wrapped_lines := fit_wrapped(
 		fonts[.Small],

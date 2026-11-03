@@ -330,9 +330,9 @@ player_layout :: proc(elapsed, total, speed, quality: string) {
 			) {
 				control_button(PAUSE_BUTTON)
 				if clay.UI()({layout = {childGap = spacing(8), childAlignment = {y = .Center}}}) {
-					label(elapsed, .Mono_Body)
-					label("/", .Mono_Body, COLOR_MUTED)
-					label(total, .Mono_Body, COLOR_MUTED)
+					label(elapsed, .Body)
+					label("/", .Body, COLOR_MUTED)
+					label(total, .Body, COLOR_MUTED)
 				}
 				if clay.UI()({layout = {sizing = {width = clay.SizingGrow({})}}}) {}
 				// The buttons step the rate that sits between them.
@@ -345,7 +345,7 @@ player_layout :: proc(elapsed, total, speed, quality: string) {
 							childAlignment = {x = .Center, y = .Center},
 						},
 					},
-					) {label(speed, .Mono_Body, COLOR_MUTED)}
+					) {label(speed, .Body, COLOR_MUTED)}
 					control_button(FASTER_BUTTON)
 				}
 				// Reserve the quality slot before the media service reports it.
@@ -356,7 +356,7 @@ player_layout :: proc(elapsed, total, speed, quality: string) {
 						childAlignment = {x = .Right, y = .Center},
 					},
 				},
-				) {if quality != "" {label(quality, .Mono_Body, COLOR_MUTED)}}
+				) {if quality != "" {label(quality, .Body, COLOR_MUTED)}}
 			}
 		}
 	}

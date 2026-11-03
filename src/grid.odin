@@ -320,7 +320,7 @@ video_card :: proc(index: int, metrics: Grid_Metrics) {
 				backgroundColor = COLOR_BADGE,
 				cornerRadius = clay.CornerRadiusAll(scaled(4)),
 			},
-			) {label(video.duration_label, .Mono_Small)}
+			) {label(video.duration_label, .Caption)}
 			if video.watched_percent > 0 {
 				if clay.UI(clay.ID("watched-progress", u32(index)))(
 				{
