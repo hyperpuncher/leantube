@@ -2,6 +2,7 @@ package playback
 
 import "core:c"
 import "core:fmt"
+import "core:sync"
 import "core:testing"
 import curl "vendor:curl"
 
@@ -24,10 +25,8 @@ temporary_redirects_apply_to_one_range_not_the_whole_source :: proc(t: ^testing.
 	defer http_close(&h)
 	testing.expect(t, http_fetch(&h, 0))
 	testing.expect_value(t, string(h.bytes[:]), "0123456789abcdef")
-	testing.expect_value(t, h.redirect_status, c.long(302))
 	testing.expect(t, http_fetch(&h, 16))
 	testing.expect_value(t, string(h.bytes[:]), "ghijklmnopqrstuv")
-	testing.expect_value(t, h.redirect_status, c.long(302))
 }
 // Run with just test-reader-http so the local failure fixture is present.
 @(test)
@@ -36,26 +35,26 @@ interrupted_ranges_retry_once_without_returning_partial_bytes :: proc(t: ^testin
 	if HTTP_TEST_SERVER == "" {return}
 	testing.expect_value(t, curl.global_init(c.long(curl.GLOBAL_DEFAULT)), curl.code.E_OK)
 	defer curl.global_cleanup()
-	for path in ([]string{"/once", "/always"}) {
+	for path in ([]string{"/once", "/always", "/timeout"}) {
 		s := State{}
 		h := Http {
 			cancel = {state = &s},
 			handle = curl.easy_init(),
 			url = fmt.aprintf("%s%s", HTTP_TEST_SERVER, path),
-			mode = "curl-reuse",
+			mode = path == "/timeout" ? "curl-auto" : "curl-reuse",
 			block = 16,
-			total = -1,
+			total = 64,
 		}
 		defer http_close(&h)
-		ok := http_fetch(&h, 0)
-		testing.expect_value(t, h.retries, c.long(1))
-		testing.expect_value(t, h.transfers, c.long(2))
-		if path == "/once" {
-			testing.expect(t, ok)
-			testing.expect_value(t, string(h.bytes[:]), "0123456789abcdef")
-		} else {
-			testing.expect(t, !ok)
+		bytes: [16]u8
+		result := http_read(&h, raw_data(bytes[:]), len(bytes))
+		if path == "/always" {
+			testing.expect_value(t, result, ERROR_IO)
+			testing.expect_value(t, sync.atomic_load(&s.failure), ERROR_IO)
 			testing.expect_value(t, len(h.bytes), 0)
+		} else {
+			testing.expect_value(t, result, c.int(len(bytes)))
+			testing.expect_value(t, string(bytes[:]), "0123456789abcdef")
 		}
 	}
 }

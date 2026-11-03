@@ -31,9 +31,9 @@ if (
 	(socketReceiveBuffer > 0 && mode.startsWith("ffmpeg")) ||
 	!playerPath ||
 	!output ||
-	!["ffmpeg", "curl-reuse", "curl-h3"].includes(mode) ||
+	!["ffmpeg", "curl-reuse", "curl-h3", "curl-auto"].includes(mode) ||
 	(transport &&
-		(!["curl-reuse", "curl-h3"].includes(mode) ||
+		(!["curl-reuse", "curl-h3", "curl-auto"].includes(mode) ||
 			seconds > 256 ||
 			!Number.isSafeInteger(start) ||
 			!Number.isSafeInteger(start + seconds * 1048576) ||
@@ -203,7 +203,8 @@ try {
 			seek_target_s: seekAfter >= 0 ? seekTo : null,
 			connection_reuse: true,
 			range_method: "HTTP_header",
-			http_protocol_required: mode === "curl-h3" ? "3" : "1.1",
+			http_protocol_required:
+				mode === "curl-h3" ? "3" : mode === "curl-auto" ? "auto" : "1.1",
 			socket_rcvbuf_requested: socketReceiveBuffer,
 			socket_rcvbuf_scope: "per_socket_only_no_system_change",
 			single_transfer_receive_retry_limit: mode.startsWith("ffmpeg") ? null : 1,

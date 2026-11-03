@@ -10,7 +10,7 @@ a session owns both source URLs, both workers, and both packet queues. both pace
 
 `just bench-reference fetch PLAYER.json START_SECONDS DURATION_SECONDS OUTPUT.yuv ITAG` fetches reference frames from the selected format. the final format ID is optional; without it, the helper uses an available 4K VP9 format. `just bench-reference match OUTPUT.yuv START_SECONDS PICTURE.png` reports the closest source frame. use elapsed time between captures to measure visible speed.
 
-supported transport controls are `ffmpeg`, `curl-reuse` (HTTP/1.1), and `curl-h3` (HTTP/3 only). the old request-size, parallel-range, URL-query-range, aligned-range, and fresh-connection variants have been removed. private historical results are retained.
+supported transport controls are `ffmpeg`, `curl-reuse` (HTTP/1.1), `curl-h3` (HTTP/3 only), and `curl-auto` (the app behavior, with one TCP retry after a transfer failure). the old request-size, parallel-range, URL-query-range, aligned-range, and fresh-connection variants have been removed. private historical results are retained.
 
 ## prepare
 

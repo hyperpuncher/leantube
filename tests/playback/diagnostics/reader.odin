@@ -43,7 +43,7 @@ parse_options :: proc(args: []string) -> (o: Options, ok: bool) {
 	if len(args) != 3 && len(args) != 5 {return}
 	o.mode, o.seek_after = args[0], -1
 	o.trace = true
-	switch o.mode {case "ffmpeg", "curl-reuse", "curl-h3":; case:
+	switch o.mode {case "ffmpeg", "curl-reuse", "curl-h3", "curl-auto":; case:
 		return}
 	seconds, seconds_ok := strconv.parse_int(args[1])
 	start, start_ok := strconv.parse_f64(args[2])

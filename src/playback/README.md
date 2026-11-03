@@ -21,7 +21,9 @@ each packet queue is limited to 20 seconds. consumers use the shared 3-second st
 
 the timeline shows buffered media through the earlier audio/video packet end. it updates while paused and clears on a seek. the display uses available media timestamps, not an estimate from transfer speed.
 
-transport controls are `ffmpeg`, `curl-reuse` for HTTP/1.1, and `curl-h3` for HTTP/3 only. HTTP/3 failure does not silently select another protocol. partial transfers can retry once on a fresh connection. temporary redirects do not replace the source URL for later ranges.
+the app uses `curl-auto`: libcurl prefers HTTP/3 with its normal connection fallback. a failed range can retry once on a fresh TCP connection, then that track keeps TCP. receive errors, partial transfers, timeouts, and QUIC errors can retry; cancellation cannot. partial bytes never reach the demuxer, and a failed retry remains a reader error even if the demuxer reports EOF. temporary redirects do not replace the source URL for later ranges.
+
+explicit diagnostic controls are `ffmpeg`, `curl-reuse` for HTTP/1.1, `curl-h3` for HTTP/3 only, and `curl-auto` for the app behavior. strict HTTP/3 diagnostics do not switch protocols.
 
 with decoder pre-roll enabled, the reader accepts H.264, HEVC, VP9, or AV1 video and AAC-LC audio. it retains video packets needed after a seek and resets framing so a new decoder gets the required parameter sets. the app selects formats within the installed decoder capability limits. AV1 was reported unavailable on the tested B9.
 

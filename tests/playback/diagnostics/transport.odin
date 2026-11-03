@@ -17,7 +17,7 @@ Transport_Options :: struct {
 transport_options :: proc(args: []string) -> (o: Transport_Options, ok: bool) {
 	if len(args) != 3 {return}
 	o.mode = args[0]
-	if o.mode != "curl-reuse" && o.mode != "curl-h3" {return}
+	if o.mode != "curl-reuse" && o.mode != "curl-h3" && o.mode != "curl-auto" {return}
 	count, count_ok := strconv.parse_int(args[1])
 	offset, offset_ok := strconv.parse_i64(args[2])
 	if !count_ok ||
@@ -31,7 +31,7 @@ transport_options :: proc(args: []string) -> (o: Transport_Options, ok: bool) {
 }
 transport_entry :: proc(args: []string) -> int {
 	o, ok := transport_options(args)
-	if !ok {fmt.eprintln("expected MODE MIB BYTE_OFFSET; mode curl-reuse or curl-h3, 1..256 MiB"); return 2}
+	if !ok {fmt.eprintln("expected MODE MIB BYTE_OFFSET; mode curl-reuse, curl-h3, or curl-auto, 1..256 MiB"); return 2}
 	receive_buffer, setting_ok := receive_buffer_setting()
 	if !setting_ok {return 2}
 	data, error := os.read_entire_file(os.stdin, context.allocator)

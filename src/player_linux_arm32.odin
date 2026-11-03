@@ -117,7 +117,7 @@ load_video :: proc(
 		stream.url,
 		stream.audio_url,
 		{
-			mode = "curl-h3",
+			mode = "curl-auto",
 			decoder_preroll = true,
 			start = start / 1000,
 			end = player_read_end(start),

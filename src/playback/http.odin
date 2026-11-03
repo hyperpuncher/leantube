@@ -141,7 +141,8 @@ http_prepare :: proc(h: ^Http, at, end: i64) -> curl.code {
 	curl.easy_reset(h.handle)
 	curl.easy_setopt(h.handle, .URL, url) or_return
 	curl.easy_setopt(h.handle, .RANGE, range) or_return
-	version := h.mode == "curl-h3" ? curl.HTTP_VERSION_3ONLY : curl.HTTP_VERSION_1_1
+	version :=
+		h.mode == "curl-h3" ? curl.HTTP_VERSION_3ONLY : h.mode == "curl-auto" ? curl.HTTP_VERSION_3 : curl.HTTP_VERSION_1_1
 	curl.easy_setopt(h.handle, .HTTP_VERSION, c.long(version)) or_return
 	curl.easy_setopt(
 		h.handle,
@@ -205,11 +206,17 @@ http_fetch :: proc(h: ^Http, at: i64) -> bool {
 	if h.total >= 0 {end = min(end, h.total - 1)}
 	if http_prepare(h, at, end) != .E_OK {return false}
 	result := curl.easy_perform(h.handle)
-	if (result == .E_RECV_ERROR || result == .E_PARTIAL_FILE) && !cancelled(&h.cancel) {
-		// A range GET is safe to repeat. Discard partial bytes and retry once
-		// on a new connection. Later requests return to normal reuse.
+	if (result == .E_RECV_ERROR ||
+		   result == .E_PARTIAL_FILE ||
+		   result == .E_OPERATION_TIMEDOUT ||
+		   result == .E_HTTP3 ||
+		   result == .E_QUIC_CONNECT_ERROR) &&
+	   !cancelled(&h.cancel) {
+		// Retry a failed range once, never pass partial bytes to the demuxer.
+		// Production switches this track to TCP; strict diagnostics keep their protocol.
 		http_finish(h, at, end, result)
 		h.retries += 1
+		if h.mode == "curl-auto" {h.mode = "curl-reuse"}
 		if http_prepare(h, at, end) != .E_OK ||
 		   curl.easy_setopt(h.handle, .FRESH_CONNECT, c.long(1)) != .E_OK {return false}
 		result = curl.easy_perform(h.handle)
@@ -227,7 +234,12 @@ http_read :: proc "c" (arg: rawptr, output: [^]u8, size: c.int) -> c.int {
 	if cancelled(&h.cancel) {return ERROR_EXIT}
 	if h.position >= h.total {return ERROR_EOF}
 	if h.position < h.base || h.position >= h.base + i64(len(h.bytes)) {
-		if !http_fetch(h, h.position) {return cancelled(&h.cancel) ? ERROR_EXIT : ERROR_IO}
+		if !http_fetch(h, h.position) {
+			if cancelled(&h.cancel) {return ERROR_EXIT}
+			// Some demuxers turn a read error into EOF. Keep the actual failure.
+			sync.atomic_store(&h.cancel.state.failure, ERROR_IO)
+			return ERROR_IO
+		}
 	}
 	offset := int(h.position - h.base)
 	n := min(int(size), len(h.bytes) - offset)

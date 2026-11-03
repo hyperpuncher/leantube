@@ -94,6 +94,7 @@ const counts: Record<string, number> = {};
 const server = Bun.serve({
 	hostname: "127.0.0.1",
 	port: 0,
+	idleTimeout: 30,
 	fetch(request) {
 		const path = new URL(request.url).pathname;
 		if (sources[path]) {
@@ -114,7 +115,7 @@ const server = Bun.serve({
 			});
 		}
 		if (
-			!["/once", "/always", "/redirect", "/target"].includes(path) ||
+			!["/once", "/always", "/timeout", "/redirect", "/target"].includes(path) ||
 			!["bytes=0-15", "bytes=16-31"].includes(request.headers.get("range") ?? "")
 		)
 			return new Response(null, { status: 400 });
@@ -127,7 +128,9 @@ const server = Bun.serve({
 		const offset = request.headers.get("range") === "bytes=16-31" ? 16 : 0;
 		const payload =
 			"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_";
-		const partial = path === "/always" || (path === "/once" && counts[path] === 1);
+		const timeout = path === "/timeout" && counts[path] === 1;
+		const partial =
+			timeout || path === "/always" || (path === "/once" && counts[path] === 1);
 		const body = new ReadableStream({
 			async start(controller) {
 				controller.enqueue(
@@ -135,7 +138,7 @@ const server = Bun.serve({
 						payload.slice(offset, offset + (partial ? 8 : 16)),
 					),
 				);
-				await Bun.sleep(10);
+				await Bun.sleep(timeout ? 16000 : 10);
 				if (partial) controller.error();
 				else controller.close();
 			},
@@ -156,7 +159,7 @@ const server = Bun.serve({
 try {
 	await $`mkdir -p build/playback-bench`;
 	await $`odin test tests/playback/host -all-packages -vet -out:build/playback-bench/reader-test -define:READER_HTTP_TEST_SERVER=${server.url.origin} -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false`;
-	if (counts["/once"] !== 2 || counts["/always"] !== 2)
+	if (counts["/once"] !== 2 || counts["/always"] !== 2 || counts["/timeout"] !== 2)
 		throw Error("range recovery exceeded its retry limit");
 	if (counts["/redirect"] !== 2 || counts["/target"] !== 2)
 		throw Error("a temporary redirect replaced the original range source");
