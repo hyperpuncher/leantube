@@ -85,7 +85,7 @@ image_cache_reuses_original_bytes_and_recovers_from_bad_files :: proc(t: ^testin
 }
 
 @(test)
-cached_channel_avatars_load_after_worker_restart_without_network :: proc(t: ^testing.T) {
+cached_card_images_keep_card_order_after_worker_restart_without_network :: proc(t: ^testing.T) {
 	if !testing.expect(t, sdl.Init({.EVENTS})) {return}
 	defer sdl.Quit()
 	directory, error := os.make_directory_temp("/tmp", "leantube-avatars-", context.allocator)
@@ -120,7 +120,13 @@ cached_channel_avatars_load_after_worker_restart_without_network :: proc(t: ^tes
 	)
 	if !testing.expect(t, surface != nil) {return}
 	sdl.DestroySurface(surface)
-	testing.expect_value(t, image_cache_fetch_calls, 1)
+	covers := [2]string{"https://images.example/cover-1", "https://images.example/cover-2"}
+	for source in covers {
+		surface = load_cached_image(cache, nil, source, fetch = image_cache_fetch)
+		if !testing.expect(t, surface != nil) {return}
+		sdl.DestroySurface(surface)
+	}
+	testing.expect_value(t, image_cache_fetch_calls, 3)
 	// Each worker starts with no URL mappings and no usable HTTP client.
 	for _ in 0 ..< 2 {
 		network_requests, _ = chan.create(chan.Chan(Network_Request), 1, context.allocator)
@@ -130,24 +136,42 @@ cached_channel_avatars_load_after_worker_restart_without_network :: proc(t: ^tes
 		if !testing.expect(t, network_thread != nil) {return}
 		thread.start(network_thread)
 		// The worker owns these values and uses the default heap allocator.
-		jobs := make([dynamic]Image_Request, 0, 1, runtime.heap_allocator())
-		append(&jobs, {source = strings.clone(channel, runtime.heap_allocator()), target = 80})
-		chan.send(network_requests, Network_Request{kind = .Images, images = jobs})
-		result: Network_Result
-		ready := false
-		started := time.tick_now()
-		for !ready && time.tick_since(started) < time.Second {
-			result, ready = chan.try_recv(network_results)
-			if !ready {time.sleep(time.Millisecond)}
+		jobs := make([dynamic]Image_Request, 0, 4, runtime.heap_allocator())
+		for source, index in covers {
+			append(
+				&jobs,
+				{source = strings.clone(source, runtime.heap_allocator()), index = index},
+			)
+			append(
+				&jobs,
+				{
+					source = strings.clone(channel, runtime.heap_allocator()),
+					index = index,
+					target = 80,
+				},
+			)
 		}
-		defer free_network_result(&result)
-		if !testing.expect(
-			t,
-			ready && result.surface != nil,
-			"cached avatars must load without a channel lookup",
-		) {return}
-		testing.expect_value(t, result.kind, .Channel_Avatar)
-		testing.expect_value(t, result.surface.w, i32(80))
+		chan.send(network_requests, Network_Request{kind = .Images, images = jobs})
+		for index in 0 ..< 2 {
+			for avatar in ([2]bool{false, true}) {
+				result: Network_Result
+				ready := false
+				started := time.tick_now()
+				for !ready && time.tick_since(started) < time.Second {
+					result, ready = chan.try_recv(network_results)
+					if !ready {time.sleep(time.Millisecond)}
+				}
+				defer free_network_result(&result)
+				if !testing.expect(
+					t,
+					ready && result.surface != nil,
+					"cached images must load without network access",
+				) {return}
+				testing.expect_value(t, result.index, index)
+				testing.expect_value(t, result.kind, avatar ? .Channel_Avatar : .Cover)
+				testing.expect_value(t, result.surface.w, i32(avatar ? 80 : 101))
+			}
+		}
 	}
 }
 

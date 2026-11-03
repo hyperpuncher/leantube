@@ -57,6 +57,17 @@ trim_image_cache :: proc(cache: Image_Cache, incoming_bytes: i64 = 0) -> bool {
 	return total <= cache.maximum_bytes
 }
 
+// A scheduling hint only; reads still decode and reject corrupt cache files.
+cached_image_exists :: proc(cache: Image_Cache, source: string) -> bool {
+	path := image_cache_path(cache, source)
+	defer delete(path)
+	if path == "" {return false}
+	cpath := strings.clone_to_cstring(path)
+	defer delete(cpath)
+	info: sdl.PathInfo
+	return sdl.GetPathInfo(cpath, &info) && info.type == .FILE
+}
+
 // Return owned pixels without resolving or downloading the image source.
 read_cached_image :: proc(cache: Image_Cache, source: string, target: i32) -> ^sdl.Surface {
 	path := image_cache_path(cache, source)

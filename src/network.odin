@@ -19,6 +19,7 @@ Image_Request :: struct {
 	index:          int,
 	target:         i32,
 	page, playback: u32,
+	cached:         bool,
 }
 
 Network_Request :: struct {
@@ -253,8 +254,11 @@ network_main :: proc(_: ^thread.Thread) {
 		case .Images:
 			append(&covers, ..request.images[:])
 			clear(&request.images)
-			// New thumbnails go before pending avatar lookups, in feed order.
+			// Serve disk hits in card order before any downloads or URL lookups.
+			for &image in covers[next:] {image.cached = cached_image_exists(cache, image.source)}
 			sort.merge_sort_proc(covers[next:], proc(a, b: Image_Request) -> int {
+				if a.cached != b.cached {return int(b.cached) - int(a.cached)}
+				if a.cached {return 0}
 				return int(a.target > 0) - int(b.target > 0)
 			})
 		case .Use_Account:
