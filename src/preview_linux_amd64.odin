@@ -311,14 +311,14 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	too_narrow, _ := fit_text(fonts[.Small], "text", 1)
 	assert(too_narrow == "")
 	// A wrapped title is fitted to two lines and keeps the trailing ellipsis.
-	wrapped, wrapped_owned := fit_wrapped(
+	wrapped, wrapped_owned, wrapped_lines := fit_wrapped(
 		fonts[.Small],
 		"a very long video title that keeps going well past two lines of text for the card",
 		400,
 		2,
 	)
 	defer if wrapped_owned {delete(wrapped)}
-	assert(strings.has_suffix(wrapped, "…"))
+	assert(wrapped_lines == 2 && strings.has_suffix(wrapped, "…"))
 	line_height := c.int(ttf.GetFontHeight(fonts[.Small]))
 	probe := ttf.CreateText(text_engine, fonts[.Small], raw_data(wrapped), c.size_t(len(wrapped)))
 	assert(probe != nil)
@@ -328,8 +328,8 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	ttf.DestroyText(probe)
 	assert(wrapped_width <= 400)
 	assert(wrapped_height <= 2 * line_height, "a fitted title must wrap to two lines at most")
-	fits, fits_owned := fit_wrapped(fonts[.Small], "short title", 400, 2)
-	assert(!fits_owned && fits == "short title")
+	fits, fits_owned, fits_lines := fit_wrapped(fonts[.Small], "short title", 400, 2)
+	assert(!fits_owned && fits_lines == 1 && fits == "short title")
 	red, green, blue: u8
 	assert(sdl.ReadSurfacePixel(surface, 0, 0, &red, &green, &blue, nil))
 	assert(red == 0 && green == 0 && blue == 0)
@@ -440,16 +440,47 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	)
 	assert(red == u8(COLOR_TRACK[0]) && green == u8(COLOR_TRACK[1]) && blue == u8(COLOR_TRACK[2]))
 	assert(!clay.GetElementData(clay.ID("watched-progress", 2)).found)
-	for _, i in catalog.videos {
-		card := clay.GetElementData(clay.ID("video", u32(i))).boundingBox
-		column := clay.GetElementData(clay.ID("video", u32(i % grid_columns))).boundingBox
-		assert(math.abs(card.width - first.width) < 0.1, "all grid cards must have equal widths")
-		assert(math.abs(card.x - column.x) < 0.1, "grid columns must align across rows")
+	// Only rows near the viewport enter layout; the rest keep their space.
+	metrics := grid_metrics()
+	launched := 0
+	for video, i in catalog.videos {
+		card := clay.GetElementData(clay.ID("video", u32(i)))
+		if !card.found {continue}
+		launched += 1
+		column := clay.GetElementData(clay.ID("video", u32(i % grid_columns)))
+		assert(
+			math.abs(card.boundingBox.width - first.width) < 0.1,
+			"grid cards must have equal widths",
+		)
+		shape := card_shape(video)
+		assert(
+			math.abs(card.boundingBox.height - card_height(metrics, shape)) < 0.1,
+			"a card must not reserve unused text lines",
+		)
+		last :=
+			clay.GetElementData(clay.ID(shape.meta ? "card-meta" : "card-channel", u32(i))).boundingBox
+		bottom := card.boundingBox.y + card.boundingBox.height
+		assert(
+			math.abs(bottom - (last.y + last.height) - metrics.padding) < 0.1,
+			"a card must end at its padding, not with unused space",
+		)
+		assert(
+			math.abs(card.boundingBox.x - column.boundingBox.x) < 0.1,
+			"grid columns must align",
+		)
 		cover := clay.GetElementData(clay.ID("cover", u32(i))).boundingBox
 		assert(math.abs(cover.width - first_cover.width) < 0.1)
 		assert(math.abs(cover.height - first_cover.height) < 0.1)
 		assert(math.abs(cover.width - cover.height * (16.0 / 9.0)) < 0.1)
 	}
+	assert(launched >= grid_columns * 2, "a full screen of rows must be laid out")
+	assert(!clay.GetElementData(clay.ID("video", u32(len(catalog.videos) - 1))).found)
+	scroll_grid := clay.GetScrollContainerData(clay.ID("library-scroll"))
+	rows := len(row_heights)
+	assert(
+		math.abs(scroll_grid.contentDimensions.height - row_offsets[rows]) < 1,
+		"spacers must preserve the complete grid height",
+	)
 	initial_view := clay.GetElementData(clay.ID("library-scroll")).boundingBox
 	assert(
 		math.abs(initial_view.y + initial_view.height - view_height) < 0.1,
@@ -470,8 +501,8 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	for direction in ([]int{1, -1}) {
 		for step in 1 ..= 4 {
 			key(direction > 0 ? sdl.K_DOWN : sdl.K_UP)
-			before := clay.GetScrollContainerData(clay.ID("library-scroll")).scrollPosition^[1]
-			item := clay.GetElementData(clay.ID("video", u32(selected))).boundingBox
+			scroll := clay.GetScrollContainerData(clay.ID("library-scroll"))
+			before := scroll.scrollPosition^[1]
 			viewport := clay.GetElementData(clay.ID("library-scroll")).boundingBox
 			name := fmt.aprintf("%s-%d", direction > 0 ? "down" : "up", step)
 			snapshot(renderer, surface, name)
@@ -490,10 +521,13 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 				now.y >= viewport.y && now.y + now.height <= viewport.y + viewport.height,
 				"keyboard selection must remain visible",
 			)
-			if direction < 0 &&
-			   item.y >= viewport.y &&
-			   item.y + item.height <= viewport.y + viewport.height {
-				assert(before == after, "moving to a visible row must not scroll")
+			if direction < 0 {
+				row := selected / grid_columns
+				top := row_offsets[row]
+				bottom := top + row_heights[row]
+				if top >= -before && bottom <= -before + scroll.scrollContainerDimensions.height {
+					assert(before == after, "moving to a fully visible row must not scroll")
+				}
 			}
 		}
 		if direction > 0 {
@@ -580,11 +614,12 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	catalog_revision += 1
 	// A width change still needs fresh fitting, even with no new cards.
 	cached_title := strings.clone(card_labels[1].title)
-	width := card_labels_width
-	labels_build(scaled(80))
+	narrow := grid_metrics()
+	narrow.text_width = scaled(80)
+	labels_build(narrow)
 	assert(card_labels[1].title != cached_title)
 	delete(cached_title)
-	labels_build(width)
+	labels_build(grid_metrics())
 	assert(render(renderer))
 	// The last card, wheel scrolling, and a round trip through the player must
 	// use the same retained scroll state, without pulling focus to the pointer.

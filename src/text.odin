@@ -154,27 +154,29 @@ fit_wrapped :: proc(
 ) -> (
 	string,
 	bool,
+	int,
 ) {
-	if text == "" || width <= 0 || max_lines < 1 {return text, false}
+	if text == "" || width <= 0 || max_lines < 1 {return text, false, 1}
 	line_height := c.int(ttf.GetFontHeight(font))
-	if line_height <= 0 {return text, false}
+	if line_height <= 0 {return text, false, 1}
 	// Measurement needs shaping only, not renderer glyph uploads.
 	value := ttf.CreateText(nil, font, raw_data(text), c.size_t(len(text)))
-	if value == nil {return text, false}
+	if value == nil {return text, false, 1}
 	defer ttf.DestroyText(value)
-	if !ttf.SetTextWrapWidth(value, width) {return text, false}
+	if !ttf.SetTextWrapWidth(value, width) {return text, false, 1}
 	_, bounds_height: c.int
-	if !ttf.GetTextSize(value, nil, &bounds_height) {return text, false}
-	if bounds_height <= line_height * c.int(max_lines) {return text, false}
+	if !ttf.GetTextSize(value, nil, &bounds_height) {return text, false, 1}
+	lines := clamp((bounds_height + line_height - 1) / line_height, 1, c.int(max_lines))
+	if bounds_height <= line_height * c.int(max_lines) {return text, false, int(lines)}
 	line: ttf.SubString
-	if !ttf.GetTextSubStringForLine(value, c.int(max_lines - 1), &line) {return text, false}
+	if !ttf.GetTextSubStringForLine(value, c.int(max_lines - 1), &line) {return text, false, 1}
 	line_end := line.offset + line.length
-	if int(line_end) >= len(text) {return text, false}
+	if int(line_end) >= len(text) {return text, false, int(lines)}
 	// Force the ellipsis: the visible line may fit, but text follows it.
 	fitted, owned := fit_text(font, text[line.offset:line_end], width, true)
-	if !owned {return text, false}
+	if !owned {return text, false, int(lines)}
 	defer delete(fitted)
-	return strings.concatenate({text[:line.offset], fitted}), true
+	return strings.concatenate({text[:line.offset], fitted}), true, int(lines)
 }
 
 close_text :: proc() {

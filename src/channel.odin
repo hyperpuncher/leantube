@@ -199,6 +199,7 @@ channel_layout :: proc() {
 		layout = {
 			sizing = {width = clay.SizingGrow({})},
 			layoutDirection = .TopToBottom,
+			padding = padding(0, 0, 32, 0),
 			childGap = spacing(20),
 		},
 	},
