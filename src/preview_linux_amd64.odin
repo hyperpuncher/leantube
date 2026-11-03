@@ -483,6 +483,29 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	}
 	assert(launched >= grid_columns * 2, "a full screen of rows must be laid out")
 	assert(!clay.GetElementData(clay.ID("video", u32(len(catalog.videos) - 1))).found)
+	// The chip pads a line box, so the digits themselves must still look centred.
+	chip := clay.GetElementData(clay.ID("duration", 0)).boundingBox
+	first_ink, last_ink := -1, -1
+	for y in int(chip.y) ..< int(chip.y + chip.height) {
+		ink, total: int
+		for x in int(chip.x) ..< int(chip.x + chip.width) {
+			r, g, b: u8
+			if !sdl.ReadSurfacePixel(surface, i32(x), i32(y), &r, &g, &b, nil) {continue}
+			brightness := int(r) + int(g) + int(b)
+			total += brightness
+			if brightness > 360 {ink += 1}
+		}
+		// Covers and the chip's own edges are full width; text rows are not.
+		if ink > 0 && ink < int(chip.width * 0.9) && total / max(1, int(chip.width)) > 90 {
+			if first_ink < 0 {first_ink = y}
+			last_ink = y
+		}
+	}
+	assert(first_ink >= 0 && last_ink > first_ink, "the duration chip must draw text")
+	assert(
+		math.abs((f32(first_ink) + f32(last_ink)) / 2 - (chip.y + chip.height / 2)) <= 1,
+		"duration digits must look centred in their chip",
+	)
 	scroll_grid := clay.GetScrollContainerData(clay.ID("library-scroll"))
 	rows := len(row_heights)
 	assert(

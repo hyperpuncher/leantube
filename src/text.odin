@@ -25,6 +25,9 @@ BASE_TEXT_SIZES :: [Text_Style]u16 {
 }
 text_sizes := BASE_TEXT_SIZES
 fonts: [Text_Style]^ttf.Font
+// SDL centres the line box, not the glyphs, so digits sit below the middle of a
+// chip. Keep the offset that puts their ink in the middle instead.
+digit_ink_shift: [Text_Style]i32
 // Preserve emoji priority, then use system text fonts for missing glyphs.
 fallback_fonts: [Text_Style][len(FALLBACK_FONT_PATHS)]^ttf.Font
 text_engine: ^ttf.TextEngine
@@ -94,8 +97,27 @@ resize_text :: proc() -> bool {
 		}
 		if !ttf.SetFontSize(fonts[style], f32(size)) {return false}
 		text_sizes[style] = size
+		digit_ink_shift[style] = digit_ink_shift_for(fonts[style])
 	}
 	return true
+}
+
+// Digits share one vertical extent and have no descenders, so their ink centre
+// is this far below the line box centre.
+digit_ink_shift_for :: proc(font: ^ttf.Font) -> i32 {
+	if font == nil {return 0}
+	top, bottom: c.int
+	for digit in '0' ..= '9' {
+		min_y, max_y: c.int
+		if !ttf.GetGlyphMetrics(font, u32(digit), nil, nil, &min_y, &max_y, nil) {return 0}
+		if digit == '0' {top, bottom = max_y, min_y} else {
+			top = max(top, max_y)
+			bottom = min(bottom, min_y)
+		}
+	}
+	height := ttf.GetFontHeight(font)
+	ascent := ttf.GetFontAscent(font)
+	return (2 * i32(ascent) - i32(height) - i32(top + bottom)) / 2
 }
 
 // Return a borrowed string when it fits; otherwise the caller owns the result.

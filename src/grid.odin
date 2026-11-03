@@ -241,6 +241,9 @@ video_card :: proc(index: int, metrics: Grid_Metrics) {
 	video := catalog.videos[index]
 	shape := card_shape(video)
 	corners := clay.CornerRadiusAll(scaled(12))
+	// The chip pads a line box, not the digits, so lift their ink instead.
+	chip_top := u16(max(0, i32(spacing(4)) - digit_ink_shift[.Caption]))
+	chip_bottom := u16(i32(spacing(4)) + digit_ink_shift[.Caption])
 	title, channel, meta := video.title, video.channel, video.meta
 	if video.cover_index < len(card_labels) {
 		title = card_labels[video.cover_index].title
@@ -316,7 +319,7 @@ video_card :: proc(index: int, metrics: Grid_Metrics) {
 					clipTo = .AttachedParent,
 					pointerCaptureMode = .Passthrough,
 				},
-				layout = {padding = padding(8, 8, 4, 4)},
+				layout = {padding = {spacing(8), spacing(8), chip_top, chip_bottom}},
 				backgroundColor = COLOR_BADGE,
 				cornerRadius = clay.CornerRadiusAll(scaled(4)),
 			},
