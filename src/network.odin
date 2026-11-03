@@ -208,19 +208,28 @@ network_main :: proc(_: ^thread.Thread) {
 			index := next
 			next += 1
 			source := covers[index].source
+			cache_source := source
+			surface: ^sdl.Surface
 			if covers[index].target > 0 && strings.has_prefix(source, "UC") {
-				url, found := avatars[source]
-				if !found {
-					url = yt.channel_avatar(&network_client, source, visitor_data)
-					if url != "" {avatars[strings.clone(source)] = url}
+				if url, found := avatars[source]; found {
+					source = url
+				} else if surface = read_cached_image(cache, source, covers[index].target);
+				   surface == nil {
+					resolved := yt.channel_avatar(&network_client, source, visitor_data)
+					if resolved != "" {avatars[strings.clone(source)] = resolved; next -= 1}
+					// Check for a new section before downloading the resolved image.
+					continue
 				}
-				delete(covers[index].source)
-				covers[index].source = strings.clone(url)
-				if url != "" {next -= 1}
-				// Check for a new section before starting another HTTP request.
-				continue
 			}
-			surface := load_cached_image(cache, &network_client, source, covers[index].target)
+			if surface == nil {
+				surface = load_cached_image(
+					cache,
+					&network_client,
+					source,
+					covers[index].target,
+					cache_source = cache_source,
+				)
+			}
 			if surface != nil {
 				if !post_network_result(
 					   {

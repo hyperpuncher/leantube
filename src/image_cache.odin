@@ -57,24 +57,31 @@ trim_image_cache :: proc(cache: Image_Cache, incoming_bytes: i64 = 0) -> bool {
 	return total <= cache.maximum_bytes
 }
 
+// Return owned pixels without resolving or downloading the image source.
+read_cached_image :: proc(cache: Image_Cache, source: string, target: i32) -> ^sdl.Surface {
+	path := image_cache_path(cache, source)
+	defer delete(path)
+	if path == "" {return nil}
+	bytes, error := os.read_entire_file(path, context.allocator)
+	defer delete(bytes)
+	surface: ^sdl.Surface
+	if error == nil {surface = decode_image(bytes, target)}
+	if surface == nil {_ = os.remove(path)}
+	return surface
+}
+
 load_cached_image :: proc(
 	cache: Image_Cache,
 	client: ^http.Client,
 	source: string,
 	target: i32 = 0,
 	fetch: type_of(yt.fetch_thumbnail) = yt.fetch_thumbnail,
+	cache_source: string = "",
 ) -> ^sdl.Surface {
 	if source == "" {return nil}
-	path := image_cache_path(cache, source)
-	defer delete(path)
-	if path != "" {
-		bytes, error := os.read_entire_file(path, context.allocator)
-		surface: ^sdl.Surface
-		if error == nil {surface = decode_image(bytes, target)}
-		delete(bytes)
-		if surface != nil {return surface}
-		_ = os.remove(path)
-	}
+	// Channel IDs remain available after restart, before their avatar URL is known.
+	key := cache_source != "" ? cache_source : source
+	if surface := read_cached_image(cache, key, target); surface != nil {return surface}
 
 	bytes: [dynamic]u8
 	if strings.has_prefix(source, "https://") {
@@ -86,9 +93,11 @@ load_cached_image :: proc(
 	}
 	defer delete(bytes)
 	surface := decode_image(bytes[:], target)
-	if surface != nil && path != "" && trim_image_cache(cache, i64(len(bytes))) {
+	if surface != nil && trim_image_cache(cache, i64(len(bytes))) {
 		// Cache files are disposable: a partial file is fetched again on the next read.
-		if os.write_entire_file(path, bytes[:]) != nil {_ = os.remove(path)}
+		path := image_cache_path(cache, key)
+		defer delete(path)
+		if path != "" && os.write_entire_file(path, bytes[:]) != nil {_ = os.remove(path)}
 	}
 	return surface
 }
