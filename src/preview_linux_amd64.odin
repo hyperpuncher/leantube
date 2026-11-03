@@ -779,6 +779,9 @@ check_search_flow :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	history_request, history_ready := chan.try_recv(network_requests)
 	assert(history_ready && history_request.kind == .Browse && history_request.text == "FEhistory")
 	free_network_request(&history_request)
+	activate_navigation(.History)
+	_, duplicate_history := chan.try_recv(network_requests)
+	assert(!duplicate_history, "reselecting a loading section must not restart its request")
 	chan.send(
 		network_results,
 		Network_Result {
@@ -788,12 +791,35 @@ check_search_flow :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 		},
 	)
 	poll_network(renderer)
+	activate_navigation(.History)
+	_, duplicate_history = chan.try_recv(network_requests)
+	assert(!duplicate_history, "reselecting the current section must keep its page")
 	load_more()
 	history_request, history_ready = chan.try_recv(network_requests)
 	assert(
 		history_ready &&
 		history_request.text == "FEhistory" &&
 		history_request.continuation == "history-next-page",
+	)
+	free_network_request(&history_request)
+	chan.send(network_results, Network_Result{kind = .Catalog, page = page, error = .Transport})
+	poll_network(renderer)
+	activate_navigation(.History)
+	history_request, history_ready = chan.try_recv(network_requests)
+	assert(
+		history_ready && history_request.text == "FEhistory",
+		"a failed section must remain retryable",
+	)
+	free_network_request(&history_request)
+	start_browse("UC-example")
+	history_request, history_ready = chan.try_recv(network_requests)
+	assert(history_ready && history_request.text == "UC-example")
+	free_network_request(&history_request)
+	activate_navigation(.History)
+	history_request, history_ready = chan.try_recv(network_requests)
+	assert(
+		history_ready && history_request.text == "FEhistory",
+		"the section icon must return from a nested page",
 	)
 	free_network_request(&history_request)
 }

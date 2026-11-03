@@ -55,6 +55,7 @@ activate_navigation :: proc(item: Navigation, window: ^sdl.Window = nil) {
 	case .Subscriptions, .Watch_Later, .History, .Home, .Playlists, .Liked:
 		if search_editing {finish_search_input(window)}
 		if !signed_in {start_login(); return}
+		if rail_active == item && browse_id == NAV_ITEMS[item].browse_id && notice == "" {return}
 		rail_active = item
 		clear_browse_history()
 		start_browse(NAV_ITEMS[item].browse_id, remember = false)
