@@ -21,8 +21,9 @@ is declared in `usr/include/starfish-media-pipeline/StarfishMediaAPIs.h` inside
 the SDK's ARM32 sysroot. consult that header before assuming the adapter covers
 every useful method.
 
-the TV supplies `libplayerAPIs.so.1` and its C++ runtime. the app packages only
-its own adapter. the SDK is not complete official LG API documentation. its
+the TV supplies `libplayerAPIs.so.1`. the app packages its own adapter and the
+SDK dual-ABI `libstdc++.so.6` inside the app; it does not replace firmware
+libraries. the SDK is not complete official LG API documentation. its
 header contains opaque storage and padding assumptions; do not copy private
 class layouts or vtables into Odin.
 
