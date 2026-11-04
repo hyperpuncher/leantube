@@ -31,7 +31,7 @@ class layouts or vtables into Odin.
 
 | call or load option                  | contract used by LeanTube                                                                                                                 |
 | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `Seek`                               | JSON `position` is in milliseconds. `retainLastRenderedFrame:true` keeps the previous picture during a seek.                              |
+| `Seek`                               | JSON `position` is in milliseconds. `retainLastRenderedFrame:true` keeps the previous picture during a seek. webOS 3.x takes plain ms.    |
 | load `option.seekMode`               | `"keep-rate"` prevents an explicit seek from resetting the selected playback rate.                                                        |
 | load `option.transmission.trickType` | `"client-side"` avoids an unwanted pipeline seek when changing the rate.                                                                  |
 | load `esInfo.ptsToDecode`            | initial target in nanoseconds, not the millisecond unit of `Seek.position`.                                                               |
@@ -57,6 +57,9 @@ by the SDK's `Seek(const char *millis)` declaration. captures verified retained
 pictures, and source-frame comparisons verified rate preservation. 4k SDR and
 4k60 PQ HDR playback and seeking were checked. callback counts and successful
 service replies alone are not display or speed proof.
+
+webOS 3.5 `Seek` parses its message with `g_ascii_strtoll`, so JSON seeks to 0
+and stalls playback.
 
 the broader investigation found 33 SDK member declarations, 91 runtime member
 names, 34 SDK events, and 137 `option.*` strings across the copied Starfish and

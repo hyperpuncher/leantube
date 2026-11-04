@@ -234,6 +234,16 @@ controls_preserve_pause_audio_and_retarget_the_existing_decoder :: proc(t: ^test
 }
 
 @(test)
+legacy_seek_sends_plain_milliseconds :: proc(t: ^testing.T) {
+	legacy := seek_message(550283.9, true)
+	defer delete(legacy)
+	testing.expect_value(t, string(legacy), "550283")
+	current := seek_message(550283.9, false)
+	defer delete(current)
+	testing.expect_value(t, string(current), `{"position":550283,"retainLastRenderedFrame":true}`)
+}
+
+@(test)
 seek_to_end_and_exhausted_seek_tail_do_not_wait_for_packets :: proc(t: ^testing.T) {
 	prepare_player(4)
 	defer stop_playback()

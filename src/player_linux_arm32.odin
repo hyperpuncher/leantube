@@ -212,6 +212,12 @@ player_rate :: proc(value: f64) -> bool {
 	return true
 }
 
+// webOS 3.x Seek parses the message with strtoll, so JSON would seek to 0.
+seek_message :: proc(target_ms: f64, legacy: bool) -> cstring {
+	if legacy {return fmt.caprintf("%d", i64(target_ms))}
+	return fmt.caprintf(`{{"position":%d,"retainLastRenderedFrame":true}}`, i64(target_ms))
+}
+
 player_seek :: proc(target: f64) -> bool {
 	if math.is_nan(target) || math.is_inf(target) || target < 0 {return false}
 	if player_reader == nil || return_to_grid {return false}
@@ -228,7 +234,7 @@ player_seek :: proc(target: f64) -> bool {
 		// Keep the decoder, display window, last picture, and playback rate.
 		status := player_status
 		sync.atomic_store(&status.resetting, 1)
-		body := fmt.caprintf(`{{"position":%d,"retainLastRenderedFrame":true}}`, i64(target))
+		body := seek_message(target, WEBOS_LEGACY)
 		retargeted := sf_pause(player_api) && sf_seek(player_api, body)
 		delete(body)
 		sync.atomic_store(&status.frame_ns, -1)
