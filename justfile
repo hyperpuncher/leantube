@@ -146,9 +146,11 @@ test-tv-layout:
 package: build-release
 	ares-package build/app -o build
 
-# Build the IPK and Homebrew Channel feed without publishing or TV access.
-release: package
-	bun scripts/release.ts
+# Stage both release IPKs without publishing or TV access.
+release: package package-legacy
+	if [[ -d build/release/{{app_version}} ]]; then trash -- build/release/{{app_version}}; fi
+	mkdir -p build/release/{{app_version}}
+	cp build/{{app_id}}_{{app_version}}_arm.ipk build/legacy/{{app_id}}.legacy_{{app_version}}_arm.ipk build/release/{{app_version}}/
 
 # Check live search, cover download, resolution, and CDN access locally.
 test-youtube:

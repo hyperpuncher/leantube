@@ -18,7 +18,6 @@ jobs:
         steps:
             - uses: actions/checkout@v7
               with:
-                  fetch-depth: 0
                   persist-credentials: false
 
             - name: Check release tag
@@ -27,14 +26,10 @@ jobs:
 
             - uses: oven-sh/setup-bun@v2
 
-            - uses: extractions/setup-just@v4
-              with:
-                  just-version: "1.59.0"
-
             - name: Install build tools
               run: |
                   sudo apt-get update
-                  sudo apt-get install -y --no-install-recommends clang-21 llvm-21-dev ccache meson libexpat1-dev trash-cli
+                  sudo apt-get install -y --no-install-recommends clang-21 llvm-21-dev ccache meson libexpat1-dev trash-cli just
                   bun install --frozen-lockfile
 
             - name: Cache toolchain
@@ -48,31 +43,45 @@ jobs:
               if: steps.toolchain.outputs.cache-hit != 'true'
               run: just setup
 
-            - name: Build release files
+            - name: Build both app packages
               run: just release
 
             - uses: actions/upload-artifact@v7
               with:
                   name: leantube-arm32
-                  path: build/release/
+                  path: |
+                      build/release/
+                      build/app/appinfo.json
+                      build/legacy/app/appinfo.json
                   if-no-files-found: error
 
     publish:
         if: github.event_name == 'push' && github.ref_type == 'tag'
         needs: build
-        runs-on: ubuntu-26.04-arm
+        runs-on: ubuntu-slim
         permissions:
             contents: write
         steps:
+            - uses: actions/checkout@v7
+              with:
+                  fetch-depth: 0
+                  persist-credentials: false
+
+            - uses: oven-sh/setup-bun@v2
+
             - uses: actions/download-artifact@v8
               with:
                   name: leantube-arm32
-                  path: release
+                  path: build
 
             - name: Publish release
               env:
                   GH_TOKEN: ${{ github.token }}
+                  GH_REPO: ${{ github.repository }}
               run: |
-                  gh release create "$GITHUB_REF_NAME" release/*/*.ipk release/*/repo.json \
-                    --repo "$GITHUB_REPOSITORY" --verify-tag \
-                    --title "$GITHUB_REF_NAME" --notes-file release/*/notes.md
+                  directory="build/release/${GITHUB_REF_NAME#v}"
+                  gh release create "$GITHUB_REF_NAME" "$directory"/*.ipk \
+                    --verify-tag --draft --title "$GITHUB_REF_NAME" --notes ""
+                  gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" | bun scripts/release.ts
+                  gh release upload "$GITHUB_REF_NAME" "$directory/repo.json"
+                  gh release edit "$GITHUB_REF_NAME" --draft=false --latest --notes-file "$directory/notes.md"
