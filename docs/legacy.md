@@ -57,22 +57,6 @@ override works with `just build-release` or `just release`. accepted values are
 0 through 256. zero disables new disk image writes. startup trimming removes
 cached `.image` files only, not account data.
 
-## playback resume
-
-Opening a partially watched video resumes at its supplied YouTube playback-action
-timestamp when available, or estimates the position from the thumbnail's watched
-percentage and duration. The percentage fallback is approximate, not an exact saved
-time. Signed-in playback retains the last presented position in the current
-catalog; reloading the catalog uses YouTube's metadata again. This behavior applies
-to both builds.
-
-Unwatched and completed (100% watched or at the known end) videos start at zero.
-Without a known duration, percentages cannot be converted to a time, but a valid
-supplied timestamp is retained. Live/upcoming cards remain unsupported.
-Explicit launch positions (including zero), seeks, and quality changes are not
-replaced by automatic resume. SponsorBlock can advance the initial position past
-a sponsor segment. The desktop preview shows UI state only, not video playback.
-
 ## firmware compatibility
 
 the legacy profile uses native lifecycle interface version 1
