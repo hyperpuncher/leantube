@@ -15,13 +15,13 @@ case "$profile" in
 	legacy) odin_flags+=(-define:WEBOS_LEGACY=true) ;;
 	*) printf 'unknown WEBOS_PROFILE: %s (expected default or legacy)\n' "$profile" >&2; exit 2 ;;
 esac
-cache_mib=${IMAGE_CACHE_MIB:-256}
-if [[ $profile == legacy ]]; then cache_mib=${IMAGE_CACHE_MIB:-16}; fi
-if [[ ! $cache_mib =~ ^(0|[1-9][0-9]{0,2})$ ]] || ((cache_mib > 256)); then
-	printf 'IMAGE_CACHE_MIB must be an integer from 0 through 256\n' >&2
-	exit 2
+if [[ -n ${IMAGE_CACHE_MIB:-} ]]; then
+	if [[ ! $IMAGE_CACHE_MIB =~ ^(0|[1-9][0-9]{0,2})$ ]] || ((IMAGE_CACHE_MIB > 256)); then
+		printf 'IMAGE_CACHE_MIB must be an integer from 0 through 256\n' >&2
+		exit 2
+	fi
+	odin_flags+=("-define:IMAGE_CACHE_MIB=$IMAGE_CACHE_MIB")
 fi
-odin_flags+=("-define:IMAGE_CACHE_MIB=$cache_mib")
 if ! command -v ccache >/dev/null; then
 	printf 'ccache is required for cached native builds\n' >&2
 	exit 1

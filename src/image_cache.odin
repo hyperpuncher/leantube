@@ -11,7 +11,7 @@ import "core:strings"
 import sdl "vendor:sdl3"
 
 // Used only by the network worker. Keep the original encoded image bytes.
-IMAGE_CACHE_MIB :: #config(IMAGE_CACHE_MIB, 256)
+IMAGE_CACHE_MIB :: #config(IMAGE_CACHE_MIB, 64)
 #assert(IMAGE_CACHE_MIB >= 0 && IMAGE_CACHE_MIB <= 256)
 IMAGE_CACHE_BYTES :: IMAGE_CACHE_MIB * 1024 * 1024
 Image_Cache :: struct {
