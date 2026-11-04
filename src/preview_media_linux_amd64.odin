@@ -38,6 +38,7 @@ start_video :: proc() {
 	paused = true
 	duration_ms = catalog.videos[selected].duration_ms
 	timeline = {
+		position_ms    = model.video_resume_position(catalog.videos[selected]),
 		seek_target_ms = -1,
 	}
 	rate = 1

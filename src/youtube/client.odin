@@ -5,6 +5,7 @@ import "../model"
 import "core:encoding/base64"
 import "core:encoding/json"
 import "core:fmt"
+import "core:math"
 import "core:net"
 import "core:strconv"
 import "core:strings"
@@ -134,6 +135,19 @@ watched_percent :: proc(overlays: json.Value) -> f32 {
 	return f32(clamp(percent, 0, 100))
 }
 
+// Read only the card's playback action, not timestamps in menus or other videos.
+// YouTube.js WatchEndpoint exposes startTimeSeconds; overlays only expose percent.
+read_resume_position :: proc(card: ^model.Video, command: json.Value) {
+	endpoint := find_node(command, "watchEndpoint")
+	id, _ := field(endpoint, "videoId").(json.String)
+	if string(id) != card.id {return}
+	seconds, ok := numeric(field(endpoint, "startTimeSeconds"))
+	if !ok || math.is_nan(seconds) || math.is_inf(seconds * 1000) || seconds < 0 {return}
+	if card.duration_ms > 0 && seconds > card.duration_ms / 1000 {return}
+	card.resume_position_ms = seconds * 1000
+	card.resume_position_known = true
+}
+
 video_id_valid :: proc(id: string) -> bool {
 	if len(id) != 11 {return false}
 	for ch in id {
@@ -180,6 +194,7 @@ collect_videos :: proc(value: json.Value, catalog: ^model.Catalog) {
 				duration_label  = stamp,
 				duration_ms     = ms,
 			}
+			read_resume_position(&card, video["navigationEndpoint"])
 			view_text := text(video["viewCountText"])
 			published := text(video["publishedTimeText"])
 			defer delete(view_text)
@@ -293,6 +308,12 @@ collect_lockups :: proc(value: json.Value, catalog: ^model.Catalog) {
 				title           = strings.clone(string(title_text)),
 				duration_label  = stamp,
 				duration_ms     = ms,
+			}
+			if !playlist {
+				read_resume_position(
+					&card,
+					field(field(lockup["rendererContext"], "commandContext"), "onTap"),
+				)
 			}
 			fill_card_labels(&card, labels[:])
 			card.actions = parse_card_actions(lockup)
