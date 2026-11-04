@@ -8,7 +8,7 @@ import "core:sync"
 import "core:sys/posix"
 import sdl "vendor:sdl3"
 
-CONTROL_STATE :: "/tmp/leantube-state.json"
+CONTROL_STATE :: APP_TEMP_PREFIX + "-state.json"
 control_saved_at: u64
 
 Track_State :: struct {

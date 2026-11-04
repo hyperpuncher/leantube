@@ -133,11 +133,11 @@ build-legacy:
 
 package-legacy: build-legacy
 	mkdir -p build/legacy
-	ares-package build/app -o build/legacy
+	ares-package build/legacy/app -o build/legacy
 
 # Build the optimized webOS ARM32 app for release.
 build-release:
-	bash scripts/build.sh release
+	WEBOS_PROFILE=default bash scripts/build.sh release
 
 # Run the headless ABI/layout regression on the TV, without opening an app.
 test-tv-layout:

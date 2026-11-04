@@ -10,9 +10,13 @@ case "$mode" in
 	*) printf 'usage: %s [dev|release|bench]\n' "$0" >&2; exit 2 ;;
 esac
 profile=${WEBOS_PROFILE:-default}
+stage=build/app
 case "$profile" in
 	default) ;;
-	legacy) odin_flags+=(-define:WEBOS_LEGACY=true) ;;
+	legacy)
+		stage=build/legacy/app
+		odin_flags+=(-define:WEBOS_LEGACY=true)
+		;;
 	*) printf 'unknown WEBOS_PROFILE: %s (expected default or legacy)\n' "$profile" >&2; exit 2 ;;
 esac
 if [[ -n ${IMAGE_CACHE_MIB:-} ]]; then
@@ -28,6 +32,7 @@ if ! command -v ccache >/dev/null; then
 fi
 export CCACHE_DIR="$PWD/.cache/ccache"
 source scripts/env.sh
+if [[ $profile == legacy ]]; then app_id+=.legacy; fi
 cc="$WEBOS_SDK/bin/arm-webos-linux-gnueabi-gcc"
 pkg="$WEBOS_SDK/bin/pkg-config"
 sysroot="$WEBOS_SDK/arm-webos-linux-gnueabi/sysroot"
@@ -38,10 +43,11 @@ for required in "$WEBOS_ODIN" "$cc" "$pkg" "$WEBOS_SDK/bin/wayland-scanner" "$sy
 	fi
 done
 # Recreate package staging, but keep local credentials, requests, and captures.
-if [[ -d build/app ]]; then trash -- build/app; fi
-mkdir -p build/obj build/app
+if [[ -d $stage ]]; then trash -- "$stage"; fi
+mkdir -p build/obj "$stage"
 "$WEBOS_ODIN" build src -target:linux_arm32 -microarch:cortex-a9 \
-	-build-mode:obj -use-single-module -out:build/obj/leantube.o "${odin_flags[@]}" -define:APP_VERSION="$app_version"
+	-build-mode:obj -use-single-module -out:build/obj/leantube.o "${odin_flags[@]}" \
+	-define:APP_ID="$app_id" -define:APP_VERSION="$app_version"
 scanner="$WEBOS_SDK/bin/wayland-scanner"
 protocol=vendor/webos-text/text.xml
 for generated in build/obj/text-client-protocol.h build/obj/text-protocol.c; do
@@ -88,20 +94,21 @@ reader_libraries=(-L"$prefix/lib" -lavformat -lavcodec -lavutil -Lbuild/obj -lpl
 	-l:libSDL3.so.0 -l:libSDL3_ttf.so.0 -l:libSDL3_image.so.0 -lAcbAPI \
 	"${libs[@]}" -Wl,--allow-shlib-undefined \
 	-l:libcurl.so.4 -l:libssl.so.4 -l:libcrypto.so.4 -lz -lm -lpthread -ldl -lrt -latomic \
-	-Wl,--disable-new-dtags,-rpath,'$ORIGIN/lib' -o "build/app/$app_main"
-cp -a app/. build/app/
+	-Wl,--disable-new-dtags,-rpath,'$ORIGIN/lib' -o "$stage/$app_main"
+cp -a app/. "$stage/"
 if [[ $profile == legacy ]]; then
-	jq '.nativeLifeCycleInterfaceVersion = 1' app/appinfo.json > build/app/appinfo.json
+	jq --arg id "$app_id" '.id = $id | .title += " (webOS 3.x)" | .nativeLifeCycleInterfaceVersion = 1' \
+		app/appinfo.json > "$stage/appinfo.json"
 fi
-mkdir -p build/app/lib
-cp -a "$WEBOS_PLATFORM/runtime/." build/app/lib/
-cp -a "$WEBOS_PLATFORM/licenses/." build/app/licenses/
-cp build/obj/libplayerAPIs_C.so build/app/lib/
+mkdir -p "$stage/lib"
+cp -a "$WEBOS_PLATFORM/runtime/." "$stage/lib/"
+cp -a "$WEBOS_PLATFORM/licenses/." "$stage/licenses/"
+cp build/obj/libplayerAPIs_C.so "$stage/lib/"
 # Both string ABIs need the SDK's dual-ABI runtime on old firmware. This is
 # app-private and also provides the legacy ABI required by firmware libraries.
-cp -L "$("$cxx" -print-file-name=libstdc++.so.6)" build/app/lib/libstdc++.so.6
+cp -L "$("$cxx" -print-file-name=libstdc++.so.6)" "$stage/lib/libstdc++.so.6"
 for library in libavformat.so.63 libavcodec.so.63 libavutil.so.61; do
-	cp -L "$prefix/lib/$library" "build/app/lib/$library"
+	cp -L "$prefix/lib/$library" "$stage/lib/$library"
 done
-cp "$prefix/share/licenses/FFmpeg.txt" build/app/licenses/FFmpeg.txt
-printf 'built %s for webOS ARM32 soft-float (%s)\n' "build/app/$app_main" "$mode"
+cp "$prefix/share/licenses/FFmpeg.txt" "$stage/licenses/FFmpeg.txt"
+printf 'built %s for webOS ARM32 soft-float (%s, %s)\n' "$stage/$app_main" "$mode" "$profile"

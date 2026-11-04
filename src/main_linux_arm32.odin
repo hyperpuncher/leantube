@@ -12,9 +12,14 @@ import "core:sync"
 import "core:sys/posix"
 import sdl "vendor:sdl3"
 
-APP_ID :: "org.hyperpuncher.leantube"
+APP_ID :: #config(APP_ID, "org.hyperpuncher.leantube")
 APP_VERSION :: #config(APP_VERSION, "dev")
 WEBOS_LEGACY :: #config(WEBOS_LEGACY, false)
+when WEBOS_LEGACY {
+	APP_TEMP_PREFIX :: "/tmp/leantube-legacy"
+} else {
+	APP_TEMP_PREFIX :: "/tmp/leantube"
+}
 foreign import bridge "system:tv_bridge"
 foreign bridge {
 	tv_clay_abi :: proc(command_size, config_size, error_size: u32) -> bool ---
