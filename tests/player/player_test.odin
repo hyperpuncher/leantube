@@ -7,6 +7,7 @@ import yt "../../src/youtube"
 import "core:c"
 import queue "core:container/queue"
 import "core:encoding/json"
+import "core:fmt"
 import "core:strings"
 import "core:sync"
 import "core:testing"
@@ -87,7 +88,53 @@ decoder_feed :: proc(_: ^Starfish, t: ^reader.Track, limit: f64) -> bool {
 	}
 	return true
 }
-resolve_selected :: proc() {}
+resolved_position: f64
+resolve_selected :: proc(position_ms: f64 = 0, _: bool = false) {resolved_position = position_ms}
+
+@(test)
+opening_a_card_resumes_exact_or_estimated_progress :: proc(t: ^testing.T) {
+	append(&catalog.videos, model.Video{})
+	selected = 0
+	defer model.catalog_destroy(&catalog)
+	for fixture in ([]struct {
+			name:     string,
+			card:     model.Video,
+			expected: f64,
+		}{{"exact wins over rounded 20%", {duration_ms = 600000, watched_percent = 20, resume_position_known = true, resume_position_ms = 123500}, 123500}, {"estimated 35% of ten minutes", {duration_ms = 600000, watched_percent = 35}, 210000}, {"unwatched", {duration_ms = 600000}, 0}, {"finished", {duration_ms = 600000, watched_percent = 100, resume_position_known = true, resume_position_ms = 599000}, 0}, {"at end", {duration_ms = 600000, resume_position_known = true, resume_position_ms = 600000}, 0}, {"unknown duration cannot estimate", {watched_percent = 35}, 0}, {"unknown duration retains exact", {resume_position_known = true, resume_position_ms = 123500}, 123500}, {"explicit saved zero", {duration_ms = 600000, watched_percent = 35, resume_position_known = true}, 0}}) {
+		catalog.videos[0] = fixture.card
+		resolved_position = -1
+		start_video()
+		testing.expect_value(t, resolved_position, fixture.expected)
+		fmt.printf("resume: %s -> %.3f seconds\n", fixture.name, resolved_position / 1000)
+	}
+	selected = -1
+	resolved_position = -1
+	start_video()
+	testing.expect_value(t, resolved_position, f64(-1))
+	selected = 0
+}
+@(test)
+initial_load_keeps_resume_or_explicit_time_and_applies_sponsorblock :: proc(t: ^testing.T) {
+	append(&catalog.videos, model.Video{duration_ms = 600000, watched_percent = 35})
+	selected = 0
+	signed_in = false
+	defer model.catalog_destroy(&catalog)
+	for fixture in ([]struct {
+			position, expected: f64,
+			sponsor:            bool,
+		}{{210000, 210000, false}, {0, 0, false}, {42000, 42000, false}, {210000, 220000, true}}) {
+		if fixture.sponsor {append(&sponsor_segments, sb.Segment{start_ms = 200000, end_ms = 220000, video_duration_ms = 600000})}
+		// Empty URLs never contact a server; inspect the real reader's startup options.
+		load_video({duration_ms = 600000}, nil, fixture.position, true)
+		if testing.expect(t, player_reader != nil) {
+			testing.expect_value(t, player_reader.tracks[0].options.start, fixture.expected / 1000)
+			testing.expect_value(t, timeline.position_ms, fixture.expected)
+			testing.expect(t, paused)
+		}
+		stop_playback()
+	}
+}
+
 player_controls_visible :: proc() -> bool {return paused || !loaded || fake_controls_visible}
 
 prepare_player :: proc(end: f64) {
@@ -168,6 +215,8 @@ history_reports_presented_positions_and_does_not_record_paused_seeks :: proc(t: 
 	)
 	testing.expect_value(t, catalog.videos[0].watched_percent, f32(0))
 	testing.expect_value(t, catalog.videos[1].watched_percent, f32(25))
+	testing.expect(t, catalog.videos[1].resume_position_known)
+	testing.expect_value(t, catalog.videos[1].resume_position_ms, f64(2500))
 }
 
 @(test)
