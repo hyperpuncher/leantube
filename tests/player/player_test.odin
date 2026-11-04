@@ -26,6 +26,7 @@ App_State :: enum {
 Play_State :: enum {
 	Loaded,
 }
+WEBOS_LEGACY :: false
 acb_id: c.long
 playback_limits: [4]yt.Video_Limit
 running, paused, loaded, browsing, resolving, return_to_grid, dirty, library_focus_pending: bool

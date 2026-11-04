@@ -25,21 +25,35 @@ native_video_codec :: proc(codec: string) -> cstring {
 	return nil
 }
 
+// Formats decoded and frame-checked through Starfish on a webOS 3.5 UJ630V,
+// whose firmware has no capability query. HEVC is untested; AV1 shows black.
+@(rodata)
+LEGACY_LIMITS := [4]yt.Video_Limit {
+	{"h264", 1920, 1080, 60},
+	{"hevc", 0, 0, 0},
+	{"vp9", 3840, 2160, 60},
+	{"av1", 0, 0, 0},
+}
+
 init_player :: proc() {
 	for codec, i in ([]string{"h264", "hevc", "vp9", "av1"}) {
-		width, height, fps: c.int
-		ok := sf_video_limits(native_video_codec(codec), &width, &height, &fps)
-		playback_limits[i] = {
-			codec = codec,
+		when WEBOS_LEGACY {
+			playback_limits[i] = LEGACY_LIMITS[i]
+		} else {
+			width, height, fps: c.int
+			playback_limits[i] = {
+				codec = codec,
+			}
+			if sf_video_limits(native_video_codec(codec), &width, &height, &fps) {
+				playback_limits[i] = {codec, int(width), int(height), int(fps)}
+			}
 		}
-		if ok {playback_limits[i] = {codec, int(width), int(height), int(fps)}}
 		fmt.printf(
-			"native codec=%s available=%v width=%d height=%d fps=%d\n",
+			"native codec=%s width=%d height=%d fps=%d\n",
 			codec,
-			ok,
-			width,
-			height,
-			fps,
+			playback_limits[i].width,
+			playback_limits[i].height,
+			playback_limits[i].fps,
 		)
 	}
 }

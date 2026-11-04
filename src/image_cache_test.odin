@@ -34,7 +34,7 @@ image_cache_reuses_original_bytes_and_recovers_from_bad_files :: proc(t: ^testin
 	image_cache_fetch_calls, image_cache_status = 0, 200
 	cache := Image_Cache {
 		directory     = directory,
-		maximum_bytes = IMAGE_CACHE_BYTES,
+		maximum_bytes = 256 * 1024 * 1024,
 	}
 	source := "https://images.example/avatar?v=1"
 	path := image_cache_path(cache, source)
@@ -51,7 +51,7 @@ image_cache_reuses_original_bytes_and_recovers_from_bad_files :: proc(t: ^testin
 	// A new cache value must still work offline and at another display size.
 	image_cache_status = 503
 	surface = load_cached_image(
-		{directory = directory, maximum_bytes = IMAGE_CACHE_BYTES},
+		{directory = directory, maximum_bytes = 256 * 1024 * 1024},
 		nil,
 		source,
 		32,
@@ -215,4 +215,43 @@ image_cache_evicts_oldest_downloads_and_ignores_storage_failure :: proc(t: ^test
 	)
 	if !testing.expect(t, surface != nil) {return}
 	sdl.DestroySurface(surface)
+}
+
+@(test)
+image_cache_zero_budget_preserves_account_data :: proc(t: ^testing.T) {
+	directory, error := os.make_directory_temp("/tmp", "leantube-images-", context.allocator)
+	if !testing.expect(t, error == nil) {return}
+	defer {os.remove_all(directory); delete(directory)}
+	cache := Image_Cache {
+		directory     = directory,
+		maximum_bytes = 0,
+	}
+	image := image_cache_path(cache, "https://images.example/old")
+	account := fmt.aprintf("%s/account.json", directory)
+	defer {delete(image); delete(account)}
+	if !testing.expect(t, os.write_entire_file(image, "old") == nil) {return}
+	if !testing.expect(t, os.write_entire_file(account, "preserve me") == nil) {return}
+	testing.expect(t, !trim_image_cache(cache, -1))
+	testing.expect(t, !trim_image_cache({directory = directory, maximum_bytes = -1}))
+	testing.expect(t, os.exists(image))
+	testing.expect(t, trim_image_cache(cache))
+	testing.expect(t, !os.exists(image))
+	testing.expect(t, os.exists(account))
+	image_cache_fixture, error = os.read_entire_file("tests/ui/cover.webp", context.allocator)
+	if !testing.expect(t, error == nil) {return}
+	defer {delete(image_cache_fixture); image_cache_fixture = nil}
+	image_cache_fetch_calls, image_cache_status = 0, 200
+	surface := load_cached_image(
+		cache,
+		nil,
+		"https://images.example/old",
+		fetch = image_cache_fetch,
+	)
+	if !testing.expect(t, surface != nil) {return}
+	sdl.DestroySurface(surface)
+	testing.expect(t, !os.exists(image))
+	stored, read_error := os.read_entire_file(account, context.allocator)
+	defer delete(stored)
+	testing.expect(t, read_error == nil)
+	testing.expect_value(t, string(stored), "preserve me")
 }

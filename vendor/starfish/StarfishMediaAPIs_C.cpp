@@ -2,10 +2,15 @@
 
 #include <StarfishMediaAPIs.h>
 
-// Added for LeanTube: query the installed capabilities without exporting C++ types.
-namespace smp { namespace util {
-bool getMaxVideoResolution(std::string, int32_t *, int32_t *, int32_t *) __attribute__((weak));
-} }
+#include <dlfcn.h>
+
+extern "C" bool starfish_feed_modern(StarfishMediaAPIs *, const char *, char *, size_t);
+extern "C" bool starfish_feed_legacy(StarfishMediaAPIs *, const char *, char *, size_t);
+extern "C" bool starfish_limits(const char *, int32_t *, int32_t *, int32_t *);
+
+static bool modern_strings() {
+    return dlsym(RTLD_DEFAULT, "_ZN17StarfishMediaAPIs4FeedB5cxx11EPKc") != nullptr;
+}
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "bugprone-reserved-identifier"
@@ -35,10 +40,10 @@ const char *StarfishMediaAPIs_getMediaID(StarfishMediaAPIs_C *api) {
 }
 
 bool StarfishMediaAPIs_feed(StarfishMediaAPIs_C *api, const char *payload, char *result, size_t resultLen) {
-    auto ret = api->inner.Feed(payload);
-    auto nCopied = ret.copy(result, resultLen - 1, 0);
-    result[nCopied] = '\0';
-    return true;
+    if (!api || !result || resultLen == 0) return false;
+    result[0] = '\0';
+    auto feed = modern_strings() ? starfish_feed_modern : starfish_feed_legacy;
+    return feed(&api->inner, payload, result, resultLen);
 }
 
 bool StarfishMediaAPIs_load(StarfishMediaAPIs_C *api, const char *payload, StarfishMediaAPIs_callbackWithData *callback,
@@ -73,9 +78,7 @@ bool StarfishMediaAPIs_seek(StarfishMediaAPIs_C *api, const char *message) {
 }
 
 bool StarfishMediaAPIs_videoLimits(const char *codec, int32_t *width, int32_t *height, int32_t *fps) {
-    using Query = bool (*)(std::string, int32_t *, int32_t *, int32_t *);
-    auto query = static_cast<Query>(smp::util::getMaxVideoResolution);
-    return query != nullptr && query(codec, width, height, fps);
+    return starfish_limits(codec, width, height, fps);
 }
 
 bool StarfishMediaAPIs_pushEOS(StarfishMediaAPIs_C *api) {

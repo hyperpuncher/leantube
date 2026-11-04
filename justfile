@@ -43,6 +43,7 @@ host-qr:
 # Test deferred display metadata without a TV.
 test-native:
 	bash tests/native/run.sh
+	bash tests/native/starfish.sh
 
 # Test native player controls and lifecycle with only the LG boundary replaced.
 test-player:
@@ -125,6 +126,14 @@ bench-transport-host player_json output mode="curl-h3" mib="64" byte_offset="0":
 # Build the webOS ARM32 app for development, with debug information and no optimization.
 build:
 	bash scripts/build.sh dev
+
+# Build the conservative webOS 3.x lifecycle profile. No TV access.
+build-legacy:
+	WEBOS_PROFILE=legacy bash scripts/build.sh release
+
+package-legacy: build-legacy
+	mkdir -p build/legacy
+	ares-package build/app -o build/legacy
 
 # Build the optimized webOS ARM32 app for release.
 build-release:

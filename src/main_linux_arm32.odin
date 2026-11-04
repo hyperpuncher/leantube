@@ -14,6 +14,7 @@ import sdl "vendor:sdl3"
 
 APP_ID :: "org.hyperpuncher.leantube"
 APP_VERSION :: #config(APP_VERSION, "dev")
+WEBOS_LEGACY :: #config(WEBOS_LEGACY, false)
 foreign import bridge "system:tv_bridge"
 foreign bridge {
 	tv_clay_abi :: proc(command_size, config_size, error_size: u32) -> bool ---
@@ -27,15 +28,11 @@ register_application :: proc() -> bool {
 	LSErrorInit(&error)
 	defer LSErrorFree(&error)
 	token: c.ulong
-	return LSCall(
-		bus,
-		"luna://com.webos.applicationManager/registerApp",
-		"{\"id\":\"" + APP_ID + "\"}",
-		reply,
-		nil,
-		&token,
-		&error,
-	)
+	endpoint: cstring = "luna://com.webos.applicationManager/registerApp"
+	when WEBOS_LEGACY {endpoint = "luna://com.webos.applicationManager/registerNativeApp"}
+	payload: cstring = "{\"id\":\"" + APP_ID + "\"}"
+	when WEBOS_LEGACY {payload = "{\"id\":\"" + APP_ID + "\",\"subscribe\":true}"}
+	return LSCall(bus, endpoint, payload, reply, nil, &token, &error)
 }
 
 reply :: proc "c" (_: rawptr, message: rawptr, _: rawptr) -> bool {
@@ -45,19 +42,22 @@ reply :: proc "c" (_: rawptr, message: rawptr, _: rawptr) -> bool {
 	defer json.destroy_value(value)
 	root, ok := value.(json.Object)
 	if !ok {return true}
-	if success, found := root["returnValue"].(json.Boolean);
-	   found && bool(success) {registered = true}
-	if event, found := root["event"].(json.String); found {
-		if event == "close" {running = false}
-		if event == "relaunch" {
-			raise_window()
-			queue_control(root["parameters"])
-		}
+	if success, found := root["returnValue"].(json.Boolean); found {
+		if !bool(success) {return true}
+		registered = true
+	}
+	switch lifecycle_event(root, WEBOS_LEGACY) {
+	case "close":
+		running = false
+	case "relaunch":
+		raise_window()
+		queue_control(launch_parameters(root))
 	}
 	return true
 }
 
 main :: proc() {
+	when WEBOS_LEGACY {_ = sdl.SetHint("SDL_WEBOS_LEGACY_SEAT", "1")}
 	benchmark_reader_entry()
 	_ = sdl.SetHint(sdl.HINT_VIDEO_DRIVER, "wayland")
 	_ = sdl.SetAppMetadata("LeanTube", APP_VERSION, APP_ID)
@@ -65,7 +65,7 @@ main :: proc() {
 	_ = os.remove(CONTROL_STATE)
 	if len(os.args) > 1 {
 		if value, err := json.parse(os.args[1]); err == .None {
-			if root, ok := value.(json.Object); ok {queue_control(root["parameters"])}
+			if root, ok := value.(json.Object); ok {queue_control(launch_parameters(root))}
 			json.destroy_value(value)
 		}
 	}
