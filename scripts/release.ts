@@ -1,4 +1,4 @@
-// Read the draft release returned by `gh api repos/OWNER/REPO/releases/tags/TAG`.
+// Read uploaded assets from `gh release view TAG --json assets`.
 const {
 	assets,
 }: {
@@ -6,7 +6,6 @@ const {
 		name: string;
 		digest: string | null;
 		size: number;
-		browser_download_url: string;
 	}[];
 } = await Bun.stdin.json();
 const { version, icon } = await Bun.file("app/appinfo.json").json();
@@ -48,7 +47,8 @@ for (const [directory, description] of [
 		iconUri,
 		sourceUrl,
 		rootRequired: true,
-		ipkUrl: asset.browser_download_url,
+		// Draft asset URLs use a temporary tag. The feed needs the published URL.
+		ipkUrl: `${sourceUrl}/releases/download/v${version}/${asset.name}`,
 		ipkHash: { sha256: asset.digest.slice(7) },
 		ipkSize: asset.size,
 	};

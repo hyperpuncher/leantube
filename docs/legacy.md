@@ -40,9 +40,9 @@ packages only. a manual workflow run saves build artifacts only. publication
 requires a pushed version tag.
 
 the release workflow uploads both IPKs to a draft GitHub release. it then uses
-GitHub's asset hashes, sizes, and download URLs to create one `repo.json`.
-release notes keep the commit-based `feat`, `fix`, and other groups with commit
-links. the workflow uploads the feed before it publishes the release, so the
+GitHub's asset hashes and sizes to create one `repo.json`. feed links use the
+version tag because draft asset URLs are temporary. release notes keep the
+commit-based `feat`, `fix`, and other groups with commit links. the workflow uploads the feed before it publishes the release, so the
 existing feed URL changes only after all files are ready.
 
 ## image cache

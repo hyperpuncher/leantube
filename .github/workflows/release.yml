@@ -82,6 +82,6 @@ jobs:
                   directory="build/release/${GITHUB_REF_NAME#v}"
                   gh release create "$GITHUB_REF_NAME" "$directory"/*.ipk \
                     --verify-tag --draft --title "$GITHUB_REF_NAME" --notes ""
-                  gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" | bun scripts/release.ts
+                  gh release view "$GITHUB_REF_NAME" --json assets | bun scripts/release.ts
                   gh release upload "$GITHUB_REF_NAME" "$directory/repo.json"
                   gh release edit "$GITHUB_REF_NAME" --draft=false --latest --notes-file "$directory/notes.md"
