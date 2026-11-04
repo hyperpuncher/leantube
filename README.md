@@ -24,4 +24,5 @@ lightweight native YouTube client for webOS
 4. open **LeanTube** and select **Install**.
 
 for webOS 3.x, select **LeanTube (webOS 3.x)** instead.
-see [compatibility and build details](docs/legacy.md).
+see [compatibility and build details](docs/legacy.md) and
+[display and UI resolution](docs/display.md).
