@@ -135,17 +135,37 @@ watched_percent :: proc(overlays: json.Value) -> f32 {
 	return f32(clamp(percent, 0, 100))
 }
 
+// Briefly opened videos report a small percentage, so treat those as unwatched.
+MIN_RESUME_PERCENT :: 10
+
+// Prefer the exact playback timestamp; other cards only carry a rounded percent.
+resume_start :: proc(exact_ms: f64, exact_known: bool, duration_ms: f64, percent: f32) -> f64 {
+	if percent >= 100 {return 0}
+	if exact_known {return exact_ms}
+	if duration_ms <= 0 || percent <= MIN_RESUME_PERCENT {return 0}
+	return duration_ms * f64(percent) / 100
+}
+
 // Read only the card's playback action, not timestamps in menus or other videos.
 // YouTube.js WatchEndpoint exposes startTimeSeconds; overlays only expose percent.
 read_resume_position :: proc(card: ^model.Video, command: json.Value) {
+	exact_ms: f64
+	known: bool
 	endpoint := find_node(command, "watchEndpoint")
 	id, _ := field(endpoint, "videoId").(json.String)
-	if string(id) != card.id {return}
-	seconds, ok := numeric(field(endpoint, "startTimeSeconds"))
-	if !ok || math.is_nan(seconds) || math.is_inf(seconds * 1000) || seconds < 0 {return}
-	if card.duration_ms > 0 && seconds > card.duration_ms / 1000 {return}
-	card.resume_position_ms = seconds * 1000
-	card.resume_position_known = true
+	if string(id) == card.id {
+		seconds, ok := numeric(field(endpoint, "startTimeSeconds"))
+		valid :=
+			ok &&
+			!math.is_nan(seconds) &&
+			!math.is_inf(seconds) &&
+			seconds >= 0 &&
+			(card.duration_ms <= 0 || seconds <= card.duration_ms / 1000)
+		if valid {
+			exact_ms, known = seconds * 1000, true
+		}
+	}
+	card.resume_ms = resume_start(exact_ms, known, card.duration_ms, card.watched_percent)
 }
 
 video_id_valid :: proc(id: string) -> bool {

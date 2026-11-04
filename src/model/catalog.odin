@@ -9,8 +9,8 @@ import "core:strings"
 GRID_COLUMNS :: 3
 Video :: struct {
 	duration_ms:                          f64,
-	resume_position_ms:                   f64,
-	resume_position_known:                bool,
+	// Where playback starts. Zero means from the beginning.
+	resume_ms:                            f64,
 	watched_percent:                      f32,
 	id, title, channel, duration_label:   string,
 	meta:                                 string,
@@ -20,17 +20,10 @@ Video :: struct {
 	browse_id, thumbnail_url, avatar_url: string,
 	actions:                              [dynamic]Card_Action,
 }
-// Briefly opened videos can report a small percentage; start those from zero.
-MIN_RESUME_PERCENT :: 10
 
-// Prefer supplied/presented timestamps. Thumbnail percentages are only estimates.
+// Reject positions a decoder cannot use, including one at the known end.
 video_resume_position :: proc(video: Video) -> f64 {
-	if video.watched_percent >= 100 {return 0}
-	position := video.resume_position_ms
-	if !video.resume_position_known {
-		if !(video.duration_ms > 0 && video.watched_percent > MIN_RESUME_PERCENT) {return 0}
-		position = video.duration_ms * f64(video.watched_percent) / 100
-	}
+	position := video.resume_ms
 	if math.is_nan(position) || math.is_inf(position) || position < 0 {return 0}
 	if video.duration_ms > 0 && position >= video.duration_ms {return 0}
 	return position

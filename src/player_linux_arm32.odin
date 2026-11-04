@@ -90,8 +90,7 @@ report_player_history :: proc(finished: bool = false) {
 			if video.id == h.id {
 				video.watched_percent =
 					finished ? 100 : f32(clamp(h.position * 1000 / duration_ms * 100, 0, 100))
-				video.resume_position_ms = finished ? 0 : h.position * 1000
-				video.resume_position_known = true
+				video.resume_ms = finished ? 0 : h.position * 1000
 			}
 		}
 	}

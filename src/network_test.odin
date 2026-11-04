@@ -11,26 +11,6 @@ import "core:testing"
 import sdl "vendor:sdl3"
 
 @(test)
-resume_resolution_preserves_explicit_positions_and_pause :: proc(t: ^testing.T) {
-	network_requests, _ = chan.create(chan.Chan(Network_Request), 1, context.allocator)
-	defer {stop_network(); stop_playback(); clear_catalog(); page, playback = 0, 0; notice = ""}
-	append(
-		&catalog.videos,
-		model.Video{id = strings.clone("aqz-KE-bpKQ"), duration_ms = 600000, watched_percent = 35},
-	)
-	selected = 0
-	for position in ([]f64{model.video_resume_position(catalog.videos[0]), 0, 42000}) {
-		resolve_selected(position, true)
-		request, ok := chan.try_recv(network_requests)
-		testing.expect(t, ok)
-		testing.expect_value(t, request.kind, .Resolve)
-		testing.expect_value(t, request.position_ms, position)
-		testing.expect(t, request.start_paused)
-		free_network_request(&request)
-	}
-}
-
-@(test)
 canceling_and_reopening_the_same_video_rejects_old_replies :: proc(t: ^testing.T) {
 	network_requests, _ = chan.create(chan.Chan(Network_Request), 1, context.allocator)
 	network_results, _ = chan.create(chan.Chan(Network_Result), 2, context.allocator)

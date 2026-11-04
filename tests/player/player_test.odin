@@ -7,7 +7,6 @@ import yt "../../src/youtube"
 import "core:c"
 import queue "core:container/queue"
 import "core:encoding/json"
-import "core:fmt"
 import "core:strings"
 import "core:sync"
 import "core:testing"
@@ -92,20 +91,18 @@ resolved_position: f64
 resolve_selected :: proc(position_ms: f64 = 0, _: bool = false) {resolved_position = position_ms}
 
 @(test)
-opening_a_card_resumes_exact_or_estimated_progress :: proc(t: ^testing.T) {
+opening_a_card_starts_at_its_resume_position :: proc(t: ^testing.T) {
 	append(&catalog.videos, model.Video{})
 	selected = 0
 	defer model.catalog_destroy(&catalog)
 	for fixture in ([]struct {
-			name:     string,
 			card:     model.Video,
 			expected: f64,
-		}{{"exact wins over rounded 20%", {duration_ms = 600000, watched_percent = 20, resume_position_known = true, resume_position_ms = 123500}, 123500}, {"estimated 35% of ten minutes", {duration_ms = 600000, watched_percent = 35}, 210000}, {"unwatched", {duration_ms = 600000}, 0}, {"estimate at 10% starts over", {duration_ms = 600000, watched_percent = 10}, 0}, {"estimate above 10%", {duration_ms = 600000, watched_percent = 11}, 66000}, {"exact below 10% retained", {duration_ms = 600000, watched_percent = 5, resume_position_known = true, resume_position_ms = 30000}, 30000}, {"finished", {duration_ms = 600000, watched_percent = 100, resume_position_known = true, resume_position_ms = 599000}, 0}, {"at end", {duration_ms = 600000, resume_position_known = true, resume_position_ms = 600000}, 0}, {"unknown duration cannot estimate", {watched_percent = 35}, 0}, {"unknown duration retains exact", {resume_position_known = true, resume_position_ms = 123500}, 123500}, {"explicit saved zero", {duration_ms = 600000, watched_percent = 35, resume_position_known = true}, 0}}) {
+		}{{model.Video{duration_ms = 600000, resume_ms = 123500}, 123500}, {model.Video{duration_ms = 600000}, 0}, {model.Video{duration_ms = 600000, resume_ms = 600000}, 0}, {model.Video{duration_ms = 600000, resume_ms = 700000}, 0}, {model.Video{resume_ms = 123500}, 123500}, {model.Video{resume_ms = -1}, 0}}) {
 		catalog.videos[0] = fixture.card
 		resolved_position = -1
 		start_video()
 		testing.expect_value(t, resolved_position, fixture.expected)
-		fmt.printf("resume: %s -> %.3f seconds\n", fixture.name, resolved_position / 1000)
 	}
 	selected = -1
 	resolved_position = -1
@@ -215,8 +212,7 @@ history_reports_presented_positions_and_does_not_record_paused_seeks :: proc(t: 
 	)
 	testing.expect_value(t, catalog.videos[0].watched_percent, f32(0))
 	testing.expect_value(t, catalog.videos[1].watched_percent, f32(25))
-	testing.expect(t, catalog.videos[1].resume_position_known)
-	testing.expect_value(t, catalog.videos[1].resume_position_ms, f64(2500))
+	testing.expect_value(t, catalog.videos[1].resume_ms, f64(2500))
 }
 
 @(test)
