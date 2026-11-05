@@ -68,7 +68,7 @@ test-tv-http:
 fmt:
 	odinfmt src -w
 	odinfmt tests -w
-	clang-format -i src/native/bridge.c src/native/clay.c tests/native/fixture.c
+	clang-format -i src/native/bridge.c src/native/clay.c src/native/foreign.c tests/native/fixture.c tests/native/bridge_stub.c
 	bun fmt
 
 # Provision the toolchain, then build native libraries. No TV access.

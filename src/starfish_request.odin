@@ -7,6 +7,7 @@ Starfish_Load_Config :: struct {
 	width, height, fps_value, fps_scale: i32,
 	fps, target_seconds:                 f64,
 	audio_rate, audio_channels:          int,
+	window_id:                           string,
 }
 
 // Only the load fields used by LeanTube. Native names and zero values matter.
@@ -15,6 +16,7 @@ Starfish_Load_Request :: struct {
 		mediaTransportType: string,
 		option:             struct {
 			appId:                 string,
+			windowId:              string `json:"windowId,omitempty"`,
 			queryPosition:         bool,
 			seekMode:              string,
 			transmission:          struct {
@@ -67,6 +69,7 @@ starfish_load_request :: proc(config: Starfish_Load_Config) -> Starfish_Load_Req
 				mediaTransportType = "BUFFERSTREAM",
 				option = {
 					appId = config.app_id,
+					windowId = config.window_id,
 					queryPosition = false,
 					// Explicit seeks must keep the selected playback rate.
 					seekMode = "keep-rate",

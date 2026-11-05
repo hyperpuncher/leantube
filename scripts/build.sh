@@ -15,7 +15,6 @@ case "$profile" in
 	default) ;;
 	legacy)
 		stage=build/legacy/app
-		odin_flags+=(-define:WEBOS_LEGACY=true)
 		;;
 	*) printf 'unknown WEBOS_PROFILE: %s (expected default or legacy)\n' "$profile" >&2; exit 2 ;;
 esac
@@ -49,13 +48,18 @@ mkdir -p build/obj "$stage"
 	-build-mode:obj -use-single-module -out:build/obj/leantube.o "${odin_flags[@]}" \
 	-define:APP_ID="$app_id" -define:APP_VERSION="$app_version"
 scanner="$WEBOS_SDK/bin/wayland-scanner"
-protocol=vendor/webos-text/text.xml
-for generated in build/obj/text-client-protocol.h build/obj/text-protocol.c; do
-	if [[ ! -f "$generated" || "$protocol" -nt "$generated" || "$scanner" -nt "$generated" ]]; then
-		"$scanner" client-header "$protocol" build/obj/text-client-protocol.h
-		"$scanner" private-code "$protocol" build/obj/text-protocol.c
-		break
-	fi
+for entry in text:vendor/webos-text/text.xml webos-foreign:vendor/webos-foreign/webos-foreign.xml; do
+	base=${entry%%:*}
+	protocol=${entry#*:}
+	header="build/obj/$base-client-protocol.h"
+	source="build/obj/$base-protocol.c"
+	for generated in "$header" "$source"; do
+		if [[ ! -f "$generated" || "$protocol" -nt "$generated" || "$scanner" -nt "$generated" ]]; then
+			"$scanner" client-header "$protocol" "$header"
+			"$scanner" private-code "$protocol" "$source"
+			break
+		fi
+	done
 done
 cpu=(-march=armv7-a -mfpu=neon -mfloat-abi=softfp)
 read -r -a cflags <<< "$("$pkg" --cflags luna-service2 glib-2.0 wayland-client)"
@@ -63,7 +67,8 @@ read -r -a libs <<< "$("$pkg" --libs luna-service2 glib-2.0 wayland-client)"
 # Keep the C dependencies optimized in both modes. Ccache tracks their inputs.
 objects=()
 for source in src/native/bridge.c src/native/clay.c src/native/webos-shell-protocol.c \
-	build/obj/text-protocol.c vendor/qrcodegen/qrcodegen.c; do
+	src/native/foreign.c build/obj/text-protocol.c build/obj/webos-foreign-protocol.c \
+	vendor/qrcodegen/qrcodegen.c; do
 	name=${source##*/}
 	object="build/obj/${name%.c}.o"
 	ccache "$cc" -c "$source" -std=c11 -O2 "${cpu[@]}" "${cflags[@]}" \
@@ -91,7 +96,7 @@ reader_libraries=(-L"$prefix/lib" -lavformat -lavcodec -lavutil -Lbuild/obj -lpl
 # shellcheck disable=SC2016
 "$cc" build/obj/leantube.o "${objects[@]}" "${cpu[@]}" "${reader_libraries[@]}" \
 	-L"$WEBOS_PLATFORM/runtime" -Wl,-rpath-link,"$sysroot/usr/lib" \
-	-l:libSDL3.so.0 -l:libSDL3_ttf.so.0 -l:libSDL3_image.so.0 -lAcbAPI \
+	-l:libSDL3.so.0 -l:libSDL3_ttf.so.0 -l:libSDL3_image.so.0 \
 	"${libs[@]}" -Wl,--allow-shlib-undefined \
 	-l:libcurl.so.4 -l:libssl.so.4 -l:libcrypto.so.4 -lz -lm -lpthread -ldl -lrt -latomic \
 	-Wl,--disable-new-dtags,-rpath,'$ORIGIN/lib' -o "$stage/$app_main"

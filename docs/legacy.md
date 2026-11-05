@@ -1,4 +1,4 @@
-# webOS 3.x compatibility build
+# builds and webOS compatibility
 
 ## install
 
@@ -32,7 +32,8 @@ Odin compiler. all build and package tasks below run without TV access.
 | `just release`        | both IPKs in `build/release/<version>/` |
 
 the build script selects the legacy profile with `WEBOS_PROFILE=legacy`.
-it sets the compiled app ID and package metadata together. separate package
+the profile now changes only the compiled app ID and the package metadata,
+because the code selects firmware behaviour at runtime. separate package
 staging directories prevent one build from replacing the other's files.
 
 both builds use the version in `app/appinfo.json`. `just release` creates local
@@ -59,26 +60,39 @@ cached `.image` files only, not account data.
 
 ## firmware compatibility
 
-the legacy profile uses native lifecycle interface version 1
-(`registerNativeApp`). both profiles select the Starfish C++ string ABI by
-available symbols and bundle the SDK dual-ABI C++ runtime inside the app.
-they do not replace firmware libraries and retain the installed EGL adapter.
-the UJ630V ACB task-pointer signatures were checked against its firmware, not
-inferred from the TV model.
+one code path covers the tested firmware. the differences below are selected at
+runtime, not at build time.
 
-the legacy profile binds `wl_seat` at protocol version 1, matching the firmware
-SDL2 binding instead of the advertised version 4. with seat version 4, no key
-events reached the app on the UJ630V. one such trial coincided with input loss
-in other apps until a power cycle; the cause was not confirmed. with version 1,
-the contributor confirmed physical-remote navigation. the default profile
-keeps SDL's default seat version.
+- lifecycle: registration tries version 1 (`registerNativeApp`) first and falls
+  back to version 2 (`registerApp`) when the firmware rejects it. replies are
+  read from either `message` or `event`.
+- video plane: `libAcbAPI` is loaded with `dlopen`, so it is never a link-time
+  dependency. webOS 5 removed the library. there the app exports a
+  `webos_foreign` window, passes its id as `option.windowId` in the Starfish
+  load request, and sets the source and destination regions after load. a
+  firmware with neither mechanism starts, then reports the playback failure
+  instead of failing to load.
+- seat: `wl_seat` is bound at protocol version 1 everywhere. with seat version 4,
+  no key events reached the app on the UJ630V. one such trial coincided with
+  input loss in other apps until a power cycle; the cause was not confirmed.
+  the B9 advertises seat version 2 and repeated key tests pass at version 1.
+- codec limits: the app always asks the firmware with `videoLimits` and falls
+  back to the UJ630V test table when the query is absent. the table keeps
+  H.264 up to 1080p60 and VP9, including Profile 2 HDR10, up to 2160p60. HEVC
+  is not offered there because YouTube supplied no HEVC formats to test. AV1 is
+  excluded: the UJ630V accepted an AV1 load and advanced its clock, but
+  displayed black.
+- seek: plain milliseconds on every firmware. webOS 3.x parses the message with
+  `strtoll` and rejects JSON; on the B9 the picture stays until the new frame
+  arrives.
+- Starfish C++ string ABI is selected by available symbols. the SDK dual-ABI C++
+  runtime is bundled inside the app. firmware libraries are not replaced, and
+  the installed EGL adapter is used through an app-private `.so.1` alias.
+- the UJ630V ACB task-pointer signatures were checked against its firmware, not
+  inferred from the TV model.
 
-the tested legacy Starfish firmware has no video-capability query. the legacy
-profile uses the UJ630V test limits directly: H.264 up to 1080p60 and VP9,
-including Profile 2 HDR10, up to 2160p60. HEVC is not offered by this profile
-because YouTube supplied no HEVC formats to test. AV1 is excluded: the UJ630V
-accepted an AV1 load and advanced its clock, but displayed black. the default
-profile queries the firmware for its codec limits.
+webOS 5.x startup and playback still need device confirmation. a tester
+reported the missing library on webOS 5.3, and a second tester has webOS 5.5.
 
 ## contributor test results
 
@@ -103,7 +117,8 @@ tests used the official LG network remote:
 | HEVC                          | untested                                 |
 
 viewer checks of 4K60 smoothness, HDR tone mapping, and audio were still pending.
-these reports do not replace playback and seek tests after changes to the
-native player or its runtime libraries.
+these reports were collected before the runtime selection above and do not
+replace playback and seek tests after changes to the native player or its
+runtime libraries.
 
 live replays without index ranges fail. live entries remain unsupported.

@@ -28,7 +28,7 @@ native_video_codec :: proc(codec: string) -> cstring {
 // Formats decoded and frame-checked through Starfish on a webOS 3.5 UJ630V,
 // whose firmware has no capability query. HEVC is untested; AV1 shows black.
 @(rodata)
-LEGACY_LIMITS := [4]yt.Video_Limit {
+FALLBACK_LIMITS := [4]yt.Video_Limit {
 	{"h264", 1920, 1080, 60},
 	{"hevc", 0, 0, 0},
 	{"vp9", 3840, 2160, 60},
@@ -37,16 +37,10 @@ LEGACY_LIMITS := [4]yt.Video_Limit {
 
 init_player :: proc() {
 	for codec, i in ([]string{"h264", "hevc", "vp9", "av1"}) {
-		when WEBOS_LEGACY {
-			playback_limits[i] = LEGACY_LIMITS[i]
-		} else {
-			width, height, fps: c.int
-			playback_limits[i] = {
-				codec = codec,
-			}
-			if sf_video_limits(native_video_codec(codec), &width, &height, &fps) {
-				playback_limits[i] = {codec, int(width), int(height), int(fps)}
-			}
+		width, height, fps: c.int
+		playback_limits[i] = FALLBACK_LIMITS[i]
+		if sf_video_limits(native_video_codec(codec), &width, &height, &fps) {
+			playback_limits[i] = {codec, int(width), int(height), int(fps)}
 		}
 		fmt.printf(
 			"native codec=%s width=%d height=%d fps=%d\n",
@@ -213,10 +207,9 @@ player_rate :: proc(value: f64) -> bool {
 	return true
 }
 
-// webOS 3.x Seek parses the message with strtoll, so JSON would seek to 0.
-seek_message :: proc(target_ms: f64, legacy: bool) -> cstring {
-	if legacy {return fmt.caprintf("%d", i64(target_ms))}
-	return fmt.caprintf(`{{"position":%d,"retainLastRenderedFrame":true}}`, i64(target_ms))
+// Plain milliseconds work from webOS 3.x through 4.x; 3.x strtoll rejects JSON.
+seek_message :: proc(target_ms: f64) -> cstring {
+	return fmt.caprintf("%d", i64(target_ms))
 }
 
 player_seek :: proc(target: f64) -> bool {
@@ -235,7 +228,7 @@ player_seek :: proc(target: f64) -> bool {
 		// Keep the decoder, display window, last picture, and playback rate.
 		status := player_status
 		sync.atomic_store(&status.resetting, 1)
-		body := seek_message(target, WEBOS_LEGACY)
+		body := seek_message(target)
 		retargeted := sf_pause(player_api) && sf_seek(player_api, body)
 		delete(body)
 		sync.atomic_store(&status.frame_ns, -1)
@@ -325,13 +318,7 @@ poll_player :: proc() {
 	status := player_status
 	if sync.atomic_load(&status.error) != 0 {player_failed("decoder"); return}
 	if sync.atomic_load(&status.loaded) != 0 && !player_bound {
-		task: c.long
-		sink := AcbAPI_setSinkType(acb_id, 0)
-		state := AcbAPI_setState(acb_id, .Foreground, .Loaded, &task)
-		fmt.eprintf("player display sink=%v state=%d\n", sink, state)
-		// The main sink request can return false when the default sink is
-		// already in use. The loaded state is the required transition.
-		if state < 0 {player_failed("display"); return}
+		if !display_started() {player_failed("display"); return}
 		player_bound = true
 		player_transition.loaded_ms = sdl.GetTicks() - player_transition.started_ms
 	}

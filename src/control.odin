@@ -61,11 +61,10 @@ parse_control :: proc(value: json.Value) -> (command: Control_Command, valid: bo
 	return command, true
 }
 
-lifecycle_event :: proc(root: json.Object, legacy: bool) -> string {
+// Version 2 reports "event"; version 1 reports "message" for the same states.
+lifecycle_event :: proc(root: json.Object) -> string {
 	if event, found := root["event"].(json.String); found {return string(event)}
-	if legacy {
-		if message, found := root["message"].(json.String); found {return string(message)}
-	}
+	if message, found := root["message"].(json.String); found {return string(message)}
 	return ""
 }
 

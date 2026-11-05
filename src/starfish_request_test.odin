@@ -1,6 +1,7 @@
 package main
 
 import "core:encoding/json"
+import "core:strings"
 import "core:testing"
 
 @(test)
@@ -39,4 +40,18 @@ starfish_load_keeps_the_verified_native_request :: proc(t: ^testing.T) {
 		string(canonical[0]) == string(canonical[1]),
 		"the native load fields, values, and units must not change",
 	)
+}
+
+@(test)
+starfish_load_passes_an_exported_window_id_only_when_present :: proc(t: ^testing.T) {
+	request := starfish_load_request({app_id = "org.hyperpuncher.leantube", window_id = "video-7"})
+	data, err := json.marshal(request)
+	if !testing.expect(t, err == nil) {return}
+	defer delete(data)
+	testing.expect(t, strings.contains(string(data), `"windowId":"video-7"`))
+	request.args[0].option.windowId = ""
+	plain, plain_error := json.marshal(request)
+	if !testing.expect(t, plain_error == nil) {return}
+	defer delete(plain)
+	testing.expect(t, !strings.contains(string(plain), "windowId"))
 }

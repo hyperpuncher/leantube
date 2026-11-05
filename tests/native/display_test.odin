@@ -14,7 +14,7 @@ foreign fixture {
 @(test)
 display_applies_latest_metadata_on_main_thread :: proc(t: ^testing.T) {
 	defer release_display()
-	testing.expect(t, attach_display("test.app", "media-id", "first"))
+	testing.expect(t, attach_display("test.app", "media-id", "first", 1920, 1080))
 	poll_display()
 	testing.expect_value(t, metadata_calls, 0)
 	update_display("second")

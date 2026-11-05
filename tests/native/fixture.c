@@ -15,6 +15,11 @@ bool AcbAPI_initialize(long id, int type, const char *app, Acb_Callback callback
 	ready_callback = callback;
 	return true;
 }
+bool AcbAPI_setSinkType(long id, int sink) {
+	(void)id;
+	(void)sink;
+	return true;
+}
 bool AcbAPI_setMediaId(long id, const char *media) {
 	(void)id;
 	(void)media;

@@ -5,17 +5,16 @@ import "core:encoding/json"
 import "core:testing"
 
 @(test)
-lifecycle_event_accepts_legacy_messages_only_for_legacy_registration :: proc(t: ^testing.T) {
+lifecycle_event_reads_both_registration_shapes :: proc(t: ^testing.T) {
 	for test in ([]struct {
 			payload:  string,
-			legacy:   bool,
 			expected: string,
-		}{{`{"event":"relaunch"}`, false, "relaunch"}, {`{"event":"close"}`, true, "close"}, {`{"message":"relaunch"}`, true, "relaunch"}, {`{"message":"close"}`, true, "close"}, {`{"message":"relaunch"}`, false, ""}, {`{"event":"close","message":"relaunch"}`, true, "close"}, {`{"message":42}`, true, ""}, {`{}`, true, ""}}) {
+		}{{`{"event":"relaunch"}`, "relaunch"}, {`{"message":"relaunch"}`, "relaunch"}, {`{"message":"close"}`, "close"}, {`{"event":"close","message":"relaunch"}`, "close"}, {`{"event":42,"message":"close"}`, "close"}, {`{"message":42}`, ""}, {`{}`, ""}}) {
 		value, error := json.parse(test.payload)
 		testing.expect_value(t, error, json.Error.None)
 		root, ok := value.(json.Object)
 		testing.expect(t, ok)
-		testing.expect_value(t, lifecycle_event(root, test.legacy), test.expected)
+		testing.expect_value(t, lifecycle_event(root), test.expected)
 		json.destroy_value(value)
 	}
 }

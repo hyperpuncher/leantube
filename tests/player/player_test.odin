@@ -20,14 +20,6 @@ Decoder_Status :: struct {
 	loaded, error, playing, ended, resetting: i32,
 	frame_ns:                                 i64,
 }
-App_State :: enum {
-	Foreground,
-}
-Play_State :: enum {
-	Loaded,
-}
-WEBOS_LEGACY :: false
-acb_id: c.long
 playback_limits: [4]yt.Video_Limit
 running, paused, loaded, browsing, resolving, return_to_grid, dirty, library_focus_pending: bool
 notice: string
@@ -51,8 +43,7 @@ queue_watch_history :: proc(_: string, _: f64, position: f64, _: u32, _: u32, _:
 }
 
 sf_video_limits :: proc(_: cstring, _: ^c.int, _: ^c.int, _: ^c.int) -> bool {return false}
-AcbAPI_setSinkType :: proc(_: c.long, _: c.int) -> bool {return false}
-AcbAPI_setState :: proc(_: c.long, _: App_State, _: Play_State, _: ^c.long) -> c.int {return 0}
+display_started :: proc() -> bool {return true}
 sf_play :: proc(_: ^Starfish) -> bool {sync.atomic_store(&fake_status.playing, 1); return true}
 sf_pause :: proc(_: ^Starfish) -> bool {fake_pause += 1; sync.atomic_store(&fake_status.playing, 0)
 	return true}
@@ -71,13 +62,10 @@ decoder_open :: proc(_: ^reader.Track, _: ^reader.Track, _: f64) -> (^Starfish, 
 }
 decoder_close :: proc(_: ^Starfish, _: ^Decoder_Status) -> bool {fake_close += 1; return true}
 sf_seek :: proc(_: ^Starfish, body: cstring) -> bool {
-	value: struct {
-		position:                i64,
-		retainLastRenderedFrame: bool,
-	}
-	if json.unmarshal(transmute([]u8)string(body), &value) != nil {return false}
-	fake_target_ms = value.position
-	return value.retainLastRenderedFrame && !fake_seek_failure
+	position: i64
+	if json.unmarshal(transmute([]u8)string(body), &position) != nil {return false}
+	fake_target_ms = position
+	return !fake_seek_failure
 }
 decoder_feed :: proc(_: ^Starfish, t: ^reader.Track, limit: f64) -> bool {
 	if fake_full {return true}
@@ -279,13 +267,10 @@ controls_preserve_pause_audio_and_retarget_the_existing_decoder :: proc(t: ^test
 }
 
 @(test)
-legacy_seek_sends_plain_milliseconds :: proc(t: ^testing.T) {
-	legacy := seek_message(550283.9, true)
-	defer delete(legacy)
-	testing.expect_value(t, string(legacy), "550283")
-	current := seek_message(550283.9, false)
-	defer delete(current)
-	testing.expect_value(t, string(current), `{"position":550283,"retainLastRenderedFrame":true}`)
+seek_sends_plain_milliseconds :: proc(t: ^testing.T) {
+	body := seek_message(550283.9)
+	defer delete(body)
+	testing.expect_value(t, string(body), "550283")
 }
 
 @(test)

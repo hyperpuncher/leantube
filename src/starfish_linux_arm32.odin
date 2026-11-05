@@ -118,25 +118,6 @@ decoder_open :: proc(
 ) {
 	config, valid := reader.aac_config(a.audio_config)
 	if !a.audio_config_valid || !valid {return}
-	request := starfish_load_request(
-		{
-			app_id = APP_ID,
-			video_codec = string(native_video_codec(v.codec)),
-			width = v.width,
-			height = v.height,
-			fps_value = v.frame_rate.num,
-			fps_scale = v.frame_rate.den,
-			fps = v.fps,
-			target_seconds = target,
-			audio_rate = config.rate,
-			audio_channels = config.channels,
-		},
-	)
-	data, err := json.marshal(request)
-	if err != nil {return}
-	defer delete(data)
-	body := strings.clone_to_cstring(string(data))
-	defer delete(body)
 	api = sf_create(nil)
 	if api == nil {return}
 	status = new(Decoder_Status)
@@ -154,13 +135,37 @@ decoder_open :: proc(
 		hdr,
 	)
 	defer delete(metadata)
-	if !attach_display(
-		APP_ID,
-		id,
-		metadata,
-		10,
-		true,
-	) {release_display(); sf_destroy(api); free(status); return nil, nil}
+	if !attach_display(APP_ID, id, metadata, v.width, v.height) {
+		release_display()
+		sf_destroy(api)
+		free(status)
+		return nil, nil
+	}
+	request := starfish_load_request(
+		{
+			app_id = APP_ID,
+			video_codec = string(native_video_codec(v.codec)),
+			width = v.width,
+			height = v.height,
+			fps_value = v.frame_rate.num,
+			fps_scale = v.frame_rate.den,
+			fps = v.fps,
+			target_seconds = target,
+			audio_rate = config.rate,
+			audio_channels = config.channels,
+			window_id = display_window_id(),
+		},
+	)
+	data, err := json.marshal(request)
+	if err != nil {
+		release_display()
+		sf_destroy(api)
+		free(status)
+		return nil, nil
+	}
+	defer delete(data)
+	body := strings.clone_to_cstring(string(data))
+	defer delete(body)
 	sf_foreground(api)
 	if !sf_load(api, body, decoder_callback, status) {decoder_close(api, status); return nil, nil}
 	fmt.printf(
