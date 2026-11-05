@@ -68,7 +68,7 @@ test-tv-http:
 fmt:
 	odinfmt src -w
 	odinfmt tests -w
-	clang-format -i src/native/bridge.c src/native/clay.c src/native/foreign.c tests/native/fixture.c tests/native/bridge_stub.c
+	clang-format -i src/native/bridge.c src/native/clay.c src/native/foreign.c tests/native/fixture.c
 	bun fmt
 
 # Provision the toolchain, then build native libraries. No TV access.
@@ -127,17 +127,9 @@ bench-transport-host player_json output mode="curl-h3" mib="64" byte_offset="0":
 build:
 	bash scripts/build.sh dev
 
-# Build the conservative webOS 3.x lifecycle profile. No TV access.
-build-legacy:
-	WEBOS_PROFILE=legacy bash scripts/build.sh release
-
-package-legacy: build-legacy
-	mkdir -p build/legacy
-	ares-package build/legacy/app -o build/legacy
-
 # Build the optimized webOS ARM32 app for release.
 build-release:
-	WEBOS_PROFILE=default bash scripts/build.sh release
+	bash scripts/build.sh release
 
 # Run the headless ABI/layout regression on the TV, without opening an app.
 test-tv-layout:
@@ -146,11 +138,11 @@ test-tv-layout:
 package: build-release
 	ares-package build/app -o build
 
-# Stage both release IPKs without publishing or TV access.
-release: package package-legacy
+# Stage the release IPK without publishing or TV access.
+release: package
 	if [[ -d build/release/{{app_version}} ]]; then trash -- build/release/{{app_version}}; fi
 	mkdir -p build/release/{{app_version}}
-	cp build/{{app_id}}_{{app_version}}_arm.ipk build/legacy/{{app_id}}.legacy_{{app_version}}_arm.ipk build/release/{{app_version}}/
+	cp build/{{app_id}}_{{app_version}}_arm.ipk build/release/{{app_version}}/
 
 # Check live search, cover download, resolution, and CDN access locally.
 test-youtube:

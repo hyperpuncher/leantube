@@ -9,15 +9,7 @@ case "$mode" in
 	bench) odin_flags=(-o:speed -define:PLAYBACK_BENCH=true) ;;
 	*) printf 'usage: %s [dev|release|bench]\n' "$0" >&2; exit 2 ;;
 esac
-profile=${WEBOS_PROFILE:-default}
 stage=build/app
-case "$profile" in
-	default) ;;
-	legacy)
-		stage=build/legacy/app
-		;;
-	*) printf 'unknown WEBOS_PROFILE: %s (expected default or legacy)\n' "$profile" >&2; exit 2 ;;
-esac
 if [[ -n ${IMAGE_CACHE_MIB:-} ]]; then
 	if [[ ! $IMAGE_CACHE_MIB =~ ^(0|[1-9][0-9]{0,2})$ ]] || ((IMAGE_CACHE_MIB > 256)); then
 		printf 'IMAGE_CACHE_MIB must be an integer from 0 through 256\n' >&2
@@ -31,7 +23,6 @@ if ! command -v ccache >/dev/null; then
 fi
 export CCACHE_DIR="$PWD/.cache/ccache"
 source scripts/env.sh
-if [[ $profile == legacy ]]; then app_id+=.legacy; fi
 cc="$WEBOS_SDK/bin/arm-webos-linux-gnueabi-gcc"
 pkg="$WEBOS_SDK/bin/pkg-config"
 sysroot="$WEBOS_SDK/arm-webos-linux-gnueabi/sysroot"
@@ -101,10 +92,6 @@ reader_libraries=(-L"$prefix/lib" -lavformat -lavcodec -lavutil -Lbuild/obj -lpl
 	-l:libcurl.so.4 -l:libssl.so.4 -l:libcrypto.so.4 -lz -lm -lpthread -ldl -lrt -latomic \
 	-Wl,--disable-new-dtags,-rpath,'$ORIGIN/lib' -o "$stage/$app_main"
 cp -a app/. "$stage/"
-if [[ $profile == legacy ]]; then
-	jq --arg id "$app_id" '.id = $id | .title += " (webOS 3.x)" | .nativeLifeCycleInterfaceVersion = 1' \
-		app/appinfo.json > "$stage/appinfo.json"
-fi
 mkdir -p "$stage/lib"
 cp -a "$WEBOS_PLATFORM/runtime/." "$stage/lib/"
 cp -a "$WEBOS_PLATFORM/licenses/." "$stage/licenses/"
@@ -116,4 +103,4 @@ for library in libavformat.so.63 libavcodec.so.63 libavutil.so.61; do
 	cp -L "$prefix/lib/$library" "$stage/lib/$library"
 done
 cp "$prefix/share/licenses/FFmpeg.txt" "$stage/licenses/FFmpeg.txt"
-printf 'built %s for webOS ARM32 soft-float (%s, %s)\n' "$stage/$app_main" "$mode" "$profile"
+printf 'built %s for webOS ARM32 soft-float (%s)\n' "$stage/$app_main" "$mode"

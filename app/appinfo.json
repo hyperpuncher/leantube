@@ -10,7 +10,7 @@
 	"iconColor": "#000000",
 	"resolution": "1920x1080",
 	"transparent": true,
-	"nativeLifeCycleInterfaceVersion": 2,
+	"nativeLifeCycleInterfaceVersion": 1,
 	"supportQuickStart": false,
 	"handlesRelaunch": true,
 	"requiredMemory": 128

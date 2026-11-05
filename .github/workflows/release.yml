@@ -43,7 +43,7 @@ jobs:
               if: steps.toolchain.outputs.cache-hit != 'true'
               run: just setup
 
-            - name: Build both app packages
+            - name: Build app package
               run: just release
 
             - uses: actions/upload-artifact@v7
@@ -52,7 +52,6 @@ jobs:
                   path: |
                       build/release/
                       build/app/appinfo.json
-                      build/legacy/app/appinfo.json
                   if-no-files-found: error
 
     release:

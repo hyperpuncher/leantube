@@ -15,40 +15,24 @@ import sdl "vendor:sdl3"
 APP_ID :: #config(APP_ID, "org.hyperpuncher.leantube")
 APP_VERSION :: #config(APP_VERSION, "dev")
 APP_TEMP_PREFIX :: "/tmp/leantube"
-foreign import bridge "system:tv_bridge"
-foreign bridge {
-	tv_clay_abi :: proc(command_size, config_size, error_size: u32) -> bool ---
-}
 registered: bool
 interrupted: i32
 stop_signal :: proc "c" (_: posix.Signal) {sync.atomic_store(&interrupted, 1)}
 
-Register_Attempt :: enum {
-	Native,
-	App,
-}
-register_attempt: Register_Attempt
-
 register_application :: proc() -> bool {
-	return register_with(.Native)
-}
-
-register_with :: proc(attempt: Register_Attempt) -> bool {
 	error: LS_Error
 	LSErrorInit(&error)
 	defer LSErrorFree(&error)
 	token: c.ulong
-	endpoint, payload: cstring
-	register_attempt = attempt
-	switch attempt {
-	case .Native:
-		endpoint = "luna://com.webos.applicationManager/registerNativeApp"
-		payload = "{\"id\":\"" + APP_ID + "\",\"subscribe\":true}"
-	case .App:
-		endpoint = "luna://com.webos.applicationManager/registerApp"
-		payload = "{\"id\":\"" + APP_ID + "\"}"
-	}
-	return LSCall(bus, endpoint, payload, reply, nil, &token, &error)
+	return LSCall(
+		bus,
+		"luna://com.webos.applicationManager/registerNativeApp",
+		"{\"id\":\"" + APP_ID + "\",\"subscribe\":true}",
+		reply,
+		nil,
+		&token,
+		&error,
+	)
 }
 
 reply :: proc "c" (_: rawptr, message: rawptr, _: rawptr) -> bool {
@@ -59,12 +43,7 @@ reply :: proc "c" (_: rawptr, message: rawptr, _: rawptr) -> bool {
 	root, ok := value.(json.Object)
 	if !ok {return true}
 	if success, found := root["returnValue"].(json.Boolean); found {
-		if !bool(success) {
-			// Version 1 registration is rejected on newer firmware; older
-			// firmware has no version 2 endpoint.
-			if register_attempt == .Native {return register_with(.App)}
-			return true
-		}
+		if !bool(success) {return true}
 		registered = true
 	}
 	switch lifecycle_event(root) {

@@ -23,6 +23,5 @@ lightweight native YouTube client for webOS
 3. select **Add repository**, then return to the app list.
 4. open **LeanTube** and select **Install**.
 
-for webOS 3.x, select **LeanTube (webOS 3.x)** instead.
-see [compatibility and build details](docs/legacy.md) and
+see [compatibility and build details](docs/compatibility.md) and
 [display and UI resolution](docs/display.md).

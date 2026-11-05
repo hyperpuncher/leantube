@@ -2,59 +2,53 @@
 
 ## install
 
-both builds use the [same Homebrew Channel feed](https://github.com/hyperpuncher/leantube/releases/latest/download/repo.json).
-choose one build for your TV:
+the app uses the [Homebrew Channel feed](https://github.com/hyperpuncher/leantube/releases/latest/download/repo.json).
 
-| app                  | app ID                             | tested firmware   |
-| -------------------- | ---------------------------------- | ----------------- |
-| LeanTube             | `org.hyperpuncher.leantube`        | B9, webOS 4.9     |
-| LeanTube (webOS 3.x) | `org.hyperpuncher.leantube.legacy` | UJ630V, webOS 3.5 |
+| app      | app ID                      | tested firmware                |
+| -------- | --------------------------- | ------------------------------ |
+| LeanTube | `org.hyperpuncher.leantube` | B9 webOS 4.9, UJ630V webOS 3.5 |
 
-the default build is intended for newer firmware, not only the B9.
-the legacy build is intended for older webOS 3.x firmware, not only the UJ630V.
-other models and firmware versions still need device tests.
+other models and firmware versions still need device tests, including webOS 5.
 
-the builds have separate app IDs, account data, and image caches. switching builds
-requires signing in again. both can be installed, but most users need only one.
-neither app replaces either installed YouTube app.
+the app does not replace either installed YouTube app. it keeps its account data
+and image caches under its own app id.
+
+the earlier separate `org.hyperpuncher.leantube.legacy` package is gone. install
+**LeanTube** instead. the feed no longer offers the legacy id, and the old
+package is not updated.
 
 ## build and release
 
 run `just setup` to build the pinned SDK dependencies and the ARM32 soft-float
 Odin compiler. all build and package tasks below run without TV access.
 
-| task                  | result                                  |
-| --------------------- | --------------------------------------- |
-| `just build-release`  | default app in `build/app/`             |
-| `just build-legacy`   | legacy app in `build/legacy/app/`       |
-| `just package`        | default IPK in `build/`                 |
-| `just package-legacy` | legacy IPK in `build/legacy/`           |
-| `just release`        | both IPKs in `build/release/<version>/` |
+| task                 | result                            |
+| -------------------- | --------------------------------- |
+| `just build`         | development app in `build/app/`   |
+| `just build-release` | optimized app in `build/app/`     |
+| `just package`       | IPK in `build/`                   |
+| `just release`       | IPK in `build/release/<version>/` |
 
-the build script selects the legacy profile with `WEBOS_PROFILE=legacy`.
-the profile now changes only the compiled app ID and the package metadata,
-because the code selects firmware behaviour at runtime. separate package
-staging directories prevent one build from replacing the other's files.
+[`app/appinfo.json`](app/appinfo.json) supplies the app id, version, and package
+metadata. `just release` creates a local package only. a manual workflow run
+saves a build artifact only. publication requires a pushed version tag.
 
-both builds use the version in `app/appinfo.json`. `just release` creates local
-packages only. a manual workflow run saves build artifacts only. publication
-requires a pushed version tag.
-
-the release workflow uploads both IPKs to a draft GitHub release. it then uses
-GitHub's asset hashes and sizes to create one `repo.json`. feed links use the
-version tag because draft asset URLs are temporary. release notes keep the
-commit-based `feat`, `fix`, and other groups with commit links. the workflow uploads the feed before it publishes the release, so the
-existing feed URL changes only after all files are ready.
+the release workflow uploads the IPK to a draft GitHub release. it then uses
+GitHub's asset hash and size to create `repo.json`. feed links use the version
+tag because draft asset URLs are temporary. release notes keep the
+commit-based `feat`, `fix`, and other groups with commit links. the workflow
+uploads the feed before it publishes the release, so the existing feed URL
+changes only after all files are ready.
 
 ## image cache
 
-both builds default to a **64 MiB disk image cache**. this is a maximum, not a
+the app defaults to a **64 MiB disk image cache**. this is a maximum, not a
 space reservation. it is separate from the **64 MiB decoded texture cache in RAM**.
 the disk cache removes the oldest-saved images when it needs space. cache hits
 do not update their age. failed cache writes do not prevent image display.
 
-use `IMAGE_CACHE_MIB=128 just build-legacy` to override the disk limit. the same
-override works with `just build-release` or `just release`. accepted values are
+use `IMAGE_CACHE_MIB=128 just build-release` to override the disk limit. the
+same override works with `just release`. accepted values are
 0 through 256. zero disables new disk image writes. startup trimming removes
 cached `.image` files only, not account data.
 
@@ -63,9 +57,10 @@ cached `.image` files only, not account data.
 one code path covers the tested firmware. the differences below are selected at
 runtime, not at build time.
 
-- lifecycle: registration tries version 1 (`registerNativeApp`) first and falls
-  back to version 2 (`registerApp`) when the firmware rejects it. replies are
-  read from either `message` or `event`.
+- lifecycle: the package declares interface version 1 and registers with
+  `registerNativeApp` on every firmware. version 1 exists from webOS 3.x, and
+  the tested 4.10 firmware still accepts it. replies are read from either
+  `message` or `event`.
 - video plane: `libAcbAPI` is loaded with `dlopen`, so it is never a link-time
   dependency. webOS 5 removed the library. there the app exports a
   `webos_foreign` window, passes its id as `option.windowId` in the Starfish
@@ -93,6 +88,7 @@ runtime, not at build time.
 
 webOS 5.x startup and playback still need device confirmation. a tester
 reported the missing library on webOS 5.3, and a second tester has webOS 5.5.
+webOS 3.5 also needs a re-test after the runtime selection changes.
 
 ## contributor test results
 

@@ -2,7 +2,7 @@
 
 the TV gives apps a 1920×1080 graphics plane and enlarges it to the panel. this
 file records what that limit is, where it lives, and what was tested while
-looking for a way around it. it applies to both builds.
+looking for a way around it. it applies to the app on every firmware.
 
 ## what the app draws at
 

@@ -50,14 +50,6 @@ Acb :: struct {
 }
 ACB_SYMBOLS :: 9
 
-foreign import bridge "system:tv_bridge"
-foreign bridge {
-	lt_export_window :: proc(display, surface: rawptr) -> bool ---
-	lt_window_id :: proc() -> cstring ---
-	lt_set_window :: proc(source_width, source_height, destination_width, destination_height: c.int) -> bool ---
-	lt_unexport_window :: proc() ---
-}
-
 acb: Acb
 Acb_State :: enum {
 	Unknown,
