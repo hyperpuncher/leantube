@@ -55,12 +55,15 @@ jobs:
                       build/legacy/app/appinfo.json
                   if-no-files-found: error
 
-    publish:
+    release:
+        name: release
         if: github.event_name == 'push' && github.ref_type == 'tag'
         needs: build
         runs-on: ubuntu-slim
         permissions:
             contents: write
+        env:
+            GH_TOKEN: ${{ github.token }}
         steps:
             - uses: actions/checkout@v7
               with:
@@ -74,14 +77,15 @@ jobs:
                   name: leantube-arm32
                   path: build
 
+            - uses: hyperpuncher/release-notes@v1
+              id: notes
+
             - name: Publish release
-              env:
-                  GH_TOKEN: ${{ github.token }}
-                  GH_REPO: ${{ github.repository }}
               run: |
                   directory="build/release/${GITHUB_REF_NAME#v}"
                   gh release create "$GITHUB_REF_NAME" "$directory"/*.ipk \
-                    --verify-tag --draft --title "$GITHUB_REF_NAME" --notes ""
+                    --verify-tag --draft --title "$GITHUB_REF_NAME" \
+                    --notes-file "${{ steps.notes.outputs.path }}"
                   gh release view "$GITHUB_REF_NAME" --json assets | bun scripts/release.ts
                   gh release upload "$GITHUB_REF_NAME" "$directory/repo.json"
-                  gh release edit "$GITHUB_REF_NAME" --draft=false --latest --notes-file "$directory/notes.md"
+                  gh release edit "$GITHUB_REF_NAME" --draft=false --latest
