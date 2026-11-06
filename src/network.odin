@@ -483,17 +483,32 @@ start_network :: proc() -> bool {
 	defer if !success {stop_network()}
 	error: http.Error
 	network_client, error = http.open()
-	if error != nil {return false}
+	if error != nil {
+		fmt.eprintln("network: HTTP client initialization failed:", error)
+		return false
+	}
 	network_event = sdl.EventType(sdl.RegisterEvents(1))
-	if u32(network_event) == 0 {return false}
+	if u32(network_event) == 0 {
+		fmt.eprintln("network: event registration failed:", sdl.GetError())
+		return false
+	}
 	requests, req_error := chan.create(chan.Chan(Network_Request), 8, context.allocator)
-	if req_error != .None {return false}
+	if req_error != .None {
+		fmt.eprintln("network: request channel creation failed:", req_error)
+		return false
+	}
 	network_requests = requests
 	results, res_error := chan.create(chan.Chan(Network_Result), 8, context.allocator)
-	if res_error != .None {return false}
+	if res_error != .None {
+		fmt.eprintln("network: result channel creation failed:", res_error)
+		return false
+	}
 	network_results = results
 	network_thread = thread.create(network_main)
-	if network_thread == nil {return false}
+	if network_thread == nil {
+		fmt.eprintln("network: worker thread creation failed")
+		return false
+	}
 	if load_auth() {use_current_account()}
 	thread.start(network_thread)
 	success = true
