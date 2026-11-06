@@ -884,6 +884,7 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				}
 				player_channel_id = result.stream.channel_id
 				result.stream.channel_id = ""
+				fmt.printf("{{\"event\":\"stream\",\"client\":\"%s\"}}\n", result.stream.client)
 				load_video(result.stream, renderer, result.position_ms, result.start_paused)
 				if player_channel_id != "" {
 					_ = submit_network(

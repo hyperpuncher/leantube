@@ -26,6 +26,8 @@ Stream :: struct {
 	channel_id:  string,
 	title:       string,
 	duration_ms: f64,
+	// Playback client that produced the URLs, for diagnostics only.
+	client:      string,
 }
 
 stream_destroy :: proc(stream: ^Stream) {
@@ -661,7 +663,11 @@ player_request :: proc(
 	response, error := api_post(client, "player", body, profile)
 	if error != .None {return {}, error}
 	defer delete(response.body)
-	return parse_player(string(response.body[:]), limits)
+	stream, parse_error := parse_player(string(response.body[:]), limits)
+	if parse_error == .None {
+		stream.client = profile == .VisionOS ? "visionos" : "android"
+	}
+	return stream, parse_error
 }
 
 fetch_thumbnail :: proc(client: ^http.Client, url: string) -> (http.Response, http.Error) {
