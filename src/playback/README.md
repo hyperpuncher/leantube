@@ -33,6 +33,8 @@ the normal app uses this reader and native decoder through managed app startup. 
 
 buffer-stream loads set `option.transmission.trickType` to `client-side`. LeanTube owns the packet input and seeks. this setting selects seamless native rate changes instead of a pipeline seek that flushes the supplied packets and can stall playback. the original timestamp callbacks, one-second feed window, and buffer limits stay unchanged.
 
+if a signed media URL fails during playback, the app resolves the video again and resumes at the current position. it allows two recoveries per video, at least 30 seconds apart, and keeps the paused state.
+
 curl uses its OpenSSL QUIC backend, which upstream marks experimental. delivery success on one source does not prove reliability on every network.
 
 ## tests

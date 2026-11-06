@@ -65,6 +65,12 @@ Player_Transition :: struct {
 }
 player_transition: Player_Transition
 
+// A signed media URL can stop working mid-stream, for example after an address
+// change or a CDN rejection. Re-resolve at the current position before giving up.
+PLAYER_RECOVERIES :: 2
+player_recoveries: int
+player_recovery_at: u64
+
 Player_History :: struct {
 	id:                                 string,
 	account, playback:                  u32,
@@ -95,14 +101,30 @@ report_player_history :: proc(finished: bool = false) {
 
 player_failed :: proc(stage: string = "native") {
 	fmt.eprintf(
-		"player failure stage=%s reader=%d native=%d\n",
+		"player failure stage=%s position_s=%.3f reader=%d native=%d\n",
 		stage,
+		player_clock,
 		player_reader == nil ? 0 : sync.atomic_load(&player_reader.state.failure),
 		player_status == nil ? 0 : sync.atomic_load(&player_status.error),
 	)
 	notice = "video playback failed; choose another video"
 	return_to_grid = true
 	dirty = true
+}
+
+recover_playback :: proc(stage: string) -> bool {
+	now := sdl.GetTicks()
+	if player_clock < 5 ||
+	   player_recoveries >= PLAYER_RECOVERIES ||
+	   (player_recovery_at > 0 && now - player_recovery_at < 30_000) {return false}
+	position_ms := player_clock * 1000
+	paused_now := paused
+	player_recovery_at = now
+	player_recoveries += 1
+	fmt.eprintf("player recovery stage=%s position_s=%.3f\n", stage, player_clock)
+	stop_playback(true)
+	resolve_selected(position_ms, paused_now)
+	return true
 }
 
 player_read_end :: proc(position_ms: f64) -> f64 {
@@ -163,10 +185,11 @@ load_video :: proc(
 
 start_video :: proc() {
 	if selected < 0 || selected >= len(catalog.videos) {return}
+	player_recoveries, player_recovery_at = 0, 0
 	resolve_selected(model.video_resume_position(catalog.videos[selected]))
 }
 
-stop_playback :: proc() {
+stop_playback :: proc(from_recovery := false) {
 	report_player_history()
 	delete(player_history.id)
 	player_history = {}
@@ -182,6 +205,7 @@ stop_playback :: proc() {
 		seek_target_ms = -1,
 	}
 	browsing, return_to_grid, dirty, library_focus_pending = true, false, true, true
+	if !from_recovery {player_recoveries, player_recovery_at = 0, 0}
 }
 
 player_pause :: proc(value: bool) -> bool {
@@ -272,7 +296,10 @@ finish_sponsor_span :: proc() {
 poll_player :: proc() {
 	if player_reader == nil || return_to_grid {return}
 	s := player_reader
-	if sync.atomic_load(&s.state.failure) != 0 {player_failed("reader"); return}
+	if sync.atomic_load(&s.state.failure) != 0 {
+		if !recover_playback("reader") {player_failed("reader")}
+		return
+	}
 	if s.state.skip_end == 0 {
 		from, to := sb.next_skip(sponsor_segments[:], player_clock * 1000, duration_ms)
 		if from >= 0 && to < duration_ms {

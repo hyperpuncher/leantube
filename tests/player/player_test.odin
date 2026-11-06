@@ -76,7 +76,11 @@ decoder_feed :: proc(_: ^Starfish, t: ^reader.Track, limit: f64) -> bool {
 	return true
 }
 resolved_position: f64
-resolve_selected :: proc(position_ms: f64 = 0, _: bool = false) {resolved_position = position_ms}
+resolved_calls: int
+resolve_selected :: proc(position_ms: f64 = 0, _: bool = false) {
+	resolved_position = position_ms
+	resolved_calls += 1
+}
 
 @(test)
 opening_a_card_starts_at_its_resume_position :: proc(t: ^testing.T) {
@@ -124,6 +128,8 @@ player_controls_visible :: proc() -> bool {return paused || !loaded || fake_cont
 
 prepare_player :: proc(end: f64) {
 	fake_open, fake_close, fake_pause, fake_eos = 0, 0, 0, 0
+	resolved_calls, resolved_position = 0, 0
+	player_recoveries, player_recovery_at = 0, 0
 	fake_full, fake_seek_failure, fake_rate_audio = false, false, false
 	fake_controls_visible = true
 	signed_in = false
@@ -355,4 +361,16 @@ buffered_range_uses_the_shorter_track_and_updates_while_paused :: proc(t: ^testi
 	testing.expect(t, dirty)
 	stop_playback()
 	testing.expect(t, timeline.buffer_start_ms == 0 && timeline.buffer_end_ms == 0)
+}
+
+@(test)
+reader_failure_re_resolves_at_the_current_position :: proc(t: ^testing.T) {
+	prepare_player(60)
+	defer stop_playback()
+	player_clock = 12
+	sync.atomic_store(&player_reader.state.failure, reader.ERROR_IO)
+	poll_player()
+	testing.expect_value(t, resolved_calls, 1)
+	testing.expect_value(t, resolved_position, f64(12000))
+	testing.expect(t, player_reader == nil, "recovery must stop the failed session")
 }
