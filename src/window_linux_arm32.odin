@@ -18,7 +18,8 @@ create_window :: proc() -> ^sdl.Window {
 	)
 	_ = sdl.SetBooleanProperty(properties, sdl.PROP_WINDOW_CREATE_OPENGL_BOOLEAN, true)
 	_ = sdl.SetBooleanProperty(properties, sdl.PROP_WINDOW_CREATE_TRANSPARENT_BOOLEAN, true)
-	_ = sdl.SetBooleanProperty(properties, sdl.PROP_WINDOW_CREATE_HIGH_PIXEL_DENSITY_BOOLEAN, true)
+	// webOS 3.5 rejects wl_surface.set_buffer_scale, so SDL must not request
+	// high pixel density. every tested compositor runs at scale 1 anyway.
 	bounds: sdl.Rect
 	if !sdl.GetDisplayBounds(sdl.GetPrimaryDisplay(), &bounds) {return nil}
 	_ = sdl.SetNumberProperty(properties, sdl.PROP_WINDOW_CREATE_WIDTH_NUMBER, i64(bounds.w))

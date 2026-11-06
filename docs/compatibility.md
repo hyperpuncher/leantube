@@ -67,6 +67,10 @@ runtime, not at build time.
   load request, and sets the source and destination regions after load. a
   firmware with neither mechanism starts, then reports the playback failure
   instead of failing to load.
+- window: the window is created without high pixel density. webOS 3.5 rejects
+  `wl_surface.set_buffer_scale`, and SDL sends it when high pixel density is
+  requested, so the surface never attaches. every tested compositor runs at
+  scale 1, so the flag is not needed.
 - seat: `wl_seat` is bound at protocol version 1 everywhere. with seat version 4,
   no key events reached the app on the UJ630V. one such trial coincided with
   input loss in other apps until a power cycle; the cause was not confirmed.
