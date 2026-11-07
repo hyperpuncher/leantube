@@ -19,6 +19,8 @@ Text shaping uses HarfBuzz, under HarfBuzz.txt.
 Geist has been modified: its tnum feature is frozen into the character map,
 so digits use the fixed-width .tf glyphs. Glyphs, metrics, font names, and
 the wght axis are otherwise unchanged. See fonts/Geist.md.
+Noto Sans Math is subset to mathematical alphanumeric and letterlike symbols.
+See fonts/NotoSansMath.md for the source and subset recipe.
 
 SDL_image loads WebP and JPEG covers and rasterizes SVG icons. It includes
 libwebp, NanoSVG, and stb_image. Their license and patent notices are in this

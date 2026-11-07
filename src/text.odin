@@ -28,7 +28,7 @@ fonts: [Text_Style]^ttf.Font
 // SDL centres the line box, not the glyphs, so digits sit below the middle of a
 // chip. Keep the offset that puts their ink in the middle instead.
 digit_ink_shift: [Text_Style]i32
-// Preserve emoji priority, then use system text fonts for missing glyphs.
+// Preserve fallback order. Relative paths refer to bundled fonts.
 fallback_fonts: [Text_Style][len(FALLBACK_FONT_PATHS)]^ttf.Font
 text_engine: ^ttf.TextEngine
 // Reuse visible text slots in draw order. SDL owns each slot's string.
@@ -59,10 +59,18 @@ open_text :: proc(renderer: ^sdl.Renderer) -> bool {
 	}
 	text_engine = ttf.CreateRendererTextEngineWithProperties(properties)
 	if text_engine == nil {return false}
-	// System fallbacks are optional. Missing fonts must not prevent startup.
+	// Fallbacks are optional. Missing fonts must not prevent startup.
 	sources: [len(FALLBACK_FONT_PATHS)]^ttf.Font
 	for path, i in FALLBACK_FONT_PATHS {
-		if string(path) != "" {sources[i] = ttf.OpenFont(path, f32(text_sizes[.Body]))}
+		if string(path) == "" {continue}
+		resolved := path
+		owned: cstring
+		defer delete(owned)
+		if !strings.has_prefix(string(path), "/") {
+			owned = fmt.caprintf("%s/%s", app_directory, path)
+			resolved = owned
+		}
+		sources[i] = ttf.OpenFont(resolved, f32(text_sizes[.Body]))
 	}
 	defer for source in sources {if source != nil {ttf.CloseFont(source)}}
 	path := fmt.caprintf("%s/fonts/Geist.ttf", app_directory)

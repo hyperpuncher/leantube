@@ -6,4 +6,5 @@ FALLBACK_FONT_PATHS :: [?]cstring {
 	"/usr/share/fonts/NotoEmoji-Regular.ttf",
 	"/usr/share/fonts/LG_Display-Regular.ttf",
 	"/usr/share/fonts/LG_Display_IN.ttf",
+	"fonts/NotoSansMath.ttf",
 }
