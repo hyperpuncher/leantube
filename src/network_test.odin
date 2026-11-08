@@ -66,7 +66,10 @@ continuation_appends_cards_and_rejects_stale_pages :: proc(t: ^testing.T) {
 	defer {stop_network(); clear_catalog(); page = 0; selected = 0; delete(browse_id)
 		browse_id = ""}
 	page = 4
-	append(&catalog.videos, model.Video{title = strings.clone("first")})
+	append(
+		&catalog.videos,
+		model.Video{id = strings.clone("DN953UW8iJ8"), title = strings.clone("first")},
+	)
 	catalog.continuation = strings.clone("old-continuation")
 	resize(&textures, 1)
 	for result_page in ([]u32{3, 4}) {
@@ -75,7 +78,19 @@ continuation_appends_cards_and_rejects_stale_pages :: proc(t: ^testing.T) {
 			page   = result_page,
 			append = true,
 		}
-		append(&result.catalog.videos, model.Video{title = strings.clone("next"), cover_index = 1})
+		// Continuations can repeat cards from an earlier page.
+		for fixture, index in ([2]struct {
+				id, title: string,
+			}{{"DN953UW8iJ8", "overlap"}, {"C5WDBA2i9nE", "next"}}) {
+			append(
+				&result.catalog.videos,
+				model.Video {
+					id = strings.clone(fixture.id),
+					title = strings.clone(fixture.title),
+					cover_index = 1 + index,
+				},
+			)
+		}
 		result.catalog.continuation = strings.clone("new-continuation")
 		chan.send(network_results, result)
 		poll_network(nil)
@@ -84,7 +99,29 @@ continuation_appends_cards_and_rejects_stale_pages :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(textures), 2)
 	testing.expect_value(t, catalog.videos[0].title, "first")
 	testing.expect_value(t, catalog.videos[1].title, "next")
+	testing.expect_value(t, catalog.videos[1].cover_index, 1)
 	testing.expect_value(t, catalog.continuation, "new-continuation")
+	images, images_requested := chan.try_recv(network_requests)
+	defer free_network_request(&images)
+	if testing.expect(t, images_requested && images.kind == .Images && len(images.images) == 1) {
+		testing.expect_value(t, images.images[0].index, 1)
+		testing.expect_value(t, images.images[0].source, "C5WDBA2i9nE")
+	}
+	repeated := Network_Result {
+		kind = .Catalog,
+		page = page,
+		append = true,
+		catalog = {continuation = strings.clone("after-overlap")},
+	}
+	append(
+		&repeated.catalog.videos,
+		model.Video{id = strings.clone("C5WDBA2i9nE"), title = strings.clone("another overlap")},
+	)
+	chan.send(network_results, repeated)
+	poll_network(nil)
+	testing.expect_value(t, len(catalog.videos), 2)
+	testing.expect_value(t, len(textures), 2)
+	testing.expect_value(t, catalog.continuation, "after-overlap")
 	// Removing from Watch later must not remove a subscription card.
 	browse_id = strings.clone("FEsubscriptions")
 	for current_playlist in ([2]bool{false, true}) {
@@ -101,7 +138,7 @@ continuation_appends_cards_and_rejects_stale_pages :: proc(t: ^testing.T) {
 	testing.expect_value(t, catalog.videos[0].cover_index, 1)
 	testing.expect_value(t, len(textures), 2)
 	testing.expect_value(t, page, u32(4))
-	testing.expect_value(t, catalog.continuation, "new-continuation")
+	testing.expect_value(t, catalog.continuation, "after-overlap")
 	unexpected, requested := chan.try_recv(network_requests)
 	defer free_network_request(&unexpected)
 	testing.expect(t, !requested, "local removal must not request another page")

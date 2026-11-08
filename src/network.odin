@@ -864,19 +864,30 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 			}
 		case .Catalog:
 			first_cover := result.append ? len(textures) : 0
-			next_cover := first_cover + len(result.catalog.videos)
+			next_cover := first_cover
 			search_loading = false
 			if result.error != .None {show_notice("Could not load this page"); continue}
 			if browse_id == "VLWL" {
 				for &video in result.catalog.videos {video.watch_later = .Present}
 			}
 			if result.append {
-				append(&catalog.videos, ..result.catalog.videos[:])
+				seen := make(map[[2]string]bool, len(catalog.videos) + len(result.catalog.videos))
+				defer delete(seen)
+				for video in catalog.videos {seen[{video.id, video.browse_id}] = true}
+				for &video in result.catalog.videos {
+					key := [2]string{video.id, video.browse_id}
+					if key != ([2]string{}) && seen[key] {model.video_destroy(&video); continue}
+					seen[key] = true
+					video.cover_index = next_cover
+					next_cover += 1
+					append(&catalog.videos, video)
+				}
 				clear(&result.catalog.videos)
 				delete(catalog.continuation)
 				catalog.continuation = result.catalog.continuation
 				result.catalog.continuation = ""
 			} else {
+				next_cover = len(result.catalog.videos)
 				same_channel :=
 					result.catalog.channel.id != "" &&
 					result.catalog.channel.id == catalog.channel.id
