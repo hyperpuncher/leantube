@@ -441,6 +441,7 @@ account_menu_layout :: proc() {
 			childGap = spacing(8),
 			padding = clay.PaddingAll(spacing(24)),
 		},
+		userData = &POPUP_SHADOW,
 		backgroundColor = COLOR_SURFACE,
 		cornerRadius = clay.CornerRadiusAll(scaled(24)),
 		floating = {

@@ -27,6 +27,7 @@ toast_layout :: proc() {
 			sizing = {width = clay.SizingFit({max = min(scaled(720), view_width - scaled(64))})},
 			padding = padding(24, 24, 16, 16),
 		},
+		userData = &POPUP_SHADOW,
 		backgroundColor = COLOR_TEXT,
 		cornerRadius = clay.CornerRadiusAll(scaled(12)),
 		floating = {

@@ -284,6 +284,7 @@ card_menu_layout :: proc() {
 			padding = clay.PaddingAll(spacing(20)),
 			childGap = spacing(12),
 		},
+		userData = &POPUP_SHADOW,
 		backgroundColor = COLOR_SURFACE,
 		cornerRadius = clay.CornerRadiusAll(scaled(24)),
 		floating = {

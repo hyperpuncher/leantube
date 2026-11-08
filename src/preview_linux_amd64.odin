@@ -353,7 +353,28 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	key(sdl.K_LEFT)
 	assert(rail_focus && selected == 0)
 	snapshot(renderer, surface, "rail-focused")
-	assert(clay.GetElementData(clay.ID("navigation-tooltip", u32(Navigation.Search))).found)
+	search_tooltip := clay.GetElementData(clay.ID("navigation-tooltip", u32(Navigation.Search)))
+	assert(search_tooltip.found)
+	// The shadow fades outside the popup over the first thumbnail, not its layout box.
+	shadow: [2]u8
+	for distance, i in ([2]f32{3, 9}) {
+		box := search_tooltip.boundingBox
+		assert(
+			sdl.ReadSurfacePixel(
+				surface,
+				i32(box.x + box.width - scaled(8)),
+				i32(box.y + box.height + scaled(distance)),
+				&shadow[i],
+				nil,
+				nil,
+				nil,
+			),
+		)
+	}
+	assert(
+		shadow[0] > 0 && shadow[0] < shadow[1] && shadow[1] < 80,
+		"popup shadow must fade over the thumbnail",
+	)
 	grid_before_tooltip := clay.GetElementData(clay.ID("video", 0)).boundingBox
 	rail_cursor = .History
 	snapshot(renderer, surface, "rail-history")

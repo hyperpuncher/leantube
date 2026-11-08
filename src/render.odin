@@ -231,6 +231,17 @@ render_commands :: proc(
 		#partial switch command.commandType {
 		case .Rectangle:
 			data := command.renderData.rectangle
+			if command.userData != nil {
+				shadow := rect
+				shadow.y += scaled(6)
+				if !rounded_shape(
+					renderer,
+					shadow,
+					data.cornerRadius,
+					(cast(^clay.Color)command.userData)^,
+					edge_width = scaled(24),
+				) {return false}
+			}
 			if data.cornerRadius != (clay.CornerRadius{}) {
 				if !rounded_shape(
 					renderer,

@@ -147,6 +147,7 @@ navigation_layout :: proc() {
 					if clay.UI(clay.ID("navigation-tooltip", u32(item)))(
 					{
 						layout = {padding = padding(16, 16, 8, 8)},
+						userData = &POPUP_SHADOW,
 						backgroundColor = COLOR_TEXT,
 						cornerRadius = clay.CornerRadiusAll(scaled(8)),
 						floating = {

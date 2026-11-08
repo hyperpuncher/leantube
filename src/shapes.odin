@@ -38,6 +38,7 @@ rounded_progress :: proc(
 
 // SDL geometry has no edge antialiasing. A one-pixel alpha fringe smooths
 // rounded fills and images without masks, render targets, or another renderer.
+// A wider fringe gives popup shadows the same fade without a blur texture.
 rounded_shape :: proc(
 	renderer: ^sdl.Renderer,
 	rect: sdl.FRect,
@@ -45,6 +46,7 @@ rounded_shape :: proc(
 	color: clay.Color,
 	texture: ^sdl.Texture = nil,
 	uv: sdl.FRect = {0, 0, 1, 1},
+	edge_width: f32 = 1,
 ) -> bool {
 	if rect.w <= 0 || rect.h <= 0 {return true}
 	SEGMENTS :: 12
@@ -69,7 +71,7 @@ rounded_shape :: proc(
 			dx, dy := math.cos(angle), math.sin(angle)
 			index := corner * (SEGMENTS + 1) + step
 			for edge in 0 ..< 2 {
-				r := max(0, radius + (edge == 0 ? -0.5 : 0.5))
+				r := max(0, radius + (edge == 0 ? -0.5 : 0.5) * edge_width)
 				x, y := cx + dx * r, cy + dy * r
 				vertices[1 + index + edge * POINTS] = {
 					{x, y},

@@ -12,5 +12,7 @@ COLOR_BUFFERED :: clay.Color{144, 144, 144, 255}
 COLOR_SPONSOR :: clay.Color{24, 24, 24, 255}
 COLOR_TEXT :: clay.Color{240, 240, 240, 255}
 COLOR_MUTED :: clay.Color{176, 176, 176, 255}
+// Rectangle userData can borrow this color for the shared popup shadow.
+POPUP_SHADOW := clay.Color{0, 0, 0, 96}
 // Use the warm accent only on focus outlines and progress.
 COLOR_ACCENT :: clay.Color{250, 88, 36, 255}
