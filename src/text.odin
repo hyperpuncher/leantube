@@ -139,11 +139,13 @@ fit_text :: proc(
 	bool,
 ) {
 	if text == "" || width <= 0 {return "", false}
-	measured: c.int
-	if !ttf.GetStringSize(font, raw_data(text), c.size_t(len(text)), &measured, nil) {
-		return "", false
+	if !continued {
+		measured: c.int
+		if !ttf.GetStringSize(font, raw_data(text), c.size_t(len(text)), &measured, nil) {
+			return "", false
+		}
+		if measured <= width {return text, false}
 	}
-	if !continued && measured <= width {return text, false}
 	ELLIPSIS: string : "…"
 	ellipsis_width: c.int
 	if !ttf.GetStringSize(font, raw_data(ELLIPSIS), len(ELLIPSIS), &ellipsis_width, nil) {
