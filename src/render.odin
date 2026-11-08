@@ -262,8 +262,7 @@ render_commands :: proc(
 				) {return false}
 				continue
 			}
-			width, height: f32
-			if !sdl.GetTextureSize(texture, &width, &height) {return false}
+			width, height := f32(texture.w), f32(texture.h)
 			// Fill the destination without stretching. Crop only during drawing;
 			// the original texture and downloaded file remain unchanged.
 			scale := max(rect.w / width, rect.h / height)

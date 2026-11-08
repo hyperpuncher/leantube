@@ -99,7 +99,9 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 			return
 		}
 		if channel_pointer(activate) {return}
-		for video, i in catalog.videos {
+		first, last := visible_rows()
+		for i in first * grid_columns ..< min(last * grid_columns, len(catalog.videos)) {
+			video := catalog.videos[i]
 			if clay.PointerOver(clay.ID("watch-later", u32(i))) {
 				card_press.active = false
 				selected = i

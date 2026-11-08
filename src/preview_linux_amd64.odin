@@ -750,6 +750,37 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	check_account_ui(renderer, surface)
 	check_search_flow(renderer, surface)
 	check_login_ui(renderer, surface)
+	// Check both optimized scans at the end of a large feed.
+	{
+		clear_catalog()
+		count :: 1000
+		resize(&textures, count)
+		resize(&card_avatars, count)
+		for i in 0 ..< count {
+			append(
+				&catalog.videos,
+				model.Video {
+					id = fmt.aprintf("video%06d", i),
+					title = strings.clone("Large feed card"),
+					duration_label = strings.clone("10:00"),
+					cover_index = i,
+				},
+			)
+		}
+		last := count - 1
+		textures[last] = load_texture(renderer, "tests/ui/cover.webp")
+		assert(textures[last] != nil)
+		selected, library_focus_pending = last, true
+		assert(render(renderer))
+		box := clay.GetElementData(clay.ID("video", u32(last))).boundingBox
+		selected = 0
+		controls_pointer(renderer, box.x + box.width / 2, box.y + scaled(32), false, false)
+		assert(selected == last, "pointer selection must reach the final visible card")
+		snapshot(renderer, surface, "large-grid")
+		retained := take_image_texture(image_key(catalog.videos[last].id, 0))
+		assert(retained == textures[last], "the final visible thumbnail must be retained")
+		sdl.DestroyTexture(retained)
+	}
 	fmt.printf("%s: UI checks passed\n", os.args[1])
 }
 

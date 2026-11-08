@@ -31,12 +31,10 @@ retain_image_texture :: proc(key: Image_Key, texture: ^sdl.Texture) {
 	if key == {} || texture == nil {return}
 	bytes := i64(texture.w) * i64(texture.h) * 4
 	if bytes > IMAGE_TEXTURE_BYTES {return}
-	if image_textures == nil {image_textures = make(map[Image_Key]Image_Texture)}
-	if previous, found := image_textures[key]; found {
+	if previous, found := &image_textures[key]; found {
 		if previous.texture == texture {
 			image_texture_tick += 1
 			previous.used = image_texture_tick
-			image_textures[key] = previous
 			return
 		}
 		image_texture_bytes -= previous.bytes
@@ -62,11 +60,10 @@ retain_image_texture :: proc(key: Image_Key, texture: ^sdl.Texture) {
 
 // Return an owned reference, released by the existing catalog cleanup.
 take_image_texture :: proc(key: Image_Key) -> ^sdl.Texture {
-	entry, found := image_textures[key]
+	entry, found := &image_textures[key]
 	if !found {return nil}
 	image_texture_tick += 1
 	entry.used = image_texture_tick
-	image_textures[key] = entry
 	entry.texture.refcount += 1
 	return entry.texture
 }
@@ -95,7 +92,9 @@ preserve_catalog_images :: proc() {
 			viewport.boundingBox.height,
 		},
 	)
-	for video, i in catalog.videos {
+	first, last := visible_rows()
+	for i in first * grid_columns ..< min(last * grid_columns, len(catalog.videos)) {
+		video := catalog.videos[i]
 		card := clay.GetElementData(clay.ID("video", u32(i)))
 		box := card.boundingBox
 		visible: sdl.Rect
