@@ -45,10 +45,17 @@ browse :: proc(
 	response, error := api_post(client, "browse", body, .TV)
 	if error != .None {return {}, error, ""}
 	defer delete(response.body)
-	return parse_browse(string(response.body[:]))
+	return parse_browse(string(response.body[:]), videos_only = id == "FEwhat_to_watch")
 }
 
-parse_browse :: proc(data: string) -> (catalog: model.Catalog, error: Error, visitor: string) {
+parse_browse :: proc(
+	data: string,
+	videos_only: bool = false,
+) -> (
+	catalog: model.Catalog,
+	error: Error,
+	visitor: string,
+) {
 	value, err := json.parse(data)
 	if err != .None {return {}, .Invalid_Response, ""}
 	defer json.destroy_value(value)
@@ -58,26 +65,26 @@ parse_browse :: proc(data: string) -> (catalog: model.Catalog, error: Error, vis
 	if text, ok := field(field(value, "responseContext"), "visitorData").(json.String); ok {
 		visitor = strings.clone(string(text))
 	}
-	collect_tiles(contents, &catalog)
+	collect_tiles(contents, &catalog, videos_only)
 	catalog.continuation = browse_continuation(contents)
 	return
 }
 
-collect_tiles :: proc(value: json.Value, catalog: ^model.Catalog) {
+collect_tiles :: proc(value: json.Value, catalog: ^model.Catalog, videos_only: bool = false) {
 	#partial switch item in value {
 	case json.Array:
-		for child in item {collect_tiles(child, catalog)}
+		for child in item {collect_tiles(child, catalog, videos_only)}
 	case json.Object:
 		// Ads and navigation tabs are not feed cards. Only the selected tab's
 		// content is a feed; its sibling tabs can contain unrelated channel data.
 		if item["adSlotRenderer"] != nil || item["inFeedAdLayoutRenderer"] != nil {return}
 		if tab := item["tabRenderer"]; tab != nil {
 			selected, _ := field(tab, "selected").(json.Boolean)
-			if bool(selected) {collect_tiles(field(tab, "content"), catalog)}
+			if bool(selected) {collect_tiles(field(tab, "content"), catalog, videos_only)}
 			return
 		}
 		if tile := item["tileRenderer"]; tile != nil {
-			card := parse_tile(tile)
+			card := parse_tile(tile, videos_only)
 			if card.id == "" && card.browse_id == "" {return}
 			for existing in catalog.videos {
 				if existing.id == card.id && existing.browse_id == card.browse_id {
@@ -88,15 +95,16 @@ collect_tiles :: proc(value: json.Value, catalog: ^model.Catalog) {
 			append(&catalog.videos, card)
 			return
 		}
-		for _, child in item {collect_tiles(child, catalog)}
+		for _, child in item {collect_tiles(child, catalog, videos_only)}
 	}
 }
 
-parse_tile :: proc(tile: json.Value) -> (card: model.Video) {
+parse_tile :: proc(tile: json.Value, videos_only: bool) -> (card: model.Video) {
 	command := field(tile, "onSelectCommand")
 	id, _ := field(field(command, "watchEndpoint"), "videoId").(json.String)
 	browse_id, _ := field(field(command, "browseEndpoint"), "browseId").(json.String)
 	playlist := strings.has_prefix(string(browse_id), "VL")
+	if playlist && videos_only {return}
 	if !playlist && !video_id_valid(string(id)) {return}
 	header := field(field(tile, "header"), "tileHeaderRenderer")
 	stamp: string
