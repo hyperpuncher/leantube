@@ -24,29 +24,29 @@ Acb_Callback :: #type proc "c" (id, task, event, app_state, play_state: c.long, 
 // libAcbAPI is only present below webOS 5, so resolve it at runtime.
 Acb :: struct {
 	__handle:                 dynlib.Library,
-	AcbAPI_create:            proc() -> c.long,
-	AcbAPI_initialize:        proc(
+	AcbAPI_create:            proc "c" () -> c.long,
+	AcbAPI_initialize:        proc "c" (
 		id: c.long,
 		player_type: c.int,
 		app_id: cstring,
 		callback: Acb_Callback,
 	) -> bool,
-	AcbAPI_setMediaId:        proc(id: c.long, media_id: cstring) -> bool,
-	AcbAPI_setSinkType:       proc(id: c.long, sink_type: c.int) -> bool,
-	AcbAPI_setMediaVideoData: proc(id: c.long, payload: cstring, task: ^c.long) -> c.int,
-	AcbAPI_setState:          proc(
+	AcbAPI_setMediaId:        proc "c" (id: c.long, media_id: cstring) -> bool,
+	AcbAPI_setSinkType:       proc "c" (id: c.long, sink_type: c.int) -> bool,
+	AcbAPI_setMediaVideoData: proc "c" (id: c.long, payload: cstring, task: ^c.long) -> c.int,
+	AcbAPI_setState:          proc "c" (
 		id: c.long,
 		app_state: Acb_App_State,
 		play_state: Acb_Play_State,
 		task: ^c.long,
 	) -> c.int,
-	AcbAPI_setDisplayWindow:  proc(
+	AcbAPI_setDisplayWindow:  proc "c" (
 		id, x, y, width, height: c.long,
 		fullscreen: bool,
 		task: ^c.long,
 	) -> c.int,
-	AcbAPI_finalize:          proc(id: c.long) -> c.int,
-	AcbAPI_destroy:           proc(id: c.long),
+	AcbAPI_finalize:          proc "c" (id: c.long) -> c.int,
+	AcbAPI_destroy:           proc "c" (id: c.long),
 }
 ACB_SYMBOLS :: 9
 

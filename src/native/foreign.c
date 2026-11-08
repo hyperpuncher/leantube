@@ -19,10 +19,11 @@ static char window_id[64];
 static void registry_global(void *data, struct wl_registry *registry, uint32_t name,
 							const char *interface, uint32_t version) {
 	(void)data;
+	(void)version;
 	if (strcmp(interface, "wl_compositor") == 0) {
-		compositor = wl_registry_bind(registry, name, &wl_compositor_interface, version);
+		compositor = wl_registry_bind(registry, name, &wl_compositor_interface, 1);
 	} else if (strcmp(interface, "wl_webos_foreign") == 0) {
-		foreign = wl_registry_bind(registry, name, &wl_webos_foreign_interface, version);
+		foreign = wl_registry_bind(registry, name, &wl_webos_foreign_interface, 1);
 	}
 }
 
@@ -43,6 +44,14 @@ static void window_id_assigned(void *data, struct wl_webos_exported *window, con
 }
 
 static const struct wl_webos_exported_listener exported_listener = {window_id_assigned};
+
+void lt_unexport_window(void) {
+	if (exported != NULL) {
+		wl_webos_exported_destroy(exported);
+		exported = NULL;
+	}
+	window_id[0] = '\0';
+}
 
 bool lt_export_window(struct wl_display *display, struct wl_surface *surface) {
 	if (display == NULL || surface == NULL)
@@ -68,7 +77,10 @@ bool lt_export_window(struct wl_display *display, struct wl_surface *surface) {
 		if (wl_display_roundtrip(display) < 0)
 			break;
 	}
-	return window_id[0] != '\0';
+	if (window_id[0] != '\0')
+		return true;
+	lt_unexport_window();
+	return false;
 }
 
 const char *lt_window_id(void) { return window_id[0] == '\0' ? NULL : window_id; }
@@ -92,12 +104,4 @@ bool lt_set_window(int32_t source_width, int32_t source_height, int32_t destinat
 	wl_region_destroy(source);
 	wl_region_destroy(destination);
 	return true;
-}
-
-void lt_unexport_window(void) {
-	if (exported != NULL) {
-		wl_webos_exported_destroy(exported);
-		exported = NULL;
-	}
-	window_id[0] = '\0';
 }
