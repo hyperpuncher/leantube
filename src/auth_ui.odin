@@ -19,7 +19,7 @@ login_retry_selected: bool
 login_qr: ^sdl.Texture
 account_menu: bool
 account_menu_selected: int
-account_avatar: ^sdl.Texture
+account_avatars: [MAX_ACCOUNTS]^sdl.Texture
 
 account_initial :: proc() -> string {
 	token := current_auth()
@@ -27,14 +27,23 @@ account_initial :: proc() -> string {
 	return account_initial_name(token.name)
 }
 
-set_account_avatar :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
-	if surface == nil {return}
-	texture := sdl.CreateTextureFromSurface(renderer, surface)
-	if texture == nil {return}
-	_ = sdl.SetTextureBlendMode(texture, sdl.BLENDMODE_BLEND)
-	_ = sdl.SetTextureScaleMode(texture, .LINEAR)
-	if account_avatar != nil {sdl.DestroyTexture(account_avatar)}
-	account_avatar = texture
+close_account_avatars :: proc() {
+	for texture in account_avatars {if texture != nil {sdl.DestroyTexture(texture)}}
+	account_avatars = {}
+}
+
+set_account_avatar :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface, url: string) {
+	if surface == nil || url == "" {return}
+	// Match by URL, not the active account or an index saved before sign-out.
+	for token, i in auth_accounts {
+		if token.avatar_url != url {continue}
+		texture := sdl.CreateTextureFromSurface(renderer, surface)
+		if texture == nil {continue}
+		_ = sdl.SetTextureBlendMode(texture, sdl.BLENDMODE_BLEND)
+		_ = sdl.SetTextureScaleMode(texture, .LINEAR)
+		if previous := account_avatars[i]; previous != nil {sdl.DestroyTexture(previous)}
+		account_avatars[i] = texture
+	}
 }
 
 start_login :: proc(add := false) {
@@ -91,7 +100,6 @@ close_login_screen :: proc() {
 use_current_account :: proc() {
 	clear_browse_history()
 	account_menu = false
-	if account_avatar != nil {sdl.DestroyTexture(account_avatar); account_avatar = nil}
 	token := current_auth()
 	signed_in = token != nil
 	account_revision += 1
@@ -102,10 +110,15 @@ use_current_account :: proc() {
 			auth_token = signed_in ? clone_auth_token(token^) : Auth_Token{},
 		},
 	)
+	for saved, i in auth_accounts {
+		if i == auth_active || saved.avatar_url == "" || account_avatars[i] != nil {continue}
+		_ = submit_network({kind = .Account_Avatar, text = strings.clone(saved.avatar_url)})
+	}
 	dirty = true
 }
 
 sign_out :: proc() {
+	close_account_avatars()
 	clear_auth()
 	use_current_account()
 	if !signed_in {
@@ -369,7 +382,8 @@ account_button :: proc(compact: bool = false) {
 	},
 	) {
 		if signed_in {
-			if account_avatar != nil {
+			avatar := current_auth() != nil ? account_avatars[auth_active] : nil
+			if avatar != nil {
 				if clay.UI(clay.ID("account-avatar"))(
 				{
 					layout = {
@@ -378,7 +392,7 @@ account_button :: proc(compact: bool = false) {
 							height = clay.SizingFixed(scaled(56)),
 						},
 					},
-					image = {imageData = rawptr(account_avatar)},
+					image = {imageData = rawptr(avatar)},
 					cornerRadius = clay.CornerRadiusAll(scaled(28)),
 				},
 				) {}
@@ -450,6 +464,7 @@ account_menu_layout :: proc() {
 		}
 		for token, i in auth_accounts {
 			selected := i == auth_active
+			avatar := account_avatars[i]
 			if clay.UI(clay.ID("account-row", u32(i)))(
 			{
 				layout = {
@@ -471,12 +486,12 @@ account_menu_layout :: proc() {
 						},
 						childAlignment = {x = .Center, y = .Center},
 					},
-					backgroundColor = selected && account_avatar != nil ? clay.Color{} : COLOR_BACKGROUND,
-					image = {imageData = selected ? rawptr(account_avatar) : nil},
+					backgroundColor = avatar != nil ? clay.Color{} : COLOR_BACKGROUND,
+					image = {imageData = rawptr(avatar)},
 					cornerRadius = clay.CornerRadiusAll(scaled(32)),
 				},
 				) {
-					if !selected || account_avatar == nil {
+					if avatar == nil {
 						label(account_initial_name(token.name), .Small)
 					}
 				}

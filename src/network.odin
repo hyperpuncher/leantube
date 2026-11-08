@@ -30,6 +30,7 @@ Network_Request :: struct {
 		Player_Channel,
 		Images,
 		Use_Account,
+		Account_Avatar,
 		Login_Start,
 		Login_Poll,
 		Card_Action,
@@ -56,6 +57,7 @@ Network_Result :: struct {
 		Channel_Avatar,
 		Stream,
 		Account,
+		Account_Avatar,
 		Login_Code,
 		Login_Waiting,
 		Login_Authorized,
@@ -71,6 +73,7 @@ Network_Result :: struct {
 	catalog:        model.Catalog,
 	// Cover pixels are decoded by the worker; only texture upload uses the UI.
 	surface:        ^sdl.Surface,
+	image_source:   string,
 	stream:         yt.Stream,
 	segments:       [dynamic]sb.Segment,
 	login_code:     string,
@@ -137,6 +140,7 @@ free_network_result :: proc(result: ^Network_Result) {
 	model.catalog_destroy(&result.catalog)
 	model.card_actions_destroy(&result.actions)
 	sdl.DestroySurface(result.surface)
+	delete(result.image_source)
 	yt.stream_destroy(&result.stream)
 	delete(result.segments)
 	delete(result.login_code)
@@ -261,6 +265,13 @@ network_main :: proc(_: ^thread.Thread) {
 				if a.cached {return 0}
 				return int(a.target > 0) - int(b.target > 0)
 			})
+		case .Account_Avatar:
+			avatar := load_cached_image(cache, &network_client, request.text, 128)
+			source := request.text
+			request.text = ""
+			if !post_network_result(
+				{kind = .Account_Avatar, image_source = source, surface = avatar},
+			) {return}
 		case .Use_Account:
 			yt.watch_history_destroy(&history)
 			history_playback = 0
@@ -536,6 +547,7 @@ stop_network :: proc() {
 	pending_auth_active = false
 	http.close(&network_client)
 	close_image_textures()
+	close_account_avatars()
 }
 submit_network :: proc(request: Network_Request) -> bool {
 	if chan.try_send(network_requests, request) {return true}
@@ -723,6 +735,10 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 		if !ok {break}
 		defer free_network_result(&result)
 		#partial switch result.kind {
+		case .Account_Avatar:
+			set_account_avatar(renderer, result.surface, result.image_source)
+			dirty = true
+			continue
 		case .Account:
 			if result.account != account_revision {continue}
 			if token := current_auth(); token != nil {
@@ -730,8 +746,8 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				token^ = result.auth_token
 				result.auth_token = {}
 				_ = save_auth()
+				set_account_avatar(renderer, result.surface, token.avatar_url)
 			}
-			set_account_avatar(renderer, result.surface)
 			dirty = true
 			continue
 		case .Login_Code:

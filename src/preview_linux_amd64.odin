@@ -756,18 +756,19 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 check_account_ui :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	// Local fixtures only. Never load or modify a real account file here.
 	saved_accounts, saved_active := auth_accounts, auth_active
-	saved_signed_in, saved_avatar := signed_in, account_avatar
+	saved_signed_in, saved_avatars := signed_in, account_avatars
 	auth_accounts = make([dynamic]Auth_Token)
 	append(&auth_accounts, Auth_Token{name = "Alice"}, Auth_Token{name = "Bob"})
 	auth_active = 0
 	signed_in = true
-	account_avatar = load_texture(renderer, "tests/ui/cover.webp")
-	assert(account_avatar != nil)
+	account_avatars = {}
+	account_avatars[0] = load_texture(renderer, "tests/ui/cover.webp")
+	assert(account_avatars[0] != nil)
 	defer {
-		sdl.DestroyTexture(account_avatar)
+		close_account_avatars()
 		delete(auth_accounts)
 		auth_accounts, auth_active = saved_accounts, saved_active
-		signed_in, account_avatar = saved_signed_in, saved_avatar
+		signed_in, account_avatars = saved_signed_in, saved_avatars
 		account_menu = false
 	}
 	snapshot(renderer, surface, "account-avatar")
