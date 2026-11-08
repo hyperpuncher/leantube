@@ -86,7 +86,7 @@ open_card_menu :: proc() {
 	for action in catalog.videos[selected].actions {
 		append(&card_menu_actions, model.card_action_clone(action))
 	}
-	if len(card_menu_actions) == 0 {notice = "no actions available for this card"; return}
+	if len(card_menu_actions) == 0 {show_notice("No actions available"); return}
 	card_menu = true
 	card_menu_selected = 0
 	if len(card_menu_actions) == 1 && card_menu_actions[0].kind == .Menu {activate_card_action()}
@@ -105,7 +105,7 @@ save_watch_later :: proc(video_id: string) {
 	card_menu_selected = 0
 	activate_card_action()
 	if !card_menu_waiting {
-		notice = card_menu_error
+		show_notice(card_menu_error)
 		close_card_menu()
 	}
 }
@@ -132,7 +132,7 @@ activate_card_action :: proc() {
 			},
 		) {
 			card_menu_waiting = false
-			card_menu_error = "could not send action; try again"
+			card_menu_error = "Could not send action"
 		}
 	}
 	dirty = true

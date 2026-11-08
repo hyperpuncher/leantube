@@ -258,7 +258,7 @@ main :: proc() {
 		if start_network() {
 			activate_navigation(signed_in ? .Subscriptions : .Home)
 		} else {
-			notice = "network is unavailable"
+			show_notice("Network unavailable")
 		}
 		run_dev(renderer)
 	}
@@ -850,6 +850,20 @@ check_search_flow :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 		assert(len(catalog.videos) == (state == 2 ? 1 : 0))
 		if state < 2 {key(sdl.K_TAB)}
 	}
+	// Notifications float above the cards and expire without clearing error state.
+	card := clay.GetElementData(clay.ID("video", 0)).boundingBox
+	show_notice("Could not save to Watch later")
+	snapshot(renderer, surface, "toast")
+	toast := clay.GetElementData(clay.ID("toast"))
+	assert(toast.found && toast.boundingBox.x >= 0 && toast.boundingBox.y >= 0)
+	assert(toast.boundingBox.x + toast.boundingBox.width <= view_width)
+	assert(toast.boundingBox.y + toast.boundingBox.height <= view_height)
+	assert(clay.GetElementData(clay.ID("video", 0)).boundingBox == card)
+	expire_toast(toast_until)
+	assert(render(renderer))
+	assert(!clay.GetElementData(clay.ID("toast")).found && notice != "")
+	notice = ""
+
 	// History uses the same authenticated browse and continuation path as other feeds.
 	saved_signed_in := signed_in
 	defer {signed_in = saved_signed_in}

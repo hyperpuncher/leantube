@@ -133,6 +133,7 @@ render :: proc(renderer: ^sdl.Renderer, wheel: f32 = 0, dt: f32 = 1.0 / 60) -> b
 		if !set_color(renderer, COLOR_BACKGROUND) || !sdl.RenderClear(renderer) {return false}
 		clay.BeginLayout()
 		login_layout()
+		toast_layout()
 		commands := clay.EndLayout(0)
 		return render_commands(renderer, commands)
 	}
@@ -160,6 +161,7 @@ render :: proc(renderer: ^sdl.Renderer, wheel: f32 = 0, dt: f32 = 1.0 / 60) -> b
 		speed = fmt.aprintf("%gx", rate)
 		player_layout(elapsed, total, speed, quality)
 	}
+	toast_layout()
 	commands := clay.EndLayout(0)
 	if controls_visible &&
 	   (!player_fade(renderer, "player-header", true, scaled(32)) ||
@@ -169,6 +171,7 @@ render :: proc(renderer: ^sdl.Renderer, wheel: f32 = 0, dt: f32 = 1.0 / 60) -> b
 		if reveal_selected_video() {
 			clay.BeginLayout()
 			grid_layout()
+			toast_layout()
 			commands = clay.EndLayout(0)
 		}
 	}
@@ -180,6 +183,7 @@ render :: proc(renderer: ^sdl.Renderer, wheel: f32 = 0, dt: f32 = 1.0 / 60) -> b
 	   ) {
 		clay.BeginLayout()
 		grid_layout()
+		toast_layout()
 		commands = clay.EndLayout(0)
 	}
 	// Keep two screens in reserve for both remote and wheel scrolling.

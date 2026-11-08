@@ -7,6 +7,7 @@
 - use native Wayland, Odin, Clay, and SDL3
 - use Odin target-specific file names for Linux x86-64 development and webOS ARM32 code
 - use neutral UI colors; use the logo color only for accents
+- do not use semicolons in UI text
 - keep downloaded SDK and compiler inputs in the ignored toolchain cache; track their pins and build recipes
 - the B9 app ABI is ARM32 soft-float, even though the kernel reports aarch64
 - use `just setup` to build the compiler with `patches/odin-arm32-softfp.patch`, not stock ARM32 Odin

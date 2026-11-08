@@ -636,7 +636,7 @@ start_browse :: proc(id: string, params: string = "", filter: string = "", remem
 		},
 	) {
 		search_loading = false
-		notice = "network is unavailable"
+		show_notice("Network unavailable")
 	}
 }
 
@@ -654,7 +654,7 @@ load_more :: proc() {
 		},
 	) {
 		search_loading = false
-		notice = "network is unavailable"
+		show_notice("Network unavailable")
 	}
 }
 
@@ -691,7 +691,7 @@ start_search :: proc(query: string = "Linus Tech Tips", keep_history: bool = fal
 	dirty = true
 	if !submit_network(
 		{kind = .Search, page = page, text = owned},
-	) {search_loading = false; notice = "network is unavailable"}
+	) {search_loading = false; show_notice("Network unavailable")}
 }
 resolve_selected :: proc(position_ms: f64 = 0, start_paused: bool = false) {
 	if selected < 0 || selected >= len(catalog.videos) {return}
@@ -715,7 +715,7 @@ resolve_selected :: proc(position_ms: f64 = 0, start_paused: bool = false) {
 			text = strings.clone(catalog.videos[selected].id),
 		},
 	) {
-		resolving = false; browsing = true; notice = "network is unavailable"
+		resolving = false; browsing = true; show_notice("Network unavailable")
 	}
 }
 // Cover replies use the original feed position, not the sorted grid position.
@@ -802,9 +802,9 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				if result.error == .None {
 					watch_later_cover = cover
 					watch_later_saved_until = sdl.GetTicks() + 1000
-				} else {notice = "Could not save to Watch later; try again"}
+				} else {show_notice("Could not save to Watch later")}
 			} else if result.error != .None {
-				card_menu_error = "action failed; try again"
+				card_menu_error = "Action failed"
 			} else if result.append {
 				model.card_actions_destroy(&card_menu_actions)
 				card_menu_actions = result.actions
@@ -817,8 +817,7 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 		case .Catalog:
 			first_cover := result.append ? len(catalog.videos) : 0
 			search_loading = false
-			if result.error !=
-			   .None {notice = "could not load this page; try again"; dirty = true; continue}
+			if result.error != .None {show_notice("Could not load this page"); continue}
 			if result.append {
 				append(&catalog.videos, ..result.catalog.videos[:])
 				clear(&result.catalog.videos)
@@ -885,8 +884,9 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 			resolving = false
 			if result.error != .None {
 				browsing = true
-				notice =
-					result.error == .No_Direct_Stream ? "YouTube did not provide a supported direct stream" : "video resolution failed; try again"
+				show_notice(
+					result.error == .No_Direct_Stream ? "YouTube did not provide a supported direct stream" : "Could not load video",
+				)
 			} else {
 				stream_width, stream_height = result.stream.width, result.stream.height
 				delete(sponsor_segments)

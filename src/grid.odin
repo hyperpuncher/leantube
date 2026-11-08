@@ -188,9 +188,6 @@ grid_layout :: proc() {
 			if search_editing {search_layout()}
 			channel_layout()
 			if search_loading && len(catalog.videos) == 0 {centered_spinner()}
-			if !search_loading && notice != "" {
-				label(notice, .Small, COLOR_MUTED)
-			}
 			if clay.UI(clay.ID("library-scroll"))(
 			{
 				layout = {

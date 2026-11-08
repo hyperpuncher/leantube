@@ -107,7 +107,7 @@ player_failed :: proc(stage: string = "native") {
 		player_reader == nil ? 0 : sync.atomic_load(&player_reader.state.failure),
 		player_status == nil ? 0 : sync.atomic_load(&player_status.error),
 	)
-	notice = "video playback failed; choose another video"
+	show_notice("Video playback failed")
 	return_to_grid = true
 	dirty = true
 }

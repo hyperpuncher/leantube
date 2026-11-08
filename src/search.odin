@@ -17,7 +17,7 @@ edit_search :: proc(window: ^sdl.Window) {
 	search_replace = true
 	if !start_text_input(window) {
 		search_editing = false
-		notice = "text input is unavailable"
+		show_notice("Text input unavailable")
 	}
 	dirty = true
 }
@@ -116,8 +116,6 @@ search_layout :: proc() {
 					.Heading,
 					search_editing && search_replace ? COLOR_MUTED : COLOR_TEXT,
 				)
-				if clay.UI()({layout = {sizing = {width = clay.SizingGrow({})}}}) {}
-				if !search_loading && notice != "" {label(notice, .Caption, COLOR_MUTED)}
 			}
 		}
 	}

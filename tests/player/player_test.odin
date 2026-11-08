@@ -23,6 +23,7 @@ Decoder_Status :: struct {
 playback_limits: [4]yt.Video_Limit
 running, paused, loaded, browsing, resolving, return_to_grid, dirty, library_focus_pending: bool
 notice: string
+show_notice :: proc(message: string) {notice = message}
 stream_width, stream_height, selected: int
 rate, duration_ms: f64
 timeline: model.Timeline

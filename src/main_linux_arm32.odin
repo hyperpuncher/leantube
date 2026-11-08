@@ -154,7 +154,7 @@ main :: proc() {
 			activate_navigation(signed_in ? .Subscriptions : .Home)
 		}
 	} else {
-		notice = "network is unavailable"
+		show_notice("Network unavailable")
 	}
 	if !render(renderer) {fmt.eprintln("frame failed:", sdl.GetError()); return}
 	fmt.println("video grid presented")
@@ -180,6 +180,7 @@ main :: proc() {
 		write_control_state()
 		expire_player_controls()
 		now := sdl.GetTicks()
+		expire_toast(now)
 		frame_dt := f32(min(now - previous_frame, 50)) / 1000
 		previous_frame = now
 		if !window_visible {running = false}
