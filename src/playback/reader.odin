@@ -185,14 +185,15 @@ read_track :: proc(worker: ^thread.Thread) {
 	}
 	mux: ^AVFormatContext
 	framing: cstring
+	codec: string
 	if result >= 0 {
 		parameters := format.streams[index].codecpar
-		t.codec = string(avcodec_get_name(parameters.codec_id))
+		codec = string(avcodec_get_name(parameters.codec_id))
 		if t.options.decoder_preroll {
 			if t.media_type == 1 {
-				if t.codec == "aac" {framing = "adts"} else {result = ERROR_INVALID_DATA}
+				if codec == "aac" {framing = "adts"} else {result = ERROR_INVALID_DATA}
 			} else {
-				switch t.codec {
+				switch codec {
 				case "vp9":
 				case "h264":
 					framing = "h264"
@@ -217,6 +218,7 @@ read_track :: proc(worker: ^thread.Thread) {
 	if result >= 0 {
 		stream := format.streams[index]
 		sync.mutex_lock(&t.mutex)
+		t.codec = codec
 		t.width, t.height = stream.codecpar.width, stream.codecpar.height
 		t.frame_rate = av_guess_frame_rate(format, stream, nil)
 		t.fps = rational_seconds(t.frame_rate)
