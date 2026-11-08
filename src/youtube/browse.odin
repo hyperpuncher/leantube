@@ -107,7 +107,8 @@ parse_tile :: proc(tile: json.Value) -> (card: model.Video) {
 			break
 		}
 	}
-	if !playlist && duration(stamp) <= 0 {delete(stamp); return}
+	ms := playlist ? 0 : duration(stamp)
+	if !playlist && ms <= 0 {delete(stamp); return}
 	metadata := field(field(tile, "metadata"), "tileMetadataRenderer")
 	title := text(field(metadata, "title"))
 	if title == "" {delete(stamp); return}
@@ -118,8 +119,9 @@ parse_tile :: proc(tile: json.Value) -> (card: model.Video) {
 		browse_id       = playlist ? strings.clone(string(browse_id)) : "",
 		title           = title,
 		duration_label  = stamp,
-		duration_ms     = playlist ? 0 : duration(stamp),
+		duration_ms     = ms,
 	}
+	if !playlist {read_resume_position(&card, command)}
 	labels: [dynamic]string
 	defer {
 		for label in labels {delete(label)}

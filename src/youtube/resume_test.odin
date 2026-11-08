@@ -41,16 +41,17 @@ resume_timestamp_comes_only_from_the_matching_playback_action :: proc(t: ^testin
 }
 
 @(test)
-web_and_lockup_cards_read_resume_from_their_own_action_only :: proc(t: ^testing.T) {
+cards_read_resume_from_their_own_action_only :: proc(t: ^testing.T) {
 	for fixture in ([]struct {
 			data:     string,
 			expected: f64,
-		}{{`{"videoRenderer":{"videoId":"aqz-KE-bpKQ","title":{"simpleText":"Resume"},"lengthText":{"simpleText":"10:00"},"thumbnailOverlays":[{"thumbnailOverlayResumePlaybackRenderer":{"percentDurationWatched":20}}],"navigationEndpoint":{"watchEndpoint":{"videoId":"aqz-KE-bpKQ","startTimeSeconds":123.5}}}}`, 123500}, {`{"lockupViewModel":{"contentId":"aqz-KE-bpKQ","contentType":"LOCKUP_CONTENT_TYPE_VIDEO","metadata":{"lockupMetadataViewModel":{"title":{"content":"Resume"}}},"contentImage":{"thumbnailViewModel":{"overlays":[{"thumbnailOverlayProgressBarViewModel":{"startPercent":20}},{"thumbnailBottomOverlayViewModel":{"badges":[{"thumbnailBadgeViewModel":{"text":"10:00"}}]}}]}},"rendererContext":{"commandContext":{"onTap":{"innertubeCommand":{"watchEndpoint":{"videoId":"aqz-KE-bpKQ","startTimeSeconds":123.5}}}}}}}`, 123500}, {`{"videoRenderer":{"videoId":"aqz-KE-bpKQ","title":{"simpleText":"Resume"},"lengthText":{"simpleText":"10:00"},"thumbnailOverlays":[{"thumbnailOverlayResumePlaybackRenderer":{"percentDurationWatched":20}}],"menu":{"watchEndpoint":{"videoId":"aqz-KE-bpKQ","startTimeSeconds":123.5}}}}`, 120000}}) {
+		}{{`{"videoRenderer":{"videoId":"aqz-KE-bpKQ","title":{"simpleText":"Resume"},"lengthText":{"simpleText":"10:00"},"thumbnailOverlays":[{"thumbnailOverlayResumePlaybackRenderer":{"percentDurationWatched":20}}],"navigationEndpoint":{"watchEndpoint":{"videoId":"aqz-KE-bpKQ","startTimeSeconds":123.5}}}}`, 123500}, {`{"lockupViewModel":{"contentId":"aqz-KE-bpKQ","contentType":"LOCKUP_CONTENT_TYPE_VIDEO","metadata":{"lockupMetadataViewModel":{"title":{"content":"Resume"}}},"contentImage":{"thumbnailViewModel":{"overlays":[{"thumbnailOverlayProgressBarViewModel":{"startPercent":20}},{"thumbnailBottomOverlayViewModel":{"badges":[{"thumbnailBadgeViewModel":{"text":"10:00"}}]}}]}},"rendererContext":{"commandContext":{"onTap":{"innertubeCommand":{"watchEndpoint":{"videoId":"aqz-KE-bpKQ","startTimeSeconds":123.5}}}}}}}`, 123500}, {`{"videoRenderer":{"videoId":"aqz-KE-bpKQ","title":{"simpleText":"Resume"},"lengthText":{"simpleText":"10:00"},"thumbnailOverlays":[{"thumbnailOverlayResumePlaybackRenderer":{"percentDurationWatched":20}}],"menu":{"watchEndpoint":{"videoId":"aqz-KE-bpKQ","startTimeSeconds":123.5}}}}`, 120000}, {`{"tileRenderer":{"onSelectCommand":{"watchEndpoint":{"videoId":"aqz-KE-bpKQ","startTimeSeconds":123.5}},"header":{"tileHeaderRenderer":{"thumbnailOverlays":[{"thumbnailOverlayTimeStatusRenderer":{"text":{"simpleText":"10:00"}}},{"thumbnailOverlayResumePlaybackRenderer":{"percentDurationWatched":20}}]}},"metadata":{"tileMetadataRenderer":{"title":{"simpleText":"Resume"}}}}}`, 123500}, {`{"tileRenderer":{"onSelectCommand":{"watchEndpoint":{"videoId":"aqz-KE-bpKQ"}},"header":{"tileHeaderRenderer":{"thumbnailOverlays":[{"thumbnailOverlayTimeStatusRenderer":{"text":{"simpleText":"10:00"}}},{"thumbnailOverlayResumePlaybackRenderer":{"percentDurationWatched":20}}]}},"metadata":{"tileMetadataRenderer":{"title":{"simpleText":"Resume"}}},"onLongPressCommand":{"watchEndpoint":{"videoId":"aqz-KE-bpKQ","startTimeSeconds":123.5}}}}`, 120000}}) {
 		value, error := json.parse(fixture.data)
 		testing.expect_value(t, error, json.Error.None)
 		catalog: model.Catalog
 		collect_videos(value, &catalog)
 		collect_lockups(value, &catalog)
+		collect_tiles(value, &catalog)
 		json.destroy_value(value)
 		if testing.expect_value(t, len(catalog.videos), 1) {
 			testing.expect_value(t, catalog.videos[0].watched_percent, f32(20))
