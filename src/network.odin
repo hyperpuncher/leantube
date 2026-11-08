@@ -409,10 +409,7 @@ network_main :: proc(_: ^thread.Thread) {
 				for cover in covers {delete(cover.source)}
 				clear(&covers)
 			}
-			for &video, i in catalog.videos {video.cover_index = request.index + i}
-			if request.kind == .Browse && request.text == "FEsubscriptions" {
-				model.sort_latest(catalog.videos[:])
-			}
+			for &video, i in catalog.videos {video.cover_index = i}
 			if !post_network_result(
 				{
 					kind = .Catalog,
@@ -677,7 +674,6 @@ load_more :: proc() {
 			page = page,
 			text = strings.clone(browse_id),
 			continuation = strings.clone(catalog.continuation),
-			index = len(textures),
 		},
 	) {
 		search_loading = false
