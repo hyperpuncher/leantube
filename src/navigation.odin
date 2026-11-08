@@ -126,7 +126,7 @@ navigation_layout :: proc() {
 					padding = clay.PaddingAll(spacing(3)),
 					childAlignment = {x = .Center, y = .Center},
 				},
-				backgroundColor = focused ? COLOR_ACCENT : clay.Color{},
+				backgroundColor = focused ? COLOR_TEXT : clay.Color{},
 				cornerRadius = clay.CornerRadiusAll(scaled(36)),
 			},
 			) {
@@ -147,7 +147,7 @@ navigation_layout :: proc() {
 					if clay.UI(clay.ID("navigation-tooltip", u32(item)))(
 					{
 						layout = {padding = padding(16, 16, 8, 8)},
-						backgroundColor = COLOR_HOVER,
+						backgroundColor = COLOR_TEXT,
 						cornerRadius = clay.CornerRadiusAll(scaled(8)),
 						floating = {
 							attachTo = .Parent,
@@ -157,7 +157,7 @@ navigation_layout :: proc() {
 							pointerCaptureMode = .Passthrough,
 						},
 					},
-					) {label(NAV_ITEMS[item].label, .Small)}
+					) {label(NAV_ITEMS[item].label, .Small, COLOR_BACKGROUND)}
 				}
 			}
 		}

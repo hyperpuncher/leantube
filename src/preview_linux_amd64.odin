@@ -372,7 +372,7 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 			nil,
 		),
 	)
-	assert(red == u8(COLOR_HOVER[0]), "the tooltip must draw above the library")
+	assert(red == u8(COLOR_TEXT[0]), "the tooltip must draw above the library")
 	key(sdl.K_RIGHT)
 	assert(!rail_focus && selected == 0)
 	assert(render(renderer))
@@ -399,7 +399,7 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 			nil,
 		),
 	)
-	assert(red == u8(COLOR_HOVER[0]) && green == u8(COLOR_HOVER[1]) && blue == u8(COLOR_HOVER[2]))
+	assert(red == u8(COLOR_TEXT[0]) && green == u8(COLOR_TEXT[1]) && blue == u8(COLOR_TEXT[2]))
 	for index in ([2]int{0, 2}) {
 		avatar := clay.GetElementData(clay.ID("card-avatar", u32(index))).boundingBox
 		assert(avatar.width == scaled(40))
@@ -638,7 +638,13 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 		command := clay.RenderCommandArray_Get(&commands, i)
 		if command.commandType != .Text {continue}
 		text := command.renderData.text.stringContents
-		if string(text.chars[:text.length]) == catalog.videos[0].title {found_title = true}
+		if string(text.chars[:text.length]) == catalog.videos[0].title {
+			found_title = true
+			assert(
+				command.renderData.text.textColor == COLOR_BACKGROUND,
+				"selected card text must be dark",
+			)
+		}
 	}
 	assert(found_title, "sorting must not attach another card's fitted title")
 	catalog.videos[0], catalog.videos[last_index] = catalog.videos[last_index], catalog.videos[0]

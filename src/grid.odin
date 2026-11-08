@@ -247,8 +247,8 @@ video_card :: proc(index: int, metrics: Grid_Metrics) {
 		channel = card_labels[video.cover_index].channel
 		meta = card_labels[video.cover_index].meta
 	}
-	focus :=
-		!rail_focus && !channel_focus && !search_editing && index == selected ? COLOR_HOVER : clay.PointerOver(clay.ID("video", u32(index))) ? COLOR_SURFACE : clay.Color{}
+	focused := index == selected && !rail_focus && !channel_focus && !search_editing
+	muted := focused ? COLOR_HOVER : COLOR_MUTED
 	if clay.UI(clay.ID("video", u32(index)))(
 	{
 		layout = {
@@ -260,7 +260,7 @@ video_card :: proc(index: int, metrics: Grid_Metrics) {
 			padding = clay.PaddingAll(u16(metrics.padding)),
 			childGap = u16(metrics.card_gap),
 		},
-		backgroundColor = focus,
+		backgroundColor = focused ? COLOR_TEXT : clay.PointerOver(clay.ID("video", u32(index))) ? COLOR_SURFACE : clay.Color{},
 		cornerRadius = clay.CornerRadiusAll(scaled(16)),
 	},
 	) {
@@ -356,7 +356,7 @@ video_card :: proc(index: int, metrics: Grid_Metrics) {
 					},
 				},
 			},
-			) {label(title, .Small, wrap = .Words)}
+			) {label(title, .Small, focused ? COLOR_BACKGROUND : COLOR_TEXT, wrap = .Words)}
 			if clay.UI(clay.ID("card-channel", u32(index)))(
 			{
 				layout = {
@@ -377,7 +377,7 @@ video_card :: proc(index: int, metrics: Grid_Metrics) {
 						4,
 					)
 				}
-				label(channel, .Caption, COLOR_MUTED)
+				label(channel, .Caption, muted)
 			}
 			if shape.meta {
 				if clay.UI(clay.ID("card-meta", u32(index)))(
@@ -389,7 +389,7 @@ video_card :: proc(index: int, metrics: Grid_Metrics) {
 						},
 					},
 				},
-				) {label(meta, .Caption, COLOR_MUTED)}
+				) {label(meta, .Caption, muted)}
 			}
 		}
 	}
