@@ -105,17 +105,20 @@ load_auth :: proc() -> bool {
 	if read_error != nil {return false}
 	defer delete(data)
 	store: Auth_Store
+	defer {for &token in store.accounts {free_auth_token(&token)}; delete(store.accounts)}
 	if json.unmarshal(data, &store) == nil && len(store.accounts) > 0 {
+		if len(store.accounts) > MAX_ACCOUNTS {return false}
 		auth_accounts = make([dynamic]Auth_Token, 0, MAX_ACCOUNTS)
-		for token in store.accounts {append(&auth_accounts, token)}
-		delete(store.accounts)
+		for &token in store.accounts {append(&auth_accounts, token); token = {}}
 		auth_active = clamp(store.active, 0, len(auth_accounts) - 1)
 		return true
 	}
 	token: Auth_Token
+	defer free_auth_token(&token)
 	if json.unmarshal(data, &token) != nil || token.access_token == "" {return false}
 	auth_accounts = make([dynamic]Auth_Token, 0, MAX_ACCOUNTS)
 	append(&auth_accounts, token)
+	token = {}
 	auth_active = 0
 	return true
 }
@@ -143,11 +146,14 @@ begin_login :: proc(client: ^http.Client) -> (Device_Auth, bool) {
 	defer delete(response.body)
 	if response.status != 200 {return {}, false}
 	device: Device_Auth
+	success := false
+	defer if !success {free_device_auth(&device)}
 	if json.unmarshal(response.body[:], &device) != nil {return {}, false}
 	if device.device_code == "" || device.user_code == "" || device.verification_url == "" {
 		return {}, false
 	}
 	if device.interval <= 0 {device.interval = 5}
+	success = true
 	return device, true
 }
 
@@ -169,7 +175,9 @@ poll_login :: proc(client: ^http.Client, device: Device_Auth) -> (Auth_Token, Au
 	if request_error != nil {return {}, .Failed, strings.clone("network")}
 	defer delete(response.body)
 	token: Auth_Token
-	if json.unmarshal(response.body[:], &token) == nil && token.access_token != "" {
+	authorized := json.unmarshal(response.body[:], &token) == nil && token.access_token != ""
+	defer if !authorized {free_auth_token(&token)}
+	if authorized {
 		return token, .Authorized, ""
 	}
 	error: struct {

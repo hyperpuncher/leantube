@@ -47,3 +47,36 @@ account_save_keeps_previous_file_when_staging_fails :: proc(t: ^testing.T) {
 	defer delete(replaced)
 	testing.expect(t, strings.contains(string(replaced), "Bob"))
 }
+
+@(test)
+account_load_owns_valid_stores_and_releases_rejected_data :: proc(t: ^testing.T) {
+	directory, error := os.make_directory_temp("/tmp", "leantube-auth-load-", context.allocator)
+	if !testing.expect(t, error == nil) {return}
+	defer {os.remove_all(directory); delete(directory)}
+	saved_accounts, saved_active, saved_directory := auth_accounts, auth_active, auth_directory
+	auth_accounts, auth_active, auth_directory = nil, -1, directory
+	defer {auth_accounts, auth_active, auth_directory =
+			saved_accounts, saved_active, saved_directory}
+	path := auth_path()
+	defer delete(path)
+	for fixture in ([]struct {
+			data:  string,
+			count: int,
+			name:  string,
+		}{{`{"access_token":"fixture","name":"Legacy"}`, 1, "Legacy"}, {`{"active":9,"accounts":[{"access_token":"fixture","name":"Alice"},{"access_token":"fixture","name":"Bob"}]}`, 2, "Bob"}, {`{"active":0,"accounts":[{"name":"partial","access_token":"fixture"},false]}`, 0, ""}, {`{"access_token":"partial","expires_in":false}`, 0, ""}, {`{"active":0,"accounts":[{"access_token":"fixture"},{"access_token":"fixture"},{"access_token":"fixture"},{"access_token":"fixture"},{"access_token":"fixture"},{"access_token":"fixture"}]}`, 0, ""}}) {
+		defer {
+			for &token in auth_accounts {free_auth_token(&token)}
+			delete(auth_accounts); auth_accounts = nil; auth_active = -1
+		}
+		if !testing.expect(
+			t,
+			os.write_entire_file(path, fixture.data, {.Read_User, .Write_User}) == nil,
+		) {return}
+		testing.expect_value(t, load_auth(), fixture.count > 0)
+		testing.expect_value(t, len(auth_accounts), fixture.count)
+		if fixture.count > 0 {
+			token := current_auth()
+			if testing.expect(t, token != nil) {testing.expect_value(t, token.name, fixture.name)}
+		}
+	}
+}

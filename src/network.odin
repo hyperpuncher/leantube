@@ -283,8 +283,9 @@ network_main :: proc(_: ^thread.Thread) {
 			session_account = request.account
 			delete(visitor_data); visitor_data = ""
 			if session_auth.access_token == "" {yt.set_access_token(""); continue}
-			_ = refresh_auth(&network_client, &session_auth)
-			refresh_at = sdl.GetTicks() + u64(max(session_auth.expires_in - 60, 0)) * 1000
+			refreshed := refresh_auth(&network_client, &session_auth)
+			refresh_at =
+				sdl.GetTicks() + u64(refreshed ? max(session_auth.expires_in - 60, 30) : 30) * 1000
 			yt.set_access_token(session_auth.access_token)
 			name, avatar_url := yt.account_info(&network_client)
 			if name != "" {delete(session_auth.name); session_auth.name = name} else {delete(name)}
@@ -303,7 +304,8 @@ network_main :: proc(_: ^thread.Thread) {
 			if request.kind == .Watch_History &&
 			   (request.account != session_account || session_auth.access_token == "") {continue}
 			if session_auth.access_token != "" && sdl.GetTicks() >= refresh_at {
-				if refresh_auth(&network_client, &session_auth) {
+				refreshed := refresh_auth(&network_client, &session_auth)
+				if refreshed {
 					yt.set_access_token(session_auth.access_token)
 					if !network_stopping() &&
 					   !post_network_result(
@@ -314,7 +316,9 @@ network_main :: proc(_: ^thread.Thread) {
 							   },
 						   ) {return}
 				}
-				refresh_at = sdl.GetTicks() + u64(max(session_auth.expires_in - 60, 30)) * 1000
+				refresh_at =
+					sdl.GetTicks() +
+					u64(refreshed ? max(session_auth.expires_in - 60, 30) : 30) * 1000
 			}
 			if request.kind == .Watch_History {
 				error: yt.Error

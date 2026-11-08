@@ -23,7 +23,7 @@ test: test-unit test-http test-ui test-native test-player test-reader-http
 
 # Test the app and its imported packages in one process.
 test-unit: host-qr
-	odin test src -all-packages -vet -out:build/unit-test -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false
+	odin test src -all-packages -vet -out:build/unit-test -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false -define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true
 
 # Check TLS safety and request recovery against a real local HTTPS server.
 test-http:
