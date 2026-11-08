@@ -12,6 +12,8 @@ Card_Request :: struct {
 		client: Client_Context,
 	} `json:"context"`,
 	playlist_id:     string `json:"playlistId,omitempty"`,
+	panel_id:        string `json:"panelId,omitempty"`,
+	params:          string `json:",omitempty"`,
 	actions:         json.Array `json:",omitempty"`,
 	video_ids:       []string `json:"videoIds,omitempty"`,
 	feedback_tokens: []string `json:"feedbackTokens,omitempty"`,
@@ -19,12 +21,25 @@ Card_Request :: struct {
 
 card_action :: proc(label: string, endpoint: json.Value) -> (action: model.Card_Action, ok: bool) {
 	if label == "" {return}
+	if executor := field(endpoint, "commandExecutorCommand"); executor != nil {
+		commands, _ := field(executor, "commands").(json.Array)
+		for command in commands {
+			if nested, valid := card_action(label, command); valid {return nested, true}
+		}
+		return
+	}
 	request := Card_Request {
 		ctx = {
 			client = {clientName = "TVHTML5", clientVersion = TV_VERSION, hl = "en", gl = "US"},
 		},
 	}
-	if browse := field(endpoint, "browseEndpoint"); browse != nil {
+	if panel := field(endpoint, "showEngagementPanelEndpoint"); panel != nil {
+		id, _ := field(field(panel, "identifier"), "tag").(json.String)
+		params, _ := field(field(panel, "globalConfiguration"), "params").(json.String)
+		if id == "" || params == "" {return}
+		action.kind = .Menu
+		request.panel_id, request.params = string(id), string(params)
+	} else if browse := field(endpoint, "browseEndpoint"); browse != nil {
 		id, _ := field(browse, "browseId").(json.String)
 		if id == "" {return}
 		action.kind = .Browse
@@ -49,7 +64,7 @@ card_action :: proc(label: string, endpoint: json.Value) -> (action: model.Card_
 		action.kind = .Playlists
 		request.video_ids = []string{string(id)}
 	}
-	if action.kind == .Edit_Playlist || action.kind == .Feedback || action.kind == .Playlists {
+	if action.kind != .Browse {
 		bytes, error := json.marshal(request)
 		if error != nil {return {}, false}
 		// The action owns the marshalled bytes until its payload is deleted.
@@ -96,19 +111,39 @@ parse_card_actions :: proc(value: json.Value) -> (actions: [dynamic]model.Card_A
 			if len(actions) > 0 {return}
 		}
 	case json.Object:
-		if menu := item["menuRenderer"]; menu != nil {
-			items, _ := field(menu, "items").(json.Array)
-			for entry in items {
-				renderer := field(entry, "menuNavigationItemRenderer")
-				endpoint := field(renderer, "navigationEndpoint")
-				if renderer == nil {
-					renderer = field(entry, "menuServiceItemRenderer")
-					endpoint = field(renderer, "serviceEndpoint")
+		if item["showEngagementPanelEndpoint"] != nil {
+			if action, ok := card_action("More actions", value); ok {append(&actions, action)}
+			return
+		}
+		// Both response formats contain a list of labelled commands.
+		items := field(item["menuRenderer"], "items")
+		if items == nil {items = field(item["listViewModel"], "listItems")}
+		if entries, ok := items.(json.Array); ok {
+			for entry in entries {
+				label: string
+				endpoint: json.Value
+				if renderer := field(entry, "listItemViewModel"); renderer != nil {
+					disabled, _ := field(renderer, "isDisabled").(json.Boolean)
+					if bool(disabled) {continue}
+					title, _ := field(field(renderer, "title"), "content").(json.String)
+					label = strings.clone(string(title))
+					command := field(
+						field(field(renderer, "rendererContext"), "commandContext"),
+						"onTap",
+					)
+					endpoint = field(command, "innertubeCommand")
+				} else {
+					renderer = field(entry, "menuNavigationItemRenderer")
+					endpoint = field(renderer, "navigationEndpoint")
+					if renderer == nil {
+						renderer = field(entry, "menuServiceItemRenderer")
+						endpoint = field(renderer, "serviceEndpoint")
+					}
+					label = text(field(renderer, "text"))
 				}
-				label := text(field(renderer, "text"))
 				defer delete(label)
 				if label == "Hide" {continue}
-				if action, ok := card_action(label, endpoint); ok {append(&actions, action)}
+				if action, valid := card_action(label, endpoint); valid {append(&actions, action)}
 			}
 			return
 		}
@@ -160,6 +195,8 @@ perform_card_action :: proc(
 		route = "feedback"
 	case .Playlists:
 		route = "playlist/get_add_to_playlist"
+	case .Menu:
+		route = "get_panel"
 	case .Browse:
 		return nil, .Invalid_Response
 	}
@@ -172,9 +209,14 @@ perform_card_action :: proc(
 	if field(value, "error") != nil {return nil, .Unavailable}
 	status, _ := field(value, "status").(json.String)
 	if status != "" && status != "STATUS_SUCCEEDED" {return nil, .Unavailable}
-	if action.kind == .Playlists {
+	#partial switch action.kind {
+	case .Menu:
+		actions = parse_card_actions(field(value, "content"))
+	case .Playlists:
 		playlist_actions(value, &actions)
-		if len(actions) == 0 {return nil, .Unavailable}
+	case:
+		return
 	}
+	if len(actions) == 0 {return nil, .Unavailable}
 	return actions, .None
 }

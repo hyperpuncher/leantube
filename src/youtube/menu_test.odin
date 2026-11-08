@@ -69,6 +69,42 @@ card_menu_keeps_only_supported_actions_and_request_fields :: proc(t: ^testing.T)
 }
 
 @(test)
+home_menu_loads_a_panel_and_reads_its_list_actions :: proc(t: ^testing.T) {
+	endpoint, error := json.parse(
+		`{"showEngagementPanelEndpoint":{"identifier":{"tag":"home-menu"},"globalConfiguration":{"params":"panel-fixture"}},"clickTrackingParams":"discard"}`,
+	)
+	if !testing.expect_value(t, error, .None) {return}
+	defer json.destroy_value(endpoint)
+	actions := parse_card_actions(endpoint)
+	defer model.card_actions_destroy(&actions)
+	if !testing.expect_value(t, len(actions), 1) {return}
+	testing.expect_value(t, actions[0].kind, .Menu)
+	request, request_error := json.parse(actions[0].payload)
+	if !testing.expect_value(t, request_error, .None) {return}
+	defer json.destroy_value(request)
+	object, _ := request.(json.Object)
+	testing.expect(t, object["clickTrackingParams"] == nil)
+	testing.expect_value(t, string(object["panelId"].(json.String)), "home-menu")
+	testing.expect_value(t, string(object["params"].(json.String)), "panel-fixture")
+
+	panel, panel_error := json.parse(
+		`{"engagementPanelSectionListRenderer":{"content":{"listViewModel":{"listItems":[
+		{"listItemViewModel":{"title":{"content":"Save to Watch later"},"rendererContext":{"commandContext":{"onTap":{"innertubeCommand":{"commandExecutorCommand":{"commands":[{"signalServiceEndpoint":{"signal":"CLIENT_SIGNAL"}},{"playlistEditEndpoint":{"playlistId":"WL","actions":[{"action":"ACTION_ADD_VIDEO","addedVideoId":"DN953UW8iJ8"}]}},{"openPopupAction":{"popup":{}}}]}}}}}}},
+		{"listItemViewModel":{"title":{"content":"Go to channel"},"rendererContext":{"commandContext":{"onTap":{"innertubeCommand":{"browseEndpoint":{"browseId":"UC-example"}}}}}}},
+		{"listItemViewModel":{"title":{"content":"Disabled"},"isDisabled":true,"rendererContext":{"commandContext":{"onTap":{"innertubeCommand":{"browseEndpoint":{"browseId":"UC-disabled"}}}}}}}
+	]}}}}`,
+	)
+	if !testing.expect_value(t, panel_error, .None) {return}
+	defer json.destroy_value(panel)
+	loaded := parse_card_actions(panel)
+	defer model.card_actions_destroy(&loaded)
+	if !testing.expect_value(t, len(loaded), 2) {return}
+	testing.expect_value(t, loaded[0].label, "Save to Watch later")
+	testing.expect_value(t, loaded[0].kind, .Edit_Playlist)
+	testing.expect_value(t, loaded[1].target, "UC-example")
+}
+
+@(test)
 playlist_picker_uses_membership_to_choose_add_or_remove :: proc(t: ^testing.T) {
 	value, error := json.parse(
 		`{"contents":[{"addToPlaylistRenderer":{"playlists":[

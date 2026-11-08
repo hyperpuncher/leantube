@@ -89,6 +89,7 @@ open_card_menu :: proc() {
 	if len(card_menu_actions) == 0 {notice = "no actions available for this card"; return}
 	card_menu = true
 	card_menu_selected = 0
+	if len(card_menu_actions) == 1 && card_menu_actions[0].kind == .Menu {activate_card_action()}
 }
 
 // Use the existing action request and pending state without opening a popup.
@@ -118,7 +119,7 @@ activate_card_action :: proc() {
 	case .Browse:
 		// start_browse clones this ID before clearing the catalog and popup.
 		start_browse(action.target)
-	case .Edit_Playlist, .Feedback, .Playlists:
+	case .Edit_Playlist, .Feedback, .Playlists, .Menu:
 		if !signed_in {close_card_menu(); start_login(); return}
 		card_menu_waiting = true
 		card_menu_error = ""
@@ -170,7 +171,7 @@ card_action_icon :: proc(action: model.Card_Action) -> (glyph: Icon) {
 	switch action.kind {
 	case .Browse:
 		glyph = .Account
-	case .Playlists:
+	case .Playlists, .Menu:
 		glyph = .Playlists
 	case .Edit_Playlist:
 		glyph = action.target == "WL" ? .Watch_Later : .Playlists

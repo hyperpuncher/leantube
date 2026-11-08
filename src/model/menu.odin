@@ -8,6 +8,7 @@ Card_Action :: struct {
 		Edit_Playlist,
 		Feedback,
 		Playlists,
+		Menu,
 	},
 	label, target, payload: string,
 }

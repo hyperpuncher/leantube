@@ -367,7 +367,7 @@ network_main :: proc(_: ^thread.Thread) {
 						index = request.index,
 						actions = actions,
 						error = error,
-						append = request.action.kind == .Playlists,
+						append = request.action.kind == .Playlists || request.action.kind == .Menu,
 					},
 				) {return}
 				continue
