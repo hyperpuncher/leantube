@@ -82,13 +82,13 @@ parse_player :: proc(data: string, limits: []Video_Limit = nil) -> (stream: Stre
 										((hdr && !best_hdr) ||
 												(hdr == best_hdr && bitrate > best_bitrate)))))
 			if !better {continue}
-			delete(stream.url)
-			stream.url = strings.clone(string(url))
+			stream.url = string(url)
 			stream.width, stream.height = int(width), int(height)
 			best_area, best_fps, best_hdr, best_bitrate = area, fps, hdr, bitrate
 		}
 	}
 	if stream.url == "" {delete(audio.url); return {}, .No_Direct_Stream}
+	stream.url = strings.clone(stream.url)
 	stream.audio_url = audio.url
 	channel_id, _ := field(field(value, "videoDetails"), "channelId").(json.String)
 	stream.channel_id = strings.clone(string(channel_id))

@@ -85,10 +85,10 @@ largest_image :: proc(images: json.Value) -> (url: string) {
 		link, _ := field(item, "url").(json.String)
 		width, _ := numeric(field(item, "width"))
 		if !strings.has_prefix(string(link), "https://") || width <= best {continue}
-		delete(url)
-		url = strings.clone(string(link))
+		url = string(link)
 		best = width
 	}
+	url = strings.clone(url)
 	return
 }
 
@@ -110,13 +110,12 @@ fill_card_labels :: proc(card: ^model.Video, labels: []string) {
 	card.published_age_s = -1
 	views: u64
 	relative: string
-	defer delete(relative)
 	for label in labels {
 		switch {
 		case strings.contains(label, "views"):
 			views = model.views_count(label)
 		case relative == "" && strings.has_suffix(label, "ago"):
-			relative = strings.clone(label)
+			relative = label
 			if age, ok := model.relative_age(label); ok {card.published_age_s = age}
 		case card.channel == "" && label != "•":
 			card.channel = strings.clone(label)
@@ -286,10 +285,7 @@ collect_lockups :: proc(value: json.Value, catalog: ^model.Catalog) {
 			title_text, _ := field(title, "content").(json.String)
 			if title_text == "" {return}
 			labels: [dynamic]string
-			defer {
-				for label in labels {delete(label)}
-				delete(labels)
-			}
+			defer delete(labels)
 			rows, _ := field(
 				field(lockup_metadata, "metadata"),
 				"contentMetadataViewModel",
@@ -299,7 +295,7 @@ collect_lockups :: proc(value: json.Value, catalog: ^model.Catalog) {
 				row_parts, _ := field(row, "metadataParts").(json.Array)
 				for part in row_parts {
 					label, _ := field(field(part, "text"), "content").(json.String)
-					if label != "" {append(&labels, strings.clone(string(label)))}
+					if label != "" {append(&labels, string(label))}
 				}
 			}
 			stamp: string
@@ -420,12 +416,12 @@ original_audio :: proc(formats: json.Array) -> (audio: Audio_Format) {
 		   !has_bitrate ||
 		   bool(drc) {continue}
 		if audio.url != "" && int(bitrate) <= audio.bitrate {continue}
-		delete(audio.url)
 		audio = {
-			url     = strings.clone(string(url)),
+			url     = string(url),
 			bitrate = int(bitrate),
 		}
 	}
+	audio.url = strings.clone(audio.url)
 	return
 }
 

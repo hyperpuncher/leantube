@@ -142,10 +142,10 @@ parse_tile :: proc(tile: json.Value) -> (card: model.Video) {
 	for thumbnail in thumbnails {
 		if url, ok := field(thumbnail, "url").(json.String);
 		   ok && strings.has_prefix(string(url), "https://") {
-			delete(card.thumbnail_url)
-			card.thumbnail_url = strings.clone(string(url))
+			card.thumbnail_url = string(url)
 		}
 	}
+	card.thumbnail_url = strings.clone(card.thumbnail_url)
 	return
 }
 
