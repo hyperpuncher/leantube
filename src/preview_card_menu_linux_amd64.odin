@@ -61,7 +61,7 @@ check_watch_later_ui :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	poll_network(renderer)
 	assert(
 		notice == "" &&
-		watch_later_saved_until > sdl.GetTicks() &&
+		card_action_done_until > sdl.GetTicks() &&
 		!card_menu_waiting &&
 		!card_menu &&
 		browsing &&
@@ -73,8 +73,8 @@ check_watch_later_ui :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 		clay.GetElementData(clay.ID("cover", 0)).boundingBox == cover,
 		"saving must not move the grid",
 	)
-	poll_card_press(watch_later_saved_until)
-	assert(watch_later_saved_until == 0)
+	poll_card_press(card_action_done_until)
+	assert(card_action_done_until == 0)
 	snapshot(renderer, surface, "watch-later-reset")
 }
 
@@ -116,6 +116,34 @@ check_card_menu_ui :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	assert(card_menu_selected == last && card_menu)
 	key(sdl.K_AC_BACK)
 	assert(!card_menu && browsing, "back must dismiss the popup without closing the library")
+
+	// A menu action replaces only its icon while pending and after success.
+	network_requests, _ = chan.create(chan.Chan(Network_Request), 1, context.allocator)
+	network_results, _ = chan.create(chan.Chan(Network_Result), 1, context.allocator)
+	saved_signed_in := signed_in
+	signed_in = true
+	defer {stop_network(); signed_in = saved_signed_in}
+	open_card_menu()
+	assert(render(renderer))
+	box = clay.GetElementData(clay.ID("card-menu")).boundingBox
+	key(sdl.K_RETURN)
+	request, ready := chan.try_recv(network_requests)
+	assert(ready && request.kind == .Card_Action && card_menu_waiting)
+	defer free_network_request(&request)
+	snapshot(renderer, surface, "card-menu-pending")
+	assert(clay.GetElementData(clay.ID("card-menu")).boundingBox == box)
+	chan.send(
+		network_results,
+		Network_Result{kind = .Card_Action, page = page, index = request.index},
+	)
+	poll_network(renderer)
+	assert(card_menu && !card_menu_waiting && card_action_done_until > sdl.GetTicks())
+	snapshot(renderer, surface, "card-menu-saved")
+	assert(clay.GetElementData(clay.ID("card-menu")).boundingBox == box)
+	key(sdl.K_RETURN)
+	_, duplicate := chan.try_recv(network_requests)
+	assert(!duplicate, "the checkmark must not submit the action twice")
+	close_card_menu()
 
 	// Moving onto the rail must cancel a hold before its input handler returns.
 	render(renderer)

@@ -302,7 +302,7 @@ video_card :: proc(index: int, metrics: Grid_Metrics) {
 				) {
 					glyph: Icon = .Watch_Later
 					if video.cover_index == watch_later_cover {
-						if card_menu_waiting {glyph = .Spinner} else if watch_later_saved_until > sdl.GetTicks() {glyph = .Check}
+						if card_menu_waiting {glyph = .Spinner} else if card_action_done_until > sdl.GetTicks() {glyph = .Check}
 					}
 					icon(glyph, 32)
 				}

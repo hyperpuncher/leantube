@@ -19,7 +19,7 @@ card_menu_waiting: bool
 card_menu_revision: int
 card_menu_error: string
 watch_later_cover := -1
-watch_later_saved_until: u64
+card_action_done_until: u64
 
 can_press_card :: proc() -> bool {
 	return(
@@ -58,9 +58,8 @@ finish_card_press :: proc(pointer: bool, now: u64) {
 }
 
 poll_card_press :: proc(now: u64) {
-	if watch_later_saved_until != 0 && now >= watch_later_saved_until {
-		watch_later_saved_until = 0
-		dirty = true
+	if card_action_done_until != 0 && now >= card_action_done_until {
+		if card_menu {dismiss_card_menu()} else {card_action_done_until = 0; dirty = true}
 	}
 	if !card_press.active {return}
 	if !valid_card_press() {card_press.active = false; return}
@@ -70,7 +69,7 @@ poll_card_press :: proc(now: u64) {
 }
 
 close_card_menu :: proc() {
-	watch_later_cover, watch_later_saved_until = -1, 0
+	watch_later_cover, card_action_done_until = -1, 0
 	card_press.active = false
 	card_menu = false
 	card_menu_waiting = false
@@ -78,6 +77,13 @@ close_card_menu :: proc() {
 	card_menu_revision += 1
 	model.card_actions_destroy(&card_menu_actions)
 	dirty = true
+}
+
+// Refresh completed changes even when Back dismisses the checkmark early.
+dismiss_card_menu :: proc() {
+	refresh := card_action_done_until != 0
+	close_card_menu()
+	if refresh {reload_feed()}
 }
 
 open_card_menu :: proc() {
@@ -94,7 +100,7 @@ open_card_menu :: proc() {
 
 // Use the existing action request and pending state without opening a popup.
 save_watch_later :: proc(video_id: string) {
-	if card_menu_waiting {return}
+	if card_menu_waiting || card_action_done_until != 0 {return}
 	if !signed_in {start_login(); return}
 	action, ok := yt.watch_later_action(video_id)
 	if !ok {return}
@@ -112,6 +118,7 @@ save_watch_later :: proc(video_id: string) {
 
 activate_card_action :: proc() {
 	if card_menu_waiting ||
+	   card_action_done_until != 0 ||
 	   card_menu_selected < 0 ||
 	   card_menu_selected >= len(card_menu_actions) {return}
 	action := card_menu_actions[card_menu_selected]
@@ -139,8 +146,8 @@ activate_card_action :: proc() {
 }
 
 card_menu_key :: proc(code: sdl.Keycode) {
-	if code == sdl.K_ESCAPE || code == sdl.K_AC_BACK {close_card_menu(); return}
-	if card_menu_waiting {return}
+	if code == sdl.K_ESCAPE || code == sdl.K_AC_BACK {dismiss_card_menu(); return}
+	if card_menu_waiting || card_action_done_until != 0 {return}
 	switch code {
 	case sdl.K_UP:
 		card_menu_selected = max(0, card_menu_selected - 1)
@@ -153,10 +160,8 @@ card_menu_key :: proc(code: sdl.Keycode) {
 }
 
 card_menu_pointer :: proc(activate: bool) {
-	if card_menu_waiting {
-		if activate && !clay.PointerOver(clay.ID("card-menu")) {close_card_menu()}
-		return
-	}
+	if activate && !clay.PointerOver(clay.ID("card-menu")) {dismiss_card_menu(); return}
+	if card_menu_waiting || card_action_done_until != 0 {return}
 	for _, i in card_menu_actions {
 		if clay.PointerOver(clay.ID("card-action", u32(i))) {
 			card_menu_selected = i
@@ -164,7 +169,6 @@ card_menu_pointer :: proc(activate: bool) {
 			return
 		}
 	}
-	if activate && !clay.PointerOver(clay.ID("card-menu")) {close_card_menu()}
 }
 
 card_action_icon :: proc(action: model.Card_Action) -> (glyph: Icon) {
@@ -214,16 +218,6 @@ card_menu_layout :: proc() {
 		},
 	},
 	) {
-		if card_menu_waiting {
-			if clay.UI()(
-			{
-				layout = {
-					sizing = {width = clay.SizingGrow({}), height = clay.SizingFixed(scaled(48))},
-					childAlignment = {x = .Center, y = .Center},
-				},
-			},
-			) {icon(.Spinner, 32)}
-		}
 		if card_menu_error != "" {label(card_menu_error, .Small, COLOR_MUTED)}
 		if clay.UI(clay.ID("card-menu-scroll"))(
 		{
@@ -254,8 +248,12 @@ card_menu_layout :: proc() {
 					cornerRadius = clay.CornerRadiusAll(scaled(12)),
 				},
 				) {
-					icon(card_action_icon(action), 32)
-					label(action.label, .Small, card_menu_waiting ? COLOR_MUTED : COLOR_TEXT)
+					glyph := card_action_icon(action)
+					if i == card_menu_selected {
+						if card_menu_waiting {glyph = .Spinner} else if card_action_done_until != 0 {glyph = .Check}
+					}
+					icon(glyph, 32)
+					label(action.label, .Small)
 				}
 			}
 		}

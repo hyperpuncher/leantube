@@ -801,7 +801,7 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				close_card_menu()
 				if result.error == .None {
 					watch_later_cover = cover
-					watch_later_saved_until = sdl.GetTicks() + 1000
+					card_action_done_until = sdl.GetTicks() + 1000
 				} else {show_notice("Could not save to Watch later")}
 			} else if result.error != .None {
 				card_menu_error = "Action failed"
@@ -811,8 +811,7 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				result.actions = nil
 				card_menu_selected = 0
 			} else {
-				close_card_menu()
-				reload_feed()
+				card_action_done_until = sdl.GetTicks() + 1000
 			}
 		case .Catalog:
 			first_cover := result.append ? len(catalog.videos) : 0
