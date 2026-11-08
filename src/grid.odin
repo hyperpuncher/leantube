@@ -40,7 +40,7 @@ labels_build :: proc(metrics: Grid_Metrics) {
 	if card_labels_scale != ui_scale ||
 	   math.abs(width - card_labels_width) >= 0.5 {labels_release()}
 	first_cover := len(card_labels)
-	resize(&card_labels, len(catalog.videos))
+	resize(&card_labels, len(textures))
 	for video in catalog.videos {
 		if video.cover_index < first_cover {continue}
 		title, title_owned, title_lines := fit_wrapped(fonts[.Small], video.title, c.int(width), 2)
@@ -300,8 +300,8 @@ video_card :: proc(index: int, metrics: Grid_Metrics) {
 					},
 				},
 				) {
-					glyph: Icon = .Watch_Later
-					if video.cover_index == watch_later_cover {
+					glyph: Icon = video.watch_later == .Present ? .Watch_Later_Saved : .Watch_Later
+					if video.cover_index == card_action_cover {
 						if card_menu_waiting {glyph = .Spinner} else if card_action_done_until > sdl.GetTicks() {glyph = .Check}
 					}
 					icon(glyph, 32)

@@ -34,6 +34,7 @@ Network_Request :: struct {
 		Login_Start,
 		Login_Poll,
 		Card_Action,
+		Card_Membership,
 		Watch_History,
 	},
 	page, playback: u32,
@@ -63,6 +64,7 @@ Network_Result :: struct {
 		Login_Authorized,
 		Login_Error,
 		Card_Action,
+		Card_Membership,
 	},
 	page, playback: u32,
 	position_ms:    f64,
@@ -129,7 +131,7 @@ free_network_request :: proc(request: ^Network_Request) {
 	delete(request.text)
 	delete(request.continuation)
 	delete(request.params); delete(request.filter)
-	delete(request.action.label); delete(request.action.target); delete(request.action.payload)
+	model.card_action_destroy(&request.action)
 	free_auth_token(&request.auth_token)
 	for image in request.images {delete(image.source)}
 	delete(request.images)
@@ -297,7 +299,7 @@ network_main :: proc(_: ^thread.Thread) {
 					surface = avatar,
 				},
 			) {return}
-		case .Search, .Browse, .Card_Action, .Player_Channel, .Watch_History:
+		case .Search, .Browse, .Card_Action, .Card_Membership, .Player_Channel, .Watch_History:
 			if request.kind == .Watch_History &&
 			   (request.account != session_account || session_auth.access_token == "") {continue}
 			if session_auth.access_token != "" && sdl.GetTicks() >= refresh_at {
@@ -358,18 +360,27 @@ network_main :: proc(_: ^thread.Thread) {
 				)
 				continue
 			}
-			if request.kind == .Card_Action {
-				actions, error := yt.perform_card_action(&network_client, request.action)
-				if !post_network_result(
-					{
-						kind = .Card_Action,
-						page = request.page,
-						index = request.index,
-						actions = actions,
-						error = error,
-						append = request.action.kind == .Playlists || request.action.kind == .Menu,
-					},
-				) {return}
+			if request.kind == .Card_Action || request.kind == .Card_Membership {
+				result := Network_Result {
+					kind  = .Card_Action,
+					page  = request.page,
+					index = request.index,
+				}
+				if request.kind == .Card_Membership {
+					result.kind = .Card_Membership
+					result.actions, result.error = yt.playlist_options(
+						&network_client,
+						request.text,
+					)
+				} else {
+					result.actions, result.error = yt.perform_card_action(
+						&network_client,
+						request.action,
+					)
+					result.append =
+						request.action.kind == .Playlists || request.action.kind == .Menu
+				}
+				if !post_network_result(result) {return}
 				continue
 			}
 			catalog: model.Catalog
@@ -588,6 +599,28 @@ queue_watch_history :: proc(
 	return false
 }
 
+// Keep image slot IDs stable for replies that are still in flight.
+remove_catalog_card :: proc(cover: int) {
+	for &video, index in catalog.videos {
+		if video.cover_index != cover {continue}
+		model.video_destroy(&video)
+		ordered_remove(&catalog.videos, index)
+		if selected > index {selected -= 1}
+		selected = clamp(selected, 0, max(0, len(catalog.videos) - 1))
+		if cover < len(textures) {sdl.DestroyTexture(textures[cover]); textures[cover] = nil}
+		if cover <
+		   len(card_avatars) {sdl.DestroyTexture(card_avatars[cover]); card_avatars[cover] = nil}
+		if cover < len(card_labels) {
+			label := &card_labels[cover]
+			delete(label.title); delete(label.channel); delete(label.meta)
+			label^ = {}
+		}
+		catalog_revision += 1
+		dirty = true
+		return
+	}
+}
+
 clear_catalog :: proc(keep_channel: bool = false) {
 	labels_release()
 	clear_player_channel()
@@ -650,7 +683,7 @@ load_more :: proc() {
 			page = page,
 			text = strings.clone(browse_id),
 			continuation = strings.clone(catalog.continuation),
-			index = len(catalog.videos),
+			index = len(textures),
 		},
 	) {
 		search_loading = false
@@ -793,30 +826,50 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 		}
 		if result.page != page {continue}
 		#partial switch result.kind {
-		case .Card_Action:
+		case .Card_Action, .Card_Membership:
 			if (!card_menu && !card_menu_waiting) || result.index != card_menu_revision {continue}
 			card_menu_waiting = false
-			if !card_menu {
-				cover := watch_later_cover
-				close_card_menu()
-				if result.error == .None {
-					watch_later_cover = cover
-					card_action_done_until = sdl.GetTicks() + 1000
-				} else {show_notice("Could not save to Watch later")}
-			} else if result.error != .None {
-				card_menu_error = "Action failed"
+			if result.error != .None {
+				if card_menu {card_menu_error = "Action failed"} else {
+					close_card_menu()
+					show_notice("Could not update Watch later")
+				}
+			} else if result.kind == .Card_Membership {
+				if video := card_action_video(); video != nil {
+					video.watch_later = read_watch_later_membership(result.actions[:])
+					set_watch_later_menu_action(video)
+					if video.watch_later ==
+					   .Unknown {card_menu_error = "Could not load Watch later"}
+				}
 			} else if result.append {
+				panel := card_menu_actions[card_menu_selected].kind == .Menu
+				if !panel {
+					if video := card_action_video(); video != nil {
+						video.watch_later = read_watch_later_membership(result.actions[:])
+					}
+				}
 				model.card_actions_destroy(&card_menu_actions)
 				card_menu_actions = result.actions
 				result.actions = nil
 				card_menu_selected = 0
+				if panel {prepare_watch_later()}
 			} else {
+				action := card_menu_actions[card_menu_selected]
+				if action.kind == .Edit_Playlist && action.target == "WL" {
+					if video := card_action_video(); video != nil {
+						video.watch_later = action.remove ? .Absent : .Present
+					}
+				}
 				card_action_done_until = sdl.GetTicks() + 1000
 			}
 		case .Catalog:
-			first_cover := result.append ? len(catalog.videos) : 0
+			first_cover := result.append ? len(textures) : 0
+			next_cover := first_cover + len(result.catalog.videos)
 			search_loading = false
 			if result.error != .None {show_notice("Could not load this page"); continue}
+			if browse_id == "VLWL" {
+				for &video in result.catalog.videos {video.watch_later = .Present}
+			}
 			if result.append {
 				append(&catalog.videos, ..result.catalog.videos[:])
 				clear(&result.catalog.videos)
@@ -853,8 +906,8 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 					restore_selected = -1
 				}
 			}
-			resize(&textures, len(catalog.videos))
-			resize(&card_avatars, len(catalog.videos))
+			resize(&textures, next_cover)
+			resize(&card_avatars, next_cover)
 			if browse_id == "FEsubscriptions" {sort_subscriptions(result.append)}
 			queue_catalog_images(first_cover)
 			catalog_revision += 1

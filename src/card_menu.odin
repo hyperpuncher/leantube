@@ -3,6 +3,7 @@ package main
 import clay "../vendor/clay"
 import "./model"
 import yt "./youtube"
+import "core:strings"
 import sdl "vendor:sdl3"
 
 CARD_HOLD_MS :: 650
@@ -18,7 +19,7 @@ card_menu_actions: [dynamic]model.Card_Action
 card_menu_waiting: bool
 card_menu_revision: int
 card_menu_error: string
-watch_later_cover := -1
+card_action_cover := -1
 card_action_done_until: u64
 
 can_press_card :: proc() -> bool {
@@ -30,6 +31,8 @@ can_press_card :: proc() -> bool {
 		!account_menu &&
 		!login_screen &&
 		!card_menu &&
+		!card_menu_waiting &&
+		card_action_done_until == 0 &&
 		selected >= 0 &&
 		selected < len(catalog.videos) \
 	)
@@ -59,7 +62,7 @@ finish_card_press :: proc(pointer: bool, now: u64) {
 
 poll_card_press :: proc(now: u64) {
 	if card_action_done_until != 0 && now >= card_action_done_until {
-		if card_menu {dismiss_card_menu()} else {card_action_done_until = 0; dirty = true}
+		dismiss_card_menu()
 	}
 	if !card_press.active {return}
 	if !valid_card_press() {card_press.active = false; return}
@@ -69,7 +72,7 @@ poll_card_press :: proc(now: u64) {
 }
 
 close_card_menu :: proc() {
-	watch_later_cover, card_action_done_until = -1, 0
+	card_action_cover, card_action_done_until = -1, 0
 	card_press.active = false
 	card_menu = false
 	card_menu_waiting = false
@@ -79,11 +82,71 @@ close_card_menu :: proc() {
 	dirty = true
 }
 
-// Refresh completed changes even when Back dismisses the checkmark early.
+// Only actions that change this feed remove a card. Other saves leave it untouched.
 dismiss_card_menu :: proc() {
-	refresh := card_action_done_until != 0
+	remove := false
+	cover := card_action_cover
+	if card_action_done_until != 0 {
+		action := card_menu_actions[card_menu_selected]
+		remove =
+			action.kind == .Feedback ||
+			(action.kind == .Edit_Playlist &&
+					action.remove &&
+					strings.trim_prefix(browse_id, "VL") == action.target)
+	}
 	close_card_menu()
-	if refresh {reload_feed()}
+	if remove {remove_catalog_card(cover)}
+}
+
+card_action_video :: proc() -> ^model.Video {
+	for &video in catalog.videos {
+		if video.cover_index == card_action_cover {return &video}
+	}
+	return nil
+}
+
+set_watch_later_menu_action :: proc(video: ^model.Video) {
+	action, ok := yt.watch_later_action(video.id, video.watch_later)
+	if !ok {return}
+	for &existing, i in card_menu_actions {
+		if existing.kind == .Edit_Playlist && existing.target == "WL" {
+			model.card_action_destroy(&existing)
+			existing = action
+			if video.watch_later == .Unknown {card_menu_selected = i}
+			return
+		}
+	}
+	inject_at(&card_menu_actions, 0, action)
+	card_menu_selected = 0
+}
+
+prepare_watch_later :: proc() {
+	video := card_action_video()
+	if video == nil || video.id == "" {return}
+	set_watch_later_menu_action(video)
+	if video.watch_later != .Unknown || !signed_in {return}
+	card_menu_error = ""
+	card_menu_waiting = true
+	if !submit_network(
+		{
+			kind = .Card_Membership,
+			page = page,
+			index = card_menu_revision,
+			text = strings.clone(video.id),
+		},
+	) {
+		card_menu_waiting = false
+		card_menu_error = "Could not load actions"
+	}
+}
+
+read_watch_later_membership :: proc(actions: []model.Card_Action) -> model.Watch_Later_State {
+	for action in actions {
+		if action.kind == .Edit_Playlist && action.target == "WL" {
+			return action.remove ? .Present : .Absent
+		}
+	}
+	return .Unknown
 }
 
 open_card_menu :: proc() {
@@ -92,20 +155,25 @@ open_card_menu :: proc() {
 	for action in catalog.videos[selected].actions {
 		append(&card_menu_actions, model.card_action_clone(action))
 	}
-	if len(card_menu_actions) == 0 {show_notice("No actions available"); return}
+	card_action_cover = catalog.videos[selected].cover_index
 	card_menu = true
 	card_menu_selected = 0
-	if len(card_menu_actions) == 1 && card_menu_actions[0].kind == .Menu {activate_card_action()}
+	if len(card_menu_actions) == 1 && card_menu_actions[0].kind == .Menu {
+		activate_card_action()
+	} else {prepare_watch_later()}
+	if len(card_menu_actions) == 0 {close_card_menu(); show_notice("No actions available")}
 }
 
 // Use the existing action request and pending state without opening a popup.
-save_watch_later :: proc(video_id: string) {
+toggle_watch_later :: proc(video_id: string) {
 	if card_menu_waiting || card_action_done_until != 0 {return}
 	if !signed_in {start_login(); return}
-	action, ok := yt.watch_later_action(video_id)
+	video := catalog.videos[selected]
+	if video.watch_later == .Unknown {open_card_menu(); return}
+	action, ok := yt.watch_later_action(video_id, video.watch_later)
 	if !ok {return}
 	close_card_menu()
-	watch_later_cover = catalog.videos[selected].cover_index
+	card_action_cover = video.cover_index
 	notice = ""
 	append(&card_menu_actions, action)
 	card_menu_selected = 0
@@ -128,6 +196,12 @@ activate_card_action :: proc() {
 		start_browse(action.target)
 	case .Edit_Playlist, .Feedback, .Playlists, .Menu:
 		if !signed_in {close_card_menu(); start_login(); return}
+		if action.kind == .Edit_Playlist && action.target == "WL" {
+			if video := card_action_video(); video != nil && video.watch_later == .Unknown {
+				prepare_watch_later()
+				return
+			}
+		}
 		card_menu_waiting = true
 		card_menu_error = ""
 		if !submit_network(
@@ -178,9 +252,10 @@ card_action_icon :: proc(action: model.Card_Action) -> (glyph: Icon) {
 	case .Playlists, .Menu:
 		glyph = .Playlists
 	case .Edit_Playlist:
-		glyph = action.target == "WL" ? .Watch_Later : .Playlists
+		glyph =
+			action.target == "WL" ? (action.remove ? .Watch_Later_Saved : .Watch_Later) : .Playlists
 	case .Feedback:
-		glyph = .Slower
+		glyph = .Hide
 	}
 	return
 }

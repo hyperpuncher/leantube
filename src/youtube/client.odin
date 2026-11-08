@@ -212,6 +212,7 @@ collect_videos :: proc(value: json.Value, catalog: ^model.Catalog) {
 			card := model.Video {
 				id              = strings.clone(string(id)),
 				watched_percent = watched_percent(video["thumbnailOverlays"]),
+				watch_later     = watch_later_state(video["thumbnailOverlays"]),
 				title           = title,
 				duration_label  = stamp,
 				duration_ms     = ms,
@@ -325,6 +326,7 @@ collect_lockups :: proc(value: json.Value, catalog: ^model.Catalog) {
 			if !playlist && ms <= 0 {delete(stamp); return}
 			card := model.Video {
 				watched_percent = playlist ? 0 : watched_percent(field(thumbnail, "overlays")),
+				watch_later     = watch_later_state(field(thumbnail, "overlays")),
 				id              = playlist ? "" : strings.clone(string(id)),
 				browse_id       = playlist ? fmt.aprintf("VL%s", string(id)) : "",
 				title           = strings.clone(string(title_text)),

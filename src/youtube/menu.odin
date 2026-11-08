@@ -49,6 +49,11 @@ card_action :: proc(label: string, endpoint: json.Value) -> (action: model.Card_
 		actions, _ := field(edit, "actions").(json.Array)
 		if id == "" || len(actions) == 0 {return}
 		action.kind = .Edit_Playlist
+		for edit_action in actions {
+			command, _ := field(edit_action, "action").(json.String)
+			if command == "ACTION_REMOVE_VIDEO" ||
+			   command == "ACTION_REMOVE_VIDEO_BY_VIDEO_ID" {action.remove = true}
+		}
 		action.target = strings.clone(string(id))
 		request.playlist_id, request.actions = string(id), actions
 	} else if feedback := field(endpoint, "feedbackEndpoint"); feedback != nil {
@@ -70,37 +75,92 @@ card_action :: proc(label: string, endpoint: json.Value) -> (action: model.Card_
 		// The action owns the marshalled bytes until its payload is deleted.
 		action.payload = string(bytes)
 	}
-	action.label = strings.clone(label)
+	action.label = strings.clone(
+		action.kind == .Feedback && label == "Not interested" ? "Hide" : label,
+	)
 	return action, true
 }
 
-// Match YouTube.js PlaylistManager.addVideos, using the shared edit endpoint.
-watch_later_action :: proc(video_id: string) -> (model.Card_Action, bool) {
-	if !video_id_valid(video_id) {return {}, false}
+// TV supports removal by video ID, as used by MediaServiceCore's PlaylistApiHelper.
+watch_later_action :: proc(
+	video_id: string,
+	state: model.Watch_Later_State = .Absent,
+) -> (
+	action: model.Card_Action,
+	ok: bool,
+) {
+	if !video_id_valid(video_id) {return}
+	remove := state == .Present
+	label := remove ? "Remove from Watch later" : "Save to Watch later"
+	if state == .Unknown {label = "Watch later"}
+	action = {
+		kind   = .Edit_Playlist,
+		label  = strings.clone(label),
+		target = strings.clone("WL"),
+		remove = remove,
+	}
+	if state == .Unknown {return action, true}
 	request := struct {
 		ctx:         struct {
 			client: Client_Context,
 		} `json:"context"`,
 		playlist_id: string `json:"playlistId"`,
 		actions:     [1]struct {
-			action, addedVideoId: string,
+			action:         string,
+			addedVideoId:   string `json:",omitempty"`,
+			removedVideoId: string `json:",omitempty"`,
 		},
 	} {
 		ctx = {
 			client = {clientName = "TVHTML5", clientVersion = TV_VERSION, hl = "en", gl = "US"},
 		},
 		playlist_id = "WL",
-		actions = {{action = "ACTION_ADD_VIDEO", addedVideoId = video_id}},
+		actions = {
+			{
+				action = remove ? "ACTION_REMOVE_VIDEO_BY_VIDEO_ID" : "ACTION_ADD_VIDEO",
+				addedVideoId = remove ? "" : video_id,
+				removedVideoId = remove ? video_id : "",
+			},
+		},
 	}
 	bytes, error := json.marshal(request)
-	if error != nil {return {}, false}
-	return {
-			kind = .Edit_Playlist,
-			label = strings.clone("Save to Watch later"),
-			target = strings.clone("WL"),
-			payload = string(bytes),
+	if error != nil {model.card_action_destroy(&action); return}
+	action.payload = string(bytes)
+	return action, true
+}
+
+// Read membership only where YouTube supplies it explicitly.
+watch_later_state :: proc(overlays: json.Value) -> model.Watch_Later_State {
+	items, _ := overlays.(json.Array)
+	for item in items {
+		toggle := field(item, "thumbnailOverlayToggleButtonRenderer")
+		icon, _ := field(field(toggle, "untoggledIcon"), "iconType").(json.String)
+		if icon != "WATCH_LATER" {continue}
+		if saved, known := field(toggle, "isToggled").(json.Boolean); known {
+			return bool(saved) ? .Present : .Absent
+		}
+	}
+	return .Unknown
+}
+
+playlist_options :: proc(
+	client: ^http.Client,
+	video_id: string,
+) -> (
+	[dynamic]model.Card_Action,
+	Error,
+) {
+	if !video_id_valid(video_id) {return nil, .Invalid_Response}
+	request := Card_Request {
+		ctx = {
+			client = {clientName = "TVHTML5", clientVersion = TV_VERSION, hl = "en", gl = "US"},
 		},
-		true
+		video_ids = []string{video_id},
+	}
+	bytes, error := json.marshal(request)
+	if error != nil {return nil, .Invalid_Response}
+	defer delete(bytes)
+	return perform_card_action(client, {kind = .Playlists, payload = string(bytes)})
 }
 
 parse_card_actions :: proc(value: json.Value) -> (actions: [dynamic]model.Card_Action) {

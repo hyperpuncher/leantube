@@ -2,12 +2,16 @@ package main
 
 import clay "../vendor/clay"
 import "./model"
+import "core:strings"
 import "core:sync/chan"
 import sdl "vendor:sdl3"
 
 check_watch_later_ui :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	saved_signed_in, saved_notice := signed_in, notice
 	signed_in = true
+	saved_membership := catalog.videos[selected].watch_later
+	catalog.videos[selected].watch_later = .Unknown
+	defer {catalog.videos[selected].watch_later = saved_membership}
 	network_requests, _ = chan.create(chan.Chan(Network_Request), 1, context.allocator)
 	network_results, _ = chan.create(chan.Chan(Network_Result), 1, context.allocator)
 	defer {
@@ -29,7 +33,10 @@ check_watch_later_ui :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	controls_pointer(renderer, x, y, false, false)
 	assert(render(renderer))
 	assert(clay.GetElementData(clay.ID("watch-later", 0)).found)
-	// Clicking the overlay must submit one save, never start playback.
+	_, hovered_request := chan.try_recv(network_requests)
+	assert(!hovered_request, "hover must not fetch membership")
+	catalog.videos[selected].watch_later = .Absent
+	// Clicking a known overlay must submit one save, never start playback.
 	controls_pointer(renderer, x, y, true, true)
 	controls_pointer(renderer, x, y, true, true)
 	finish_card_press(true, sdl.GetTicks())
@@ -74,21 +81,26 @@ check_watch_later_ui :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 		"saving must not move the grid",
 	)
 	poll_card_press(card_action_done_until)
-	assert(card_action_done_until == 0)
+	assert(card_action_done_until == 0 && catalog.videos[selected].watch_later == .Present)
 	snapshot(renderer, surface, "watch-later-reset")
 }
 
 check_card_menu_ui :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
-	// This fixture has no usable mutation payloads. It only checks real layout,
-	// focus, and dismissal through the same popup used on the TV.
+	// In-memory channels exercise the TV popup without sending mutations to YouTube.
+	saved_id := catalog.videos[selected].id
+	catalog.videos[selected].id = strings.clone("DN953UW8iJ8")
+	defer {delete(catalog.videos[selected].id); catalog.videos[selected].id = saved_id}
 	saved_actions := catalog.videos[selected].actions
+	saved_membership := catalog.videos[selected].watch_later
+	catalog.videos[selected].watch_later = .Absent
 	catalog.videos[selected].actions = nil
 	defer {
 		close_card_menu()
 		model.card_actions_destroy(&catalog.videos[selected].actions)
 		catalog.videos[selected].actions = saved_actions
+		catalog.videos[selected].watch_later = saved_membership
 	}
-	for action in ([]model.Card_Action{{kind = .Edit_Playlist, label = "Save to Watch later", target = "WL"}, {kind = .Playlists, label = "Save to playlist"}, {kind = .Browse, label = "Go to channel"}, {kind = .Feedback, label = "Not interested"}}) {
+	for action in ([]model.Card_Action{{kind = .Edit_Playlist, label = "Save to Watch later", target = "WL"}, {kind = .Playlists, label = "Save to playlist"}, {kind = .Browse, label = "Go to channel"}, {kind = .Feedback, label = "Hide"}}) {
 		append(&catalog.videos[selected].actions, model.card_action_clone(action))
 	}
 	open_card_menu()
@@ -143,6 +155,34 @@ check_card_menu_ui :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	key(sdl.K_RETURN)
 	_, duplicate := chan.try_recv(network_requests)
 	assert(!duplicate, "the checkmark must not submit the action twice")
+	key(sdl.K_AC_BACK)
+	_, reloaded := chan.try_recv(network_requests)
+	assert(!reloaded, "saving must not reload the feed")
+
+	// Unknown membership is read once on opening, then retained with the card.
+	catalog.videos[selected].watch_later = .Unknown
+	open_card_menu()
+	membership, requested := chan.try_recv(network_requests)
+	assert(requested && membership.kind == .Card_Membership)
+	defer free_network_request(&membership)
+	result := Network_Result {
+		kind  = .Card_Membership,
+		page  = page,
+		index = membership.index,
+	}
+	append(
+		&result.actions,
+		model.card_action_clone({kind = .Edit_Playlist, target = "WL", remove = true}),
+	)
+	chan.send(network_results, result)
+	poll_network(renderer)
+	assert(catalog.videos[selected].watch_later == .Present)
+	assert(card_menu_actions[0].remove && card_menu_actions[0].label == "Remove from Watch later")
+	snapshot(renderer, surface, "card-menu-remove-watch-later")
+	close_card_menu()
+	open_card_menu()
+	_, repeated := chan.try_recv(network_requests)
+	assert(!repeated, "known membership must not be fetched again")
 	close_card_menu()
 
 	// Moving onto the rail must cancel a hold before its input handler returns.

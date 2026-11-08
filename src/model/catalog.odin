@@ -7,6 +7,11 @@ import "core:strconv"
 import "core:strings"
 
 GRID_COLUMNS :: 3
+Watch_Later_State :: enum {
+	Unknown,
+	Absent,
+	Present,
+}
 Video :: struct {
 	duration_ms:                          f64,
 	// Where playback starts. Zero means from the beginning.
@@ -19,6 +24,7 @@ Video :: struct {
 	cover_index:                          int,
 	browse_id, thumbnail_url, avatar_url: string,
 	actions:                              [dynamic]Card_Action,
+	watch_later:                          Watch_Later_State,
 }
 
 // Reject positions a decoder cannot use, including one at the known end.

@@ -27,9 +27,33 @@ card_menu_keeps_only_supported_actions_and_request_fields :: proc(t: ^testing.T)
 	testing.expect_value(t, actions[0].target, "WL")
 	testing.expect_value(t, actions[2].kind, .Browse)
 	testing.expect_value(t, actions[2].target, "UC-example")
+	testing.expect_value(t, actions[3].label, "Hide")
 	quick, quick_ok := watch_later_action("DN953UW8iJ8")
 	if !testing.expect(t, quick_ok) {return}
 	append(&actions, quick)
+	unknown, _ := watch_later_action("DN953UW8iJ8", .Unknown)
+	defer model.card_action_destroy(&unknown)
+	testing.expect_value(t, unknown.label, "Watch later")
+	testing.expect_value(t, unknown.payload, "")
+	removed, remove_ok := watch_later_action("DN953UW8iJ8", .Present)
+	defer model.card_action_destroy(&removed)
+	testing.expect(t, remove_ok && removed.remove)
+	remove_request, remove_error := json.parse(removed.payload)
+	if testing.expect_value(t, remove_error, .None) {
+		defer json.destroy_value(remove_request)
+		edits := field(remove_request, "actions").(json.Array)
+		testing.expect_value(
+			t,
+			string(field(edits[0], "action").(json.String)),
+			"ACTION_REMOVE_VIDEO_BY_VIDEO_ID",
+		)
+		testing.expect_value(
+			t,
+			string(field(edits[0], "removedVideoId").(json.String)),
+			"DN953UW8iJ8",
+		)
+		testing.expect(t, field(edits[0], "addedVideoId") == nil)
+	}
 	for index in ([]int{0, 1, 3, 4}) {
 		request, err := json.parse(actions[index].payload)
 		if !testing.expect_value(t, err, .None) {continue}
@@ -118,6 +142,7 @@ playlist_picker_uses_membership_to_choose_add_or_remove :: proc(t: ^testing.T) {
 	playlist_actions(value, &actions)
 	defer model.card_actions_destroy(&actions)
 	if !testing.expect_value(t, len(actions), 2) {return}
+	testing.expect(t, actions[0].remove && !actions[1].remove)
 	testing.expect_value(t, actions[0].label, "Remove from Watch later")
 	testing.expect_value(t, actions[1].label, "Add to Favorites")
 	for expected, i in ([2]struct {

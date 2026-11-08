@@ -61,8 +61,10 @@ canceling_and_reopening_the_same_video_rejects_old_replies :: proc(t: ^testing.T
 
 @(test)
 continuation_appends_cards_and_rejects_stale_pages :: proc(t: ^testing.T) {
+	network_requests, _ = chan.create(chan.Chan(Network_Request), 1, context.allocator)
 	network_results, _ = chan.create(chan.Chan(Network_Result), 2, context.allocator)
-	defer {stop_network(); clear_catalog(); page = 0; selected = 0}
+	defer {stop_network(); clear_catalog(); page = 0; selected = 0; delete(browse_id)
+		browse_id = ""}
 	page = 4
 	append(&catalog.videos, model.Video{title = strings.clone("first")})
 	catalog.continuation = strings.clone("old-continuation")
@@ -73,7 +75,7 @@ continuation_appends_cards_and_rejects_stale_pages :: proc(t: ^testing.T) {
 			page   = result_page,
 			append = true,
 		}
-		append(&result.catalog.videos, model.Video{title = strings.clone("next")})
+		append(&result.catalog.videos, model.Video{title = strings.clone("next"), cover_index = 1})
 		result.catalog.continuation = strings.clone("new-continuation")
 		chan.send(network_results, result)
 		poll_network(nil)
@@ -83,6 +85,44 @@ continuation_appends_cards_and_rejects_stale_pages :: proc(t: ^testing.T) {
 	testing.expect_value(t, catalog.videos[0].title, "first")
 	testing.expect_value(t, catalog.videos[1].title, "next")
 	testing.expect_value(t, catalog.continuation, "new-continuation")
+	// Removing from Watch later must not remove a subscription card.
+	browse_id = strings.clone("FEsubscriptions")
+	for current_playlist in ([2]bool{false, true}) {
+		if current_playlist {delete(browse_id); browse_id = strings.clone("VLWL")}
+		card_action_cover, card_action_done_until = 0, 1
+		card_menu_selected = 0
+		append(
+			&card_menu_actions,
+			model.card_action_clone({kind = .Edit_Playlist, target = "WL", remove = true}),
+		)
+		dismiss_card_menu()
+		testing.expect_value(t, len(catalog.videos), current_playlist ? 1 : 2)
+	}
+	testing.expect_value(t, catalog.videos[0].cover_index, 1)
+	testing.expect_value(t, len(textures), 2)
+	testing.expect_value(t, page, u32(4))
+	testing.expect_value(t, catalog.continuation, "new-continuation")
+	unexpected, requested := chan.try_recv(network_requests)
+	defer free_network_request(&unexpected)
+	testing.expect(t, !requested, "local removal must not request another page")
+	result := Network_Result {
+		kind   = .Catalog,
+		page   = page,
+		append = true,
+	}
+	append(
+		&result.catalog.videos,
+		model.Video{title = strings.clone("after removal"), cover_index = 2},
+	)
+	chan.send(network_results, result)
+	poll_network(nil)
+	testing.expect_value(t, catalog.videos[0].title, "next")
+	testing.expect_value(t, catalog.videos[1].cover_index, 2)
+	testing.expect_value(t, len(textures), 3)
+	remove_catalog_card(1)
+	remove_catalog_card(2)
+	testing.expect_value(t, len(catalog.videos), 0)
+	testing.expect_value(t, selected, 0)
 }
 
 @(test)

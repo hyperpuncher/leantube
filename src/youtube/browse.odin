@@ -114,6 +114,7 @@ parse_tile :: proc(tile: json.Value) -> (card: model.Video) {
 	card = {
 		id              = strings.clone(string(id)),
 		watched_percent = playlist ? 0 : watched_percent(field(header, "thumbnailOverlays")),
+		watch_later     = watch_later_state(field(header, "thumbnailOverlays")),
 		browse_id       = playlist ? strings.clone(string(browse_id)) : "",
 		title           = title,
 		duration_label  = stamp,
