@@ -566,17 +566,7 @@ stop_network :: proc() {
 }
 submit_network :: proc(request: Network_Request) -> bool {
 	if chan.try_send(network_requests, request) {return true}
-	// Replace old page requests, never pending account or login commands.
-	if previous, ok := chan.try_recv(network_requests); ok {
-		if previous.kind != .Search && previous.kind != .Browse && previous.kind != .Images {
-			if !chan.try_send(network_requests, previous) {free_network_request(&previous)}
-			request := request
-			free_network_request(&request)
-			return false
-		}
-		free_network_request(&previous)
-	}
-	if chan.try_send(network_requests, request) {return true}
+	// Reject overload without reordering account-dependent commands.
 	request := request
 	free_network_request(&request)
 	return false

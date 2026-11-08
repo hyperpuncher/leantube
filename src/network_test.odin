@@ -163,20 +163,26 @@ continuation_appends_cards_and_rejects_stale_pages :: proc(t: ^testing.T) {
 }
 
 @(test)
-queued_account_changes_are_not_discarded_by_page_requests :: proc(t: ^testing.T) {
-	network_requests, _ = chan.create(chan.Chan(Network_Request), 1, context.allocator)
+full_queues_preserve_account_and_browse_order :: proc(t: ^testing.T) {
+	network_requests, _ = chan.create(chan.Chan(Network_Request), 2, context.allocator)
 	defer stop_network()
 	request := Network_Request {
 		kind = .Use_Account,
 		auth_token = {access_token = strings.clone("test-only-token")},
 	}
 	testing.expect(t, submit_network(request))
+	testing.expect(t, submit_network({kind = .Browse, text = strings.clone("existing page")}))
 	testing.expect(t, !submit_network({kind = .Search, text = strings.clone("query")}))
 	retained, ok := chan.try_recv(network_requests)
 	defer free_network_request(&retained)
 	testing.expect(t, ok)
 	testing.expect_value(t, retained.kind, .Use_Account)
 	testing.expect_value(t, retained.auth_token.access_token, "test-only-token")
+	next, next_ok := chan.try_recv(network_requests)
+	defer free_network_request(&next)
+	testing.expect(t, next_ok)
+	testing.expect_value(t, next.kind, .Browse)
+	testing.expect_value(t, next.text, "existing page")
 }
 
 @(test)
