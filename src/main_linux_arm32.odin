@@ -84,7 +84,7 @@ main :: proc() {
 		write_control_state(true)
 		close_login_screen()
 		stop_network()
-		delete(search_text)
+		close_search()
 		clear_browse_history()
 		delete(browse_id); delete(browse_params); delete(browse_filter)
 		clear_catalog()

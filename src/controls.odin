@@ -95,7 +95,10 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 			}
 		}
 		if clay.PointerOver(clay.ID("search")) {
-			if activate {edit_search(sdl.GetRenderWindow(renderer))}
+			if activate {
+				edit_search(sdl.GetRenderWindow(renderer))
+				search_pointer(point[0], sdl.GetModState() & sdl.KMOD_SHIFT != {})
+			}
 			return
 		}
 		if channel_pointer(activate) {return}

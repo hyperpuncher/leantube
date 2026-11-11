@@ -190,7 +190,7 @@ main :: proc() {
 	defer clear_catalog()
 	defer {
 		close_login_screen()
-		stop_network(); delete(search_text); delete(sponsor_segments)
+		stop_network(); close_search(); delete(sponsor_segments)
 		clear_browse_history()
 		delete(browse_id); delete(browse_params); delete(browse_filter)
 	}
@@ -859,7 +859,7 @@ check_search_flow :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	event.type = .TEXT_INPUT
 	event.text.text = "café"
 	handle_event(renderer, event)
-	assert(string(search_text[:]) == "café")
+	assert(strings.to_string(search_text) == "café")
 	event = {}
 	event.type = .KEY_DOWN
 	event.key.raw = 412
@@ -872,6 +872,72 @@ check_search_flow :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	event.text.text = "Linus Tech Tips"
 	handle_event(renderer, event)
 	snapshot(renderer, surface, "search-edit")
+	long_query := strings.repeat("café", 90)
+	defer delete(long_query)
+	for sample in ([2]string{"", long_query}) {
+		erase_search_text(0, max(u32))
+		append_search_text(sample)
+		snapshot(renderer, surface, sample == "" ? "search-edit-empty" : "search-edit-long")
+		if sample == long_query {
+			input := clay.GetElementData(clay.ID("search-text")).boundingBox
+			x, y := i32(input.x + input.width - 1), i32(input.y + input.height / 2)
+			pixel: u8
+			assert(sdl.ReadSurfacePixel(surface, x, y, &pixel, nil, nil, nil))
+			assert(pixel == u8(COLOR_TEXT[0]), "long input must keep the caret visible")
+		}
+	}
+	// Regressions from the two reported caret-overlap examples.
+	for sample in ([2]string{"lih", "ltn"}) {
+		erase_search_text(0, max(u32))
+		append_search_text(sample)
+		search_key(sdl.K_LEFT, nil)
+		snapshot(
+			renderer,
+			surface,
+			sample == "lih" ? "search-edit-caret-lih" : "search-edit-caret-ltn",
+		)
+		text := ttf.CreateText(nil, fonts[.Heading], raw_data(sample), c.size_t(len(sample)))
+		assert(text != nil)
+		defer ttf.DestroyText(text)
+		left, right: ttf.SubString
+		assert(ttf.GetTextSubString(text, 1, &left))
+		assert(ttf.GetTextSubString(text, 2, &right))
+		caret, ok := search_text_x(text, 2)
+		assert(ok)
+		caret_left := math.round(caret - SEARCH_CARET_WIDTH / 2)
+		assert(
+			caret_left >= f32(left.rect.x + left.rect.w) &&
+			caret_left + SEARCH_CARET_WIDTH <= f32(right.rect.x),
+			"caret must not overlap either letter",
+		)
+		input := clay.GetElementData(clay.ID("search-text")).boundingBox
+		controls_pointer(renderer, input.x + caret, input.y + input.height / 2, true, true)
+		assert(
+			search_editor.selection == ([2]int{2, 2}),
+			"click must preserve the insertion boundary",
+		)
+	}
+	erase_search_text(0, max(u32))
+	append_search_text("Linus Tech Tips")
+	// Exercise SDL modifier routing, not only the editor's key handler.
+	event = {}
+	event.type = .KEY_DOWN
+	event.key.key = sdl.K_HOME
+	handle_event(renderer, event)
+	event.key.key = sdl.K_RIGHT
+	event.key.mod = sdl.KMOD_LSHIFT
+	handle_event(renderer, event)
+	snapshot(renderer, surface, "search-edit-selection")
+	assert(search_editor.selection == ([2]int{1, 0}))
+	input := clay.GetElementData(clay.ID("search-text")).boundingBox
+	controls_pointer(renderer, input.x + scaled(1), input.y + input.height / 2, true, true)
+	assert(search_editor.selection == ([2]int{0, 0}))
+	snapshot(renderer, surface, "search-edit-caret-start")
+	x, y := i32(math.round(input.x)), i32(input.y + input.height / 2)
+	pixel: u8
+	assert(sdl.ReadSurfacePixel(surface, x, y, &pixel, nil, nil, nil))
+	assert(pixel == u8(COLOR_TEXT[0]), "caret must move to the clicked position")
+	search_key(sdl.K_END, nil)
 	for state in 0 ..< 3 {
 		key(sdl.K_RETURN)
 		assert(search_loading && !search_editing && len(catalog.videos) == 0)

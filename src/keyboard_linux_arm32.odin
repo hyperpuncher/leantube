@@ -24,6 +24,7 @@
 package main
 
 import "base:runtime"
+import "core:strings"
 import sdl "vendor:sdl3"
 
 WL_Text_Listener :: struct {
@@ -77,9 +78,20 @@ start_text_input :: proc(window: ^sdl.Window) -> bool {
 	text_model_set_content_type(keyboard_model, 0, 0) // No hints; normal text.
 	text_model_set_enter_key_type(keyboard_model, 5) // Search.
 	text_model_set_max_text_length(keyboard_model, 512)
-	text_model_set_surrounding_text(keyboard_model, "", 0, 0)
-	wl_display_flush(window_display)
+	update_text_input()
 	return true
+}
+update_text_input :: proc() {
+	if !keyboard_active {return}
+	text, err := strings.to_cstring(&search_text)
+	if err != nil {return}
+	text_model_set_surrounding_text(
+		keyboard_model,
+		text,
+		u32(search_editor.selection[0]),
+		u32(search_editor.selection[1]),
+	)
+	wl_display_flush(window_display)
 }
 stop_text_input :: proc(window: ^sdl.Window) {
 	hide_keyboard()
@@ -117,6 +129,16 @@ keyboard_keysym :: proc "c" (data, model: rawptr, serial, time, sym, state, mods
 		search_key(sdl.K_RETURN, text_input_window)
 	case 0xff08:
 		search_key(sdl.K_BACKSPACE, text_input_window)
+	case 0xffff:
+		search_key(sdl.K_DELETE, text_input_window)
+	case 0xff51:
+		search_key(sdl.K_LEFT, text_input_window)
+	case 0xff53:
+		search_key(sdl.K_RIGHT, text_input_window)
+	case 0xff50:
+		search_key(sdl.K_HOME, text_input_window)
+	case 0xff57:
+		search_key(sdl.K_END, text_input_window)
 	case 0xff1b:
 		search_key(sdl.K_ESCAPE, text_input_window)
 	}

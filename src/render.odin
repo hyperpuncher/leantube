@@ -292,6 +292,16 @@ render_commands :: proc(
 			} else if !sdl.RenderTexture(renderer, texture, &source, &rect) {return false}
 		case .Custom:
 			data := command.renderData.custom
+			if data.customData == &search_editor {
+				if !render_search_text(
+					renderer,
+					rect,
+					used_texts,
+					clips[len(clips) - 1],
+				) {return false}
+				used_texts += 1
+				continue
+			}
 			percent := (cast(^f32)data.customData)^
 			if !rounded_progress(
 				renderer,

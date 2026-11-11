@@ -4,7 +4,7 @@ import "./model"
 import "core:strings"
 import sdl "vendor:sdl3"
 
-key :: proc(code: sdl.Keycode, window: ^sdl.Window = nil) {
+key :: proc(code: sdl.Keycode, window: ^sdl.Window = nil, mods: sdl.Keymod = {}) {
 	if card_menu {card_menu_key(code); return}
 	if account_menu {
 		add := len(auth_accounts) < MAX_ACCOUNTS
@@ -46,7 +46,7 @@ key :: proc(code: sdl.Keycode, window: ^sdl.Window = nil) {
 		if !rail_focus && channel_key(code) {return}
 		if navigation_key(code, window) {return}
 	}
-	if browsing && search_key(code, window) {return}
+	if browsing && search_key(code, window, mods) {return}
 	if browsing {
 		library_focus_pending = true
 		switch code {

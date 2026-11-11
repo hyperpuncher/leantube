@@ -21,7 +21,7 @@ handle_event :: proc(renderer: ^sdl.Renderer, event: sdl.Event) -> (wheel: f32) 
 			if !card_press.active {begin_card_press(false, sdl.GetTicks())}
 		} else {
 			card_press.active = false
-			key(code, sdl.GetRenderWindow(renderer))
+			key(code, sdl.GetRenderWindow(renderer), event.key.mod)
 		}
 	case .KEY_UP:
 		code := input_key(event.key.raw, event.key.key)

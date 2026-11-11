@@ -10,21 +10,23 @@ import sdl "vendor:sdl3"
 @(test)
 search_input_replaces_the_old_query_and_back_cancels_editing :: proc(t: ^testing.T) {
 	catalog.query = strings.clone("old query")
-	defer {model.catalog_destroy(&catalog); delete(search_text); search_text = nil
-		search_editing = false}
+	defer {model.catalog_destroy(&catalog); close_search()}
 	edit_search(nil)
 	oversized := make([]u8, 513)
 	defer delete(oversized)
 	append_search_text(string(oversized))
-	testing.expect_value(t, string(search_text[:]), "old query")
-	testing.expect(t, search_replace)
+	testing.expect_value(t, strings.to_string(search_text), "old query")
 	append_search_text("café")
-	testing.expect_value(t, string(search_text[:]), "café")
+	testing.expect_value(t, strings.to_string(search_text), "café")
 	search_key(sdl.K_AC_BACK, nil)
 	testing.expect(t, !search_editing)
 	testing.expect_value(t, catalog.query, "old query")
-	append_search_text("ignored")
-	testing.expect_value(t, string(search_text[:]), "café")
+	edit_search(nil)
+	full := strings.repeat("é", 256)
+	defer delete(full)
+	append_search_text(full)
+	append_search_text("x")
+	testing.expect_value(t, strings.to_string(search_text), full)
 }
 
 @(test)
