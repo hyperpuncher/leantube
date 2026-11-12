@@ -85,6 +85,14 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 			if activate {account_menu = false; dirty = true}
 			return
 		}
+		if search_editing {
+			if activate {
+				if clay.PointerOver(clay.ID("search")) {
+					search_pointer(point[0], sdl.GetModState() & sdl.KMOD_SHIFT != {})
+				} else {finish_search_input(sdl.GetRenderWindow(renderer))}
+			}
+			return
+		}
 		for item in Navigation {
 			if clay.PointerOver(clay.ID("navigation-item", u32(item))) {
 				if activate {
@@ -93,13 +101,6 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 				}
 				return
 			}
-		}
-		if clay.PointerOver(clay.ID("search")) {
-			if activate {
-				edit_search(sdl.GetRenderWindow(renderer))
-				search_pointer(point[0], sdl.GetModState() & sdl.KMOD_SHIFT != {})
-			}
-			return
 		}
 		if channel_pointer(activate) {return}
 		first, last := visible_rows()

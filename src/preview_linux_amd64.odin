@@ -853,6 +853,7 @@ check_search_flow :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	network_results, _ = chan.create(chan.Chan(Network_Result), 2, context.allocator)
 	defer stop_network()
 	selected = 0
+	viewport := clay.GetElementData(clay.ID("library-scroll")).boundingBox
 	key(sdl.K_TAB)
 	assert(search_editing)
 	event: sdl.Event
@@ -872,6 +873,10 @@ check_search_flow :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	event.text.text = "Linus Tech Tips"
 	handle_event(renderer, event)
 	snapshot(renderer, surface, "search-edit")
+	assert(
+		clay.GetElementData(clay.ID("library-scroll")).boundingBox == viewport,
+		"opening search must not move the feed",
+	)
 	long_query := strings.repeat("café", 90)
 	defer delete(long_query)
 	for sample in ([2]string{"", long_query}) {
@@ -937,6 +942,24 @@ check_search_flow :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	pixel: u8
 	assert(sdl.ReadSurfacePixel(surface, x, y, &pixel, nil, nil, nil))
 	assert(pixel == u8(COLOR_TEXT[0]), "caret must move to the clicked position")
+	// The backdrop must block scrolling and navigation behind the search field.
+	home := clay.GetElementData(clay.ID("navigation-item", u32(Navigation.Home))).boundingBox
+	home_x, home_y := home.x + home.width / 2, home.y + home.height / 2
+	scroll := clay.GetScrollContainerData(clay.ID("library-scroll"))
+	before := scroll.scrollPosition^[1]
+	event = {}
+	event.type = .MOUSE_WHEEL
+	event.wheel.mouse_x = viewport.x + viewport.width - scaled(32)
+	event.wheel.mouse_y = viewport.y + viewport.height / 2
+	event.wheel.y = -3
+	wheel := handle_event(renderer, event)
+	assert(render(renderer, wheel))
+	assert(scroll.scrollPosition^[1] == before, "search must block background scrolling")
+	saved_page := page
+	controls_pointer(renderer, home_x, home_y, true, true)
+	assert(!search_editing && page == saved_page, "outside click must dismiss without navigating")
+	edit_search(nil)
+	append_search_text("Linus Tech Tips")
 	search_key(sdl.K_END, nil)
 	for state in 0 ..< 3 {
 		key(sdl.K_RETURN)

@@ -185,7 +185,6 @@ grid_layout :: proc() {
 			},
 		},
 		) {
-			if search_editing {search_layout()}
 			channel_layout()
 			if search_loading && len(catalog.videos) == 0 {centered_spinner()}
 			if clay.UI(clay.ID("library-scroll"))(
@@ -229,6 +228,7 @@ grid_layout :: proc() {
 				}
 			}
 		}
+		if search_editing {search_layout()}
 		if account_menu {account_menu_layout()}
 		if card_menu {card_menu_layout()}
 	}

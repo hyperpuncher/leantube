@@ -176,6 +176,18 @@ render_search_text :: proc(
 	index: int,
 	clip: sdl.Rect,
 ) -> bool {
+	// The fixed icon stays outside the scrolling text's clip.
+	box := clay.GetElementData(clay.ID("search-icon")).boundingBox
+	destination := sdl.FRect{box.x, box.y, box.width, box.height}
+	texture := icons[.Search]
+	if !sdl.SetTextureColorMod(
+		texture,
+		u8(COLOR_MUTED[0]),
+		u8(COLOR_MUTED[1]),
+		u8(COLOR_MUTED[2]),
+	) {return false}
+	defer _ = sdl.SetTextureColorMod(texture, 255, 255, 255)
+	if !sdl.RenderTexture(renderer, texture, nil, &destination) {return false}
 	value := strings.to_string(search_text)
 	text := frame_text(index, fonts[.Heading], value == "" ? "Search YouTube" : value)
 	if text == nil {return false}
@@ -212,49 +224,67 @@ render_search_text :: proc(
 }
 
 search_layout :: proc() {
-	if clay.UI(clay.ID("search-row"))(
+	if clay.UI(clay.ID("search-scrim"))(
 	{
 		layout = {
-			sizing = {width = clay.SizingGrow({})},
-			padding = padding(0, 0, 32, 0),
-			childAlignment = {y = .Center},
+			sizing = {
+				width = clay.SizingFixed(view_width),
+				height = clay.SizingFixed(view_height),
+			},
+		},
+		backgroundColor = {0, 0, 0, 160},
+		floating = {attachTo = .Root, zIndex = 10},
+	},
+	) {}
+	if clay.UI(clay.ID("search"))(
+	{
+		layout = {
+			sizing = {width = clay.SizingFixed(min(scaled(960), view_width - scaled(64)))},
+			padding = clay.PaddingAll(spacing(4)),
+		},
+		userData = &POPUP_SHADOW,
+		backgroundColor = COLOR_TEXT,
+		cornerRadius = clay.CornerRadiusAll(scaled(8)),
+		floating = {
+			attachTo = .Root,
+			attachment = {element = .CenterCenter, parent = .CenterCenter},
+			zIndex = 11,
 		},
 	},
 	) {
-		focus := search_editing ? COLOR_TEXT : COLOR_SURFACE
-		if clay.UI(clay.ID("search"))(
+		if clay.UI(clay.ID("search-input"))(
 		{
 			layout = {
 				sizing = {width = clay.SizingGrow({})},
-				padding = clay.PaddingAll(spacing(4)),
+				padding = padding(8, 8, 4, 4),
+				childGap = spacing(12),
+				childAlignment = {y = .Center},
 			},
-			backgroundColor = focus,
-			cornerRadius = clay.CornerRadiusAll(scaled(8)),
+			backgroundColor = COLOR_SURFACE,
+			cornerRadius = clay.CornerRadiusAll(scaled(4)),
 		},
 		) {
-			if clay.UI(clay.ID("search-input"))(
+			if clay.UI(clay.ID("search-icon"))(
 			{
 				layout = {
-					sizing = {width = clay.SizingGrow({})},
-					padding = padding(8, 8, 4, 4),
-					childAlignment = {y = .Center},
-				},
-				backgroundColor = COLOR_SURFACE,
-				cornerRadius = clay.CornerRadiusAll(scaled(4)),
-			},
-			) {
-				if clay.UI(clay.ID("search-text"))(
-				{
-					layout = {
-						sizing = {
-							width = clay.SizingGrow({}),
-							height = clay.SizingFixed(f32(ttf.GetFontHeight(fonts[.Heading]))),
-						},
+					sizing = {
+						width = clay.SizingFixed(scaled(32)),
+						height = clay.SizingFixed(scaled(32)),
 					},
-					custom = {customData = &search_editor},
 				},
-				) {}
-			}
+			},
+			) {}
+			if clay.UI(clay.ID("search-text"))(
+			{
+				layout = {
+					sizing = {
+						width = clay.SizingGrow({}),
+						height = clay.SizingFixed(f32(ttf.GetFontHeight(fonts[.Heading]))),
+					},
+				},
+				custom = {customData = &search_editor},
+			},
+			) {}
 		}
 	}
 }
