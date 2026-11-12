@@ -96,6 +96,24 @@ search_cards_read_views_and_the_relative_date :: proc(t: ^testing.T) {
 }
 
 @(test)
+search_continuations_keep_the_new_cards_and_the_next_page :: proc(t: ^testing.T) {
+	data := [2]string {
+		`{"onResponseReceivedCommands":[{"appendContinuationItemsAction":{"continuationItems":[{"videoRenderer":{"videoId":"DN953UW8iJ8","title":{"simpleText":"Next result"},"lengthText":{"simpleText":"1:00"}}},{"continuationItemRenderer":{"continuationEndpoint":{"continuationCommand":{"token":"next-page"}}}}]}}]}`,
+		`{"contents":{},"continuationContents":{"sectionListContinuation":{"contents":[` +
+		CHANNEL_VIDEO +
+		`],"continuations":[{"nextContinuationData":{"continuation":"next-page"}}]}}}`,
+	}
+	for parse, i in ([2]type_of(parse_search){parse_search, parse_search_tv}) {
+		catalog, error, visitor := parse(data[i], "query")
+		defer model.catalog_destroy(&catalog)
+		defer delete(visitor)
+		if !testing.expect_value(t, error, .None) {return}
+		testing.expect_value(t, len(catalog.videos), 1)
+		testing.expect_value(t, catalog.continuation, "next-page")
+	}
+}
+
+@(test)
 player_selects_the_best_direct_combined_h264_stream :: proc(t: ^testing.T) {
 	stream, error := parse_player(
 		`{"playabilityStatus":{"status":"OK"},"streamingData":{"formats":[

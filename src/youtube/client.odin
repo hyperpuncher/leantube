@@ -239,6 +239,15 @@ collect_videos :: proc(value: json.Value, catalog: ^model.Catalog) {
 	}
 }
 
+// Continuations can include an empty initial contents object beside the new page.
+feed_contents :: proc(value: json.Value) -> json.Value {
+	if field(value, "error") != nil {return nil}
+	for key in ([5]string{"continuationContents", "contents", "onResponseReceivedActions", "onResponseReceivedEndpoints", "onResponseReceivedCommands"}) {
+		if contents := field(value, key); contents != nil {return contents}
+	}
+	return nil
+}
+
 // The caller owns visitor_data. Keep it on the network worker, not in UI metadata.
 parse_search :: proc(
 	data, query: string,
@@ -250,16 +259,17 @@ parse_search :: proc(
 	value, err := json.parse(data)
 	if err != .None {return {}, .Invalid_Response, ""}
 	defer json.destroy_value(value)
-	primary := field(
-		field(field(value, "contents"), "twoColumnSearchResultsRenderer"),
-		"primaryContents",
-	)
+	primary := feed_contents(value)
+	if field(value, "continuationContents") == nil && field(value, "contents") != nil {
+		primary = field(field(primary, "twoColumnSearchResultsRenderer"), "primaryContents")
+	}
 	if primary == nil {return {}, .Invalid_Response, ""}
 	if visitor, ok := field(field(value, "responseContext"), "visitorData").(json.String); ok {
 		visitor_data = strings.clone(string(visitor))
 	}
 	catalog.query = strings.clone(query)
 	collect_videos(primary, &catalog)
+	catalog.continuation = browse_continuation(primary)
 	return
 }
 
@@ -357,8 +367,11 @@ parse_search_tv :: proc(
 	value, err := json.parse(data)
 	if err != .None {return {}, .Invalid_Response, ""}
 	defer json.destroy_value(value)
-	contents := field(value, "contents")
-	if field(contents, "sectionListRenderer") == nil {
+	contents := feed_contents(value)
+	if contents == nil ||
+	   (field(value, "continuationContents") == nil &&
+			   field(value, "contents") != nil &&
+			   field(contents, "sectionListRenderer") == nil) {
 		return {}, .Invalid_Response, ""
 	}
 	if visitor, ok := field(field(value, "responseContext"), "visitorData").(json.String); ok {
@@ -366,6 +379,7 @@ parse_search_tv :: proc(
 	}
 	catalog.query = strings.clone(query)
 	collect_lockups(contents, &catalog)
+	catalog.continuation = browse_continuation(contents)
 	return
 }
 
@@ -521,33 +535,46 @@ find_account :: proc(value: json.Value, name, avatar_url: ^string) {
 	}
 }
 
-search :: proc(client: ^http.Client, query: string) -> (model.Catalog, Error, string) {
+search :: proc(
+	client: ^http.Client,
+	query: string,
+	continuation: string = "",
+	visitor_data: string = "",
+) -> (
+	model.Catalog,
+	Error,
+	string,
+) {
 	if strings.trim_space(query) == "" || len(query) > 512 {return {}, .Invalid_Response, ""}
 	tv := access_token != ""
-	client_context := Client_Context {
+	web_client := Client_Context {
 		clientName    = "WEB",
 		clientVersion = WEB_VERSION,
 		hl            = "en",
 		gl            = "US",
+		visitorData   = visitor_data,
 	}
+	request := struct {
+		ctx:                         struct {
+			client: Client_Context,
+		} `json:"context"`,
+		query, params, continuation: string `json:",omitempty"`,
+	} {
+		ctx = {client = web_client},
+		query = query,
+		params = "EgIQAfABAQ==",
+		continuation = continuation,
+	}
+	if continuation != "" {request.query, request.params = "", ""}
 	if tv {
-		client_context = {
+		request.ctx.client = {
 			clientName    = "TVHTML5",
 			clientVersion = TV_VERSION,
 			hl            = "en",
 			gl            = "US",
 			userAgent     = TV_AGENT,
+			visitorData   = visitor_data,
 		}
-	}
-	request := struct {
-		ctx:           struct {
-			client: Client_Context,
-		} `json:"context"`,
-		query, params: string,
-	} {
-		ctx = {client = client_context},
-		query = query,
-		params = "EgIQAfABAQ==",
 	}
 	body, err := json.marshal(request)
 	if err != nil {return {}, .Invalid_Response, ""}
@@ -560,12 +587,7 @@ search :: proc(client: ^http.Client, query: string) -> (model.Catalog, Error, st
 			model.catalog_destroy(&catalog)
 			delete(visitor)
 		}
-		request.ctx.client = Client_Context {
-			clientName    = "WEB",
-			clientVersion = WEB_VERSION,
-			hl            = "en",
-			gl            = "US",
-		}
+		request.ctx.client = web_client
 		delete(body)
 		body, err = json.marshal(request)
 		if err != nil {return {}, .Invalid_Response, ""}

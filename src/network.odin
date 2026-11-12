@@ -400,7 +400,12 @@ network_main :: proc(_: ^thread.Thread) {
 					visitor_data,
 				)
 			} else {
-				catalog, error, visitor = yt.search(&network_client, request.text)
+				catalog, error, visitor = yt.search(
+					&network_client,
+					request.text,
+					request.continuation,
+					visitor_data,
+				)
 			}
 			delete(visitor_data)
 			visitor_data = visitor
@@ -665,14 +670,16 @@ start_browse :: proc(id: string, params: string = "", filter: string = "", remem
 }
 
 load_more :: proc() {
-	if search_loading || catalog.continuation == "" || browse_id == "" {return}
+	if search_loading ||
+	   catalog.continuation == "" ||
+	   (browse_id == "" && catalog.query == "") {return}
 	search_loading = true
 	dirty = true
 	if !submit_network(
 		{
-			kind = .Browse,
+			kind = browse_id == "" ? .Search : .Browse,
 			page = page,
-			text = strings.clone(browse_id),
+			text = strings.clone(browse_id == "" ? catalog.query : browse_id),
 			continuation = strings.clone(catalog.continuation),
 		},
 	) {

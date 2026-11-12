@@ -34,6 +34,7 @@ browse :: proc(
 				hl = "en",
 				gl = "US",
 				userAgent = TV_AGENT,
+				visitorData = visitor_data,
 			},
 		},
 		browseId = continuation == "" ? id : "",
@@ -59,8 +60,7 @@ parse_browse :: proc(
 	value, err := json.parse(data)
 	if err != .None {return {}, .Invalid_Response, ""}
 	defer json.destroy_value(value)
-	contents := field(value, "contents")
-	if contents == nil {contents = field(value, "continuationContents")}
+	contents := feed_contents(value)
 	if contents == nil {return {}, .Invalid_Response, ""}
 	if text, ok := field(field(value, "responseContext"), "visitorData").(json.String); ok {
 		visitor = strings.clone(string(text))
@@ -164,7 +164,19 @@ browse_continuation :: proc(value: json.Value) -> string {
 			if token := browse_continuation(child); token != "" {return token}
 		}
 	case json.Object:
-		if item["adSlotRenderer"] != nil || item["tileRenderer"] != nil {return ""}
+		if item["adSlotRenderer"] != nil ||
+		   item["tileRenderer"] != nil ||
+		   item["lockupViewModel"] != nil ||
+		   item["chipViewModel"] != nil ||
+		   item["listItemViewModel"] != nil ||
+		   item["menuRenderer"] != nil {return ""}
+		if node := item["continuationItemRenderer"]; node != nil {
+			token, _ := field(
+				field(field(node, "continuationEndpoint"), "continuationCommand"),
+				"token",
+			).(json.String)
+			return strings.clone(string(token))
+		}
 		if tab := item["tabRenderer"]; tab != nil {
 			selected, _ := field(tab, "selected").(json.Boolean)
 			if bool(selected) {return browse_continuation(field(tab, "content"))}

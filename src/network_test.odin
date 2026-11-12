@@ -163,6 +163,20 @@ continuation_appends_cards_and_rejects_stale_pages :: proc(t: ^testing.T) {
 }
 
 @(test)
+search_pagination_uses_the_search_endpoint_and_sends_the_continuation :: proc(t: ^testing.T) {
+	network_requests, _ = chan.create(chan.Chan(Network_Request), 1, context.allocator)
+	defer {stop_network(); clear_catalog(); search_loading = false}
+	catalog.query = strings.clone("query")
+	catalog.continuation = strings.clone("search-next")
+	load_more()
+	request, ok := chan.try_recv(network_requests)
+	defer free_network_request(&request)
+	testing.expect(t, ok && request.kind == .Search)
+	testing.expect_value(t, request.text, "query")
+	testing.expect_value(t, request.continuation, "search-next")
+}
+
+@(test)
 full_queues_preserve_account_and_browse_order :: proc(t: ^testing.T) {
 	network_requests, _ = chan.create(chan.Chan(Network_Request), 2, context.allocator)
 	defer stop_network()

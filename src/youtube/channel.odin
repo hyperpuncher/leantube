@@ -135,27 +135,6 @@ channel_sorts :: proc(value: json.Value, sorts: ^[dynamic]model.Channel_Option) 
 	}
 }
 
-channel_continuation :: proc(value: json.Value) -> string {
-	#partial switch item in value {
-	case json.Array:
-		for child in item {if token := channel_continuation(child); token != "" {return token}}
-	case json.Object:
-		if node := item["continuationItemRenderer"]; node != nil {
-			token, _ := field(
-				field(field(node, "continuationEndpoint"), "continuationCommand"),
-				"token",
-			).(json.String)
-			return strings.clone(string(token))
-		}
-		if item["lockupViewModel"] != nil ||
-		   item["chipViewModel"] != nil ||
-		   item["listItemViewModel"] != nil ||
-		   item["menuRenderer"] != nil {return ""}
-		for _, child in item {if token := channel_continuation(child); token != "" {return token}}
-	}
-	return ""
-}
-
 parse_channel :: proc(
 	data, id: string,
 ) -> (
@@ -166,10 +145,8 @@ parse_channel :: proc(
 	value, err := json.parse(data)
 	if err != .None {return {}, .Invalid_Response, ""}
 	defer json.destroy_value(value)
-	contents := field(value, "contents")
-	if contents == nil {contents = field(value, "onResponseReceivedActions")}
-	if contents == nil {contents = field(value, "onResponseReceivedEndpoints")}
-	if contents == nil || field(value, "error") != nil {return {}, .Invalid_Response, ""}
+	contents := feed_contents(value)
+	if contents == nil {return {}, .Invalid_Response, ""}
 	if token, ok := field(field(value, "responseContext"), "visitorData").(json.String);
 	   ok {visitor = strings.clone(string(token))}
 	catalog.channel.id = strings.clone(id)
@@ -217,6 +194,6 @@ parse_channel :: proc(
 	collect_videos(contents, &catalog)
 	collect_lockups(contents, &catalog)
 	channel_sorts(find_node(contents, "chipBarViewModel"), &catalog.channel.sorts)
-	catalog.continuation = channel_continuation(contents)
+	catalog.continuation = browse_continuation(contents)
 	return
 }

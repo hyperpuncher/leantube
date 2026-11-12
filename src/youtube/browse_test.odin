@@ -31,7 +31,7 @@ home_reads_selected_videos_and_skips_ads_playlists_live_and_duplicates :: proc(t
 
 @(test)
 home_skips_playlists_without_changing_other_feeds_or_continuations :: proc(t: ^testing.T) {
-	for prefix in ([]string{`{"contents":{"gridRenderer":`, `{"continuationContents":{"gridContinuation":`}) {
+	for prefix in ([]string{`{"contents":{"gridRenderer":`, `{"continuationContents":{"gridContinuation":`, `{"contents":{},"continuationContents":{"gridContinuation":`}) {
 		data := strings.concatenate(
 			{
 				prefix,

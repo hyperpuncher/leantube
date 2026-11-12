@@ -17,6 +17,17 @@ main :: proc() {
 	assert(visitor != "", "search did not provide an anonymous session")
 	assert(len(catalog.videos) > 0)
 	fmt.println("native search results:", len(catalog.videos))
+	assert(catalog.continuation != "", "search did not provide a next page")
+	next, next_error, next_visitor := yt.search(
+		&client,
+		catalog.query,
+		catalog.continuation,
+		visitor,
+	)
+	defer model.catalog_destroy(&next)
+	defer delete(next_visitor)
+	assert(next_error == .None && len(next.videos) > 0, "native search continuation failed")
+	fmt.println("native search next-page results:", len(next.videos))
 	bytes := yt.thumbnail(&client, catalog.videos[0].id)
 	assert(len(bytes) > 0, "thumbnail fetch failed")
 	delete(bytes)
