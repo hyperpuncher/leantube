@@ -31,7 +31,8 @@ catalog: model.Catalog
 sponsor_segments: [dynamic]sb.Segment
 fake_api: Starfish
 fake_status: Decoder_Status
-fake_open, fake_close, fake_pause, fake_eos: int
+fake_open, fake_close, fake_pause, fake_eos, fake_seeks: int
+fake_async_seek: bool
 fake_full, fake_seek_failure, fake_rate_audio, fake_controls_visible: bool
 fake_target_ms: i64
 signed_in: bool
@@ -66,6 +67,8 @@ sf_seek :: proc(_: ^Starfish, body: cstring) -> bool {
 	position: i64
 	if json.unmarshal(transmute([]u8)string(body), &position) != nil {return false}
 	fake_target_ms = position
+	fake_seeks += 1
+	if !fake_async_seek {sync.atomic_store(&fake_status.resetting, 0)}
 	return !fake_seek_failure
 }
 decoder_feed :: proc(_: ^Starfish, t: ^reader.Track, limit: f64) -> bool {
@@ -128,7 +131,8 @@ initial_load_keeps_resume_or_explicit_time_and_applies_sponsorblock :: proc(t: ^
 player_controls_visible :: proc() -> bool {return paused || !loaded || fake_controls_visible}
 
 prepare_player :: proc(end: f64) {
-	fake_open, fake_close, fake_pause, fake_eos = 0, 0, 0, 0
+	fake_open, fake_close, fake_pause, fake_eos, fake_seeks = 0, 0, 0, 0, 0
+	fake_async_seek = false
 	resolved_calls, resolved_position = 0, 0
 	player_recoveries, player_recovery_at = 0, 0
 	fake_full, fake_seek_failure, fake_rate_audio = false, false, false
@@ -271,6 +275,26 @@ controls_preserve_pause_audio_and_retarget_the_existing_decoder :: proc(t: ^test
 	testing.expect(t, loaded && paused, "a seek must finish without resuming paused playback")
 	testing.expect_value(t, fake_open, 1)
 	testing.expect_value(t, fake_close, 0)
+}
+
+@(test)
+rapid_seeks_replace_the_pending_target_until_native_completion :: proc(t: ^testing.T) {
+	prepare_player(4)
+	defer stop_playback()
+	paused = true
+	poll_player()
+	fake_async_seek = true
+	testing.expect(t, seek_to(2000) && seek_to(3000) && seek_to(4000))
+	testing.expect_value(t, fake_target_ms, i64(2000))
+	testing.expect_value(t, timeline.seek_target_ms, f64(4000))
+	poll_player()
+	testing.expect_value(t, fake_seeks, 1)
+	// The LG seek-complete callback releases the next, latest target.
+	sync.atomic_store(&fake_status.resetting, 0)
+	poll_player()
+	testing.expect_value(t, fake_seeks, 2)
+	testing.expect_value(t, fake_target_ms, i64(4000))
+	testing.expect(t, paused && !return_to_grid)
 }
 
 @(test)

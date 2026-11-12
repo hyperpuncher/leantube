@@ -19,6 +19,7 @@ Starfish_Event :: enum c.int {
 	Error_Text    = 0x13,
 	Loaded        = 0x16,
 	Unloaded      = 0x17,
+	Seek_Done     = 0x19,
 	Playing       = 0x1a,
 	Paused        = 0x1b,
 	End_Of_Stream = 0x1c,
@@ -49,7 +50,7 @@ foreign starfish {
 	// JSON: playRate is a multiplier; audioOutput:true keeps audio enabled.
 	@(link_name = "StarfishMediaAPIs_setPlayRate")
 	sf_rate :: proc(_: ^Starfish, _: cstring) -> bool ---
-	// JSON: position is in milliseconds; retainLastRenderedFrame:true keeps the picture.
+	// Position is in plain milliseconds. Seek_Done reports completion.
 	@(link_name = "StarfishMediaAPIs_seek")
 	sf_seek :: proc(_: ^Starfish, _: cstring) -> bool ---
 	@(link_name = "StarfishMediaAPIs_videoLimits")
@@ -78,6 +79,8 @@ decoder_callback :: proc "c" (kind: c.int, value: i64, text: cstring, user: rawp
 		sync.atomic_store(&s.loaded, 1)
 	case .Unloaded:
 		sync.atomic_store(&s.unloaded, 1)
+	case .Seek_Done:
+		sync.atomic_store(&s.resetting, 0)
 	case .Playing:
 		sync.atomic_store(&s.playing, 1)
 	case .Paused:

@@ -57,6 +57,7 @@ player_api: ^Starfish
 player_status: ^Decoder_Status
 player_bound, player_buffering, player_eos: bool
 player_clock, player_applied_rate: f64
+player_pending_seek: f64 = -1
 player_last_play, player_progress_at: u64
 when PLAYBACK_BENCH {player_report_at: u64}
 Player_Transition :: struct {
@@ -169,6 +170,7 @@ load_video :: proc(
 			reported_position = -1,
 		}
 	}
+	player_pending_seek = -1
 	player_applied_rate = 1
 	player_bound, player_buffering, player_eos = false, false, false
 	player_last_play = 0
@@ -199,6 +201,7 @@ stop_playback :: proc(from_recovery := false) {
 	if player_api != nil {_ = decoder_close(player_api, player_status)}
 	player_api, player_status = nil, nil
 	reader.close(player_reader); player_reader = nil
+	player_pending_seek = -1
 	loaded, paused, resolving = false, false, false
 	delete(sponsor_segments); sponsor_segments = nil
 	timeline = {
@@ -245,6 +248,14 @@ player_seek :: proc(target: f64) -> bool {
 			   sb.skip_target(sponsor_segments[:], target, duration_ms) >= duration_ms) {
 		return_to_grid = true; return true
 	}
+	// Keep only the latest target until the current native seek completes.
+	if player_api != nil &&
+	   (sync.atomic_load(&player_status.loaded) == 0 ||
+			   sync.atomic_load(&player_status.resetting) != 0) {
+		player_pending_seek = target
+		return true
+	}
+	player_pending_seek = -1
 	player_transition = {
 		started_ms = sdl.GetTicks(),
 	}
@@ -252,14 +263,17 @@ player_seek :: proc(target: f64) -> bool {
 		// Keep the decoder, display window, last picture, and playback rate.
 		status := player_status
 		sync.atomic_store(&status.resetting, 1)
-		body := seek_message(target)
-		retargeted := sf_pause(player_api) && sf_seek(player_api, body)
-		delete(body)
 		sync.atomic_store(&status.frame_ns, -1)
 		sync.atomic_store(&status.ended, 0)
 		sync.atomic_store(&status.playing, 0)
-		sync.atomic_store(&status.resetting, 0)
-		if !retargeted {player_failed("seek"); return false}
+		body := seek_message(target)
+		retargeted := sf_pause(player_api) && sf_seek(player_api, body)
+		delete(body)
+		if !retargeted {
+			sync.atomic_store(&status.resetting, 0)
+			player_failed("seek")
+			return false
+		}
 	}
 	player_clock = target / 1000
 	player_history.start, player_history.position = player_clock, -1
@@ -299,6 +313,12 @@ poll_player :: proc() {
 	if sync.atomic_load(&s.state.failure) != 0 {
 		if !recover_playback("reader") {player_failed("reader")}
 		return
+	}
+	if player_pending_seek >= 0 &&
+	   player_api != nil &&
+	   sync.atomic_load(&player_status.loaded) != 0 &&
+	   sync.atomic_load(&player_status.resetting) == 0 {
+		if !seek_to(player_pending_seek) {return}
 	}
 	if s.state.skip_end == 0 {
 		from, to := sb.next_skip(sponsor_segments[:], player_clock * 1000, duration_ms)
@@ -373,7 +393,11 @@ poll_player :: proc() {
 		_ = sf_play(player_api)
 		player_last_play = now
 	}
-	if paused && player_bound && !player_buffering && !loaded {
+	if paused &&
+	   player_bound &&
+	   !player_buffering &&
+	   !loaded &&
+	   sync.atomic_load(&status.resetting) == 0 {
 		// Paused native pipelines can display pre-roll without timestamp
 		// callbacks. Load completion must also finish the paused seek UI.
 		loaded = true
