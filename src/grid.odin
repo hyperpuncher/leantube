@@ -283,8 +283,8 @@ video_card :: proc(index: int, metrics: Grid_Metrics) {
 				{
 					layout = {
 						sizing = {
-							width = clay.SizingFixed(scaled(48)),
-							height = clay.SizingFixed(scaled(48)),
+							width = clay.SizingFixed(scaled(64)),
+							height = clay.SizingFixed(scaled(64)),
 						},
 						childAlignment = {x = .Center, y = .Center},
 					},
@@ -304,7 +304,7 @@ video_card :: proc(index: int, metrics: Grid_Metrics) {
 					if video.cover_index == card_action_cover {
 						if card_menu_waiting {glyph = .Spinner} else if card_action_done_until > sdl.GetTicks() {glyph = .Check}
 					}
-					icon(glyph, 32)
+					icon(glyph, 40)
 				}
 			}
 			if clay.UI(clay.ID("duration", u32(index)))(

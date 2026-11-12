@@ -28,7 +28,8 @@ check_watch_later_ui :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	snapshot(renderer, surface, "watch-later-hover")
 	button := clay.GetElementData(clay.ID("watch-later", 0))
 	assert(button.found)
-	x := button.boundingBox.x + button.boundingBox.width / 2
+	// This point is inside the larger target, but outside the former 48 px button.
+	x := cover.x + cover.width - scaled(68)
 	y := button.boundingBox.y + button.boundingBox.height / 2
 	controls_pointer(renderer, x, y, false, false)
 	assert(render(renderer))
