@@ -324,3 +324,41 @@ card_menu_layout :: proc() {
 		}
 	}
 }
+
+apply_card_result :: proc(result: ^Network_Result) {
+	if (!card_menu && !card_menu_waiting) || result.index != card_menu_revision {return}
+	card_menu_waiting = false
+	if result.error != .None {
+		if card_menu {card_menu_error = "Action failed"} else {
+			close_card_menu()
+			show_notice("Could not update Watch later")
+		}
+	} else if result.kind == .Card_Membership {
+		if video := card_action_video(); video != nil {
+			video.watch_later = read_watch_later_membership(result.actions[:])
+			set_watch_later_menu_action(video)
+			if video.watch_later == .Unknown {card_menu_error = "Could not load Watch later"}
+		}
+	} else if result.append {
+		panel := card_menu_actions[card_menu_selected].kind == .Menu
+		if !panel {
+			if video := card_action_video(); video != nil {
+				video.watch_later = read_watch_later_membership(result.actions[:])
+			}
+		}
+		model.card_actions_destroy(&card_menu_actions)
+		card_menu_actions = result.actions
+		result.actions = nil
+		card_menu_selected = 0
+		if panel {prepare_watch_later()}
+	} else {
+		action := card_menu_actions[card_menu_selected]
+		if action.kind == .Edit_Playlist && action.target == "WL" {
+			if video := card_action_video(); video != nil {
+				video.watch_later = action.remove ? .Absent : .Present
+			}
+		}
+		card_action_done_until = sdl.GetTicks() + 1000
+	}
+	dirty = true
+}

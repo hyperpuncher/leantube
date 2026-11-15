@@ -173,3 +173,23 @@ queue_catalog_images :: proc(first_cover: int) {
 	if len(jobs) >
 	   0 {_ = submit_network({kind = .Images, page = page, images = jobs})} else {delete(jobs)}
 }
+
+// Cover, card avatar, channel, and player avatar replies share one upload path.
+apply_image :: proc(renderer: ^sdl.Renderer, result: ^Network_Result) {
+	slot := &channel_avatar
+	if result.kind == .Channel_Avatar && result.playback != 0 {
+		if browsing || result.playback != playback {return}
+		slot = &player_channel_avatar
+	}
+	if result.kind == .Cover || result.index >= 0 {
+		index := result.index
+		if index < 0 || index >= len(textures) {return}
+		slot = result.kind == .Cover ? &textures[index] : &card_avatars[index]
+	}
+	if result.surface == nil {return}
+	texture := upload_surface(renderer, result.surface)
+	if texture == nil {return}
+	if slot^ != nil {sdl.DestroyTexture(slot^)}
+	slot^ = texture
+	dirty = true
+}

@@ -539,3 +539,57 @@ account_menu_layout :: proc() {
 		) {label("Sign out", .Small, COLOR_MUTED)}
 	}
 }
+
+// Account and sign-in replies are not tied to a feed page.
+apply_auth_result :: proc(renderer: ^sdl.Renderer, result: ^Network_Result) {
+	#partial switch result.kind {
+	case .Account_Avatar:
+		set_account_avatar(renderer, result.surface, result.image_source)
+		dirty = true
+	case .Account:
+		if result.account != account_revision {return}
+		if token := current_auth(); token != nil {
+			free_auth_token(token)
+			token^ = result.auth_token
+			result.auth_token = {}
+			_ = save_auth()
+			set_account_avatar(renderer, result.surface, token.avatar_url)
+		}
+		dirty = true
+	case .Login_Code:
+		if !login_screen {return}
+		open_login_screen(result.login_code, result.login_url, result.login_interval)
+	case .Login_Waiting:
+		if !login_screen {return}
+		login_waiting = false
+		login_interval_ms = u64(max(result.login_interval, 1)) * 1000
+		login_next_poll = sdl.GetTicks() + login_interval_ms
+		dirty = true
+	case .Login_Authorized:
+		if !login_screen {return}
+		login_waiting = false
+		if len(auth_accounts) < MAX_ACCOUNTS {
+			append(&auth_accounts, result.auth_token)
+			result.auth_token = {}
+			auth_active = len(auth_accounts) - 1
+			_ = save_auth()
+		}
+		use_current_account()
+		login_add_account = false
+		close_login_screen()
+		rail_active = .Subscriptions
+		reload_feed()
+		dirty = true
+	case .Login_Error:
+		if !login_screen {return}
+		login_waiting = false
+		login_next_poll = 0
+		delete(login_code); login_code = ""
+		if login_qr != nil {sdl.DestroyTexture(login_qr); login_qr = nil}
+		if result.login_message != "" {
+			delete(login_message)
+			login_message = strings.clone(result.login_message)
+		}
+		dirty = true
+	}
+}

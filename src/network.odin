@@ -1,18 +1,14 @@
 package main
 
-import clay "../vendor/clay"
 import "./http"
 import "./model"
 import sb "./sponsorblock"
 import yt "./youtube"
 import "core:fmt"
-import "core:math"
-import "core:sort"
 import "core:strings"
 import "core:sync/chan"
 import "core:thread"
 import sdl "vendor:sdl3"
-import img "vendor:sdl3/image"
 
 Image_Request :: struct {
 	source:         string,
@@ -100,28 +96,6 @@ playback_limits: [4]yt.Video_Limit
 // Bumped whenever the catalog contents change, so fitted card labels rebuild.
 catalog_revision: int
 
-// Playing controls fade out after a few quiet seconds and any input revives them.
-// A zero deadline means hidden.
-PLAYER_CONTROLS_MS :: 3000
-controls_until: u64
-
-show_player_controls :: proc() {controls_until = sdl.GetTicks() + PLAYER_CONTROLS_MS}
-
-player_controls_visible :: proc() -> bool {
-	return(
-		paused ||
-		!loaded ||
-		sdl.GetTicks() < controls_until ||
-		clay.PointerOver(clay.ID("controls")) ||
-		clay.PointerOver(clay.ID("player-header")) \
-	)
-}
-
-expire_player_controls :: proc() {
-	if browsing || controls_until == 0 || player_controls_visible() {return}
-	controls_until = 0
-	dirty = true
-}
 sponsor_segments: [dynamic]sb.Segment
 pending_auth: Device_Auth
 pending_auth_active: bool
@@ -164,348 +138,6 @@ post_network_result :: proc(result: Network_Result) -> bool {
 }
 network_stopping :: proc() -> bool {return chan.is_closed(network_requests)}
 
-// Decode and prefilter on the worker. The result owns its pixels, not bytes.
-decode_image :: proc(bytes: []u8, target: i32 = 0) -> ^sdl.Surface {
-	if len(bytes) == 0 {return nil}
-	io := sdl.IOFromConstMem(raw_data(bytes), uint(len(bytes)))
-	if io == nil {return nil}
-	surface := img.Load_IO(io, true)
-	for target > 0 && surface != nil && max(surface.w, surface.h) > target {
-		ratio := max(f32(0.5), f32(target) / f32(max(surface.w, surface.h)))
-		width := max(1, i32(math.round(f32(surface.w) * ratio)))
-		height := max(1, i32(math.round(f32(surface.h) * ratio)))
-		next := sdl.ScaleSurface(surface, width, height, .LINEAR)
-		sdl.DestroySurface(surface)
-		surface = next
-	}
-	return surface
-}
-
-network_main :: proc(_: ^thread.Thread) {
-	directory := auth_directory != "" ? auth_directory : app_directory
-	cache_directory := fmt.aprintf("%s/.cache/images", directory)
-	defer delete(cache_directory)
-	cache := Image_Cache {
-		directory     = cache_directory,
-		maximum_bytes = IMAGE_CACHE_BYTES,
-	}
-	cache_path := strings.clone_to_cstring(cache.directory)
-	defer delete(cache_path)
-	if !sdl.CreateDirectory(cache_path) || !trim_image_cache(cache) {
-		fmt.eprintln("image cache is unavailable")
-	}
-	covers: [dynamic]Image_Request
-	defer {for cover in covers {delete(cover.source)}; delete(covers)}
-	avatars := make(map[string]string)
-	defer {for id, url in avatars {delete(id); delete(url)}; delete(avatars)}
-	next: int
-	session_auth: Auth_Token
-	defer {free_auth_token(&session_auth); yt.set_access_token("")}
-	session_account: u32
-	refresh_at: u64
-	visitor_data: string
-	defer delete(visitor_data)
-	history: yt.Watch_History
-	defer yt.watch_history_destroy(&history)
-	history_playback: u32
-	history_timestamp: i64
-	for {
-		request, ready := chan.try_recv(network_requests)
-		if !ready && next < len(covers) && !network_stopping() {
-			index := next
-			next += 1
-			source := covers[index].source
-			cache_source := source
-			surface: ^sdl.Surface
-			if covers[index].target > 0 && strings.has_prefix(source, "UC") {
-				if url, found := avatars[source]; found {
-					source = url
-				} else if surface = read_cached_image(cache, source, covers[index].target);
-				   surface == nil {
-					resolved := yt.channel_avatar(&network_client, source, visitor_data)
-					if resolved != "" {avatars[strings.clone(source)] = resolved; next -= 1}
-					// Check for a new section before downloading the resolved image.
-					continue
-				}
-			}
-			if surface == nil {
-				surface = load_cached_image(
-					cache,
-					&network_client,
-					source,
-					covers[index].target,
-					cache_source = cache_source,
-				)
-			}
-			if surface != nil {
-				if !post_network_result(
-					   {
-						   kind = covers[index].target > 0 ? .Channel_Avatar : .Cover,
-						   page = covers[index].page,
-						   index = covers[index].index,
-						   playback = covers[index].playback,
-						   surface = surface,
-					   },
-				   ) &&
-				   !network_stopping() {return}
-			}
-			continue
-		}
-		if !ready {request, ready = chan.recv(network_requests)}
-		if !ready {return}
-		defer free_network_request(&request)
-		// On shutdown, finish queued history reports without loading more pages or images.
-		if network_stopping() && request.kind != .Watch_History {continue}
-		switch request.kind {
-		case .Images:
-			append(&covers, ..request.images[:])
-			clear(&request.images)
-			// Serve disk hits in card order before any downloads or URL lookups.
-			for &image in covers[next:] {image.cached = cached_image_exists(cache, image.source)}
-			sort.merge_sort_proc(covers[next:], proc(a, b: Image_Request) -> int {
-				if a.cached != b.cached {return int(b.cached) - int(a.cached)}
-				if a.cached {return 0}
-				return int(a.target > 0) - int(b.target > 0)
-			})
-		case .Account_Avatar:
-			avatar := load_cached_image(cache, &network_client, request.text, 128)
-			source := request.text
-			request.text = ""
-			if !post_network_result(
-				{kind = .Account_Avatar, image_source = source, surface = avatar},
-			) {return}
-		case .Use_Account:
-			yt.watch_history_destroy(&history)
-			history_playback = 0
-			free_auth_token(&session_auth)
-			session_auth = request.auth_token
-			request.auth_token = {}
-			session_account = request.account
-			delete(visitor_data); visitor_data = ""
-			if session_auth.access_token == "" {yt.set_access_token(""); continue}
-			refreshed := refresh_auth(&network_client, &session_auth)
-			refresh_at =
-				sdl.GetTicks() + u64(refreshed ? max(session_auth.expires_in - 60, 30) : 30) * 1000
-			yt.set_access_token(session_auth.access_token)
-			name, avatar_url := yt.account_info(&network_client)
-			if name != "" {delete(session_auth.name); session_auth.name = name} else {delete(name)}
-			if avatar_url !=
-			   "" {delete(session_auth.avatar_url); session_auth.avatar_url = avatar_url} else {delete(avatar_url)}
-			avatar := load_cached_image(cache, &network_client, session_auth.avatar_url, 128)
-			if !post_network_result(
-				{
-					kind = .Account,
-					account = session_account,
-					auth_token = clone_auth_token(session_auth),
-					surface = avatar,
-				},
-			) {return}
-		case .Search, .Browse, .Card_Action, .Card_Membership, .Player_Channel, .Watch_History:
-			if request.kind == .Watch_History &&
-			   (request.account != session_account || session_auth.access_token == "") {continue}
-			if session_auth.access_token != "" && sdl.GetTicks() >= refresh_at {
-				refreshed := refresh_auth(&network_client, &session_auth)
-				if refreshed {
-					yt.set_access_token(session_auth.access_token)
-					if !network_stopping() &&
-					   !post_network_result(
-							   {
-								   kind = .Account,
-								   account = session_account,
-								   auth_token = clone_auth_token(session_auth),
-							   },
-						   ) {return}
-				}
-				refresh_at =
-					sdl.GetTicks() +
-					u64(refreshed ? max(session_auth.expires_in - 60, 30) : 30) * 1000
-			}
-			if request.kind == .Watch_History {
-				error: yt.Error
-				if history_playback != request.playback {
-					yt.watch_history_destroy(&history)
-					if history_timestamp == 0 {
-						history_timestamp = yt.fetch_signature_timestamp(&network_client)
-					}
-					history, error = yt.fetch_watch_history(
-						&network_client,
-						request.text,
-						visitor_data,
-						history_timestamp,
-					)
-					if error == .None {
-						history_playback = request.playback
-					} else {
-						history_timestamp = 0
-					}
-				}
-				if error == .None {
-					error = yt.report_watch_history(
-						&network_client,
-						&history,
-						request.history_start,
-						request.position_ms / 1000,
-						request.finished,
-					)
-				}
-				if error != .None {fmt.eprintf("watch history update failed: %v\n", error)}
-				continue
-			}
-			if request.kind == .Player_Channel {
-				append(
-					&covers,
-					{
-						source = strings.clone(request.text),
-						index = -1,
-						target = 2 * PLAYER_AVATAR_SIZE,
-						page = request.page,
-						playback = request.playback,
-					},
-				)
-				continue
-			}
-			if request.kind == .Card_Action || request.kind == .Card_Membership {
-				result := Network_Result {
-					kind  = .Card_Action,
-					page  = request.page,
-					index = request.index,
-				}
-				if request.kind == .Card_Membership {
-					result.kind = .Card_Membership
-					result.actions, result.error = yt.playlist_options(
-						&network_client,
-						request.text,
-					)
-				} else {
-					result.actions, result.error = yt.perform_card_action(
-						&network_client,
-						request.action,
-					)
-					result.append =
-						request.action.kind == .Playlists || request.action.kind == .Menu
-				}
-				if !post_network_result(result) {return}
-				continue
-			}
-			catalog: model.Catalog
-			error: yt.Error
-			visitor: string
-			if request.kind == .Browse {
-				catalog, error, visitor = yt.browse(
-					&network_client,
-					request.text,
-					request.continuation,
-					request.params,
-					request.filter,
-					visitor_data,
-				)
-			} else {
-				catalog, error, visitor = yt.search(
-					&network_client,
-					request.text,
-					request.continuation,
-					visitor_data,
-				)
-			}
-			delete(visitor_data)
-			visitor_data = visitor
-			if request.continuation == "" {
-				next = 0
-				for cover in covers {delete(cover.source)}
-				clear(&covers)
-			}
-			for &video, i in catalog.videos {video.cover_index = i}
-			if !post_network_result(
-				{
-					kind = .Catalog,
-					page = request.page,
-					error = error,
-					catalog = catalog,
-					append = request.continuation != "",
-				},
-			) {return}
-		case .Login_Start:
-			if pending_auth_active {
-				free_device_auth(&pending_auth)
-				pending_auth_active = false
-			}
-			device, ok := begin_login(&network_client)
-			if !ok {
-				if !post_network_result(
-					{
-						kind = .Login_Error,
-						login_message = strings.clone("could not start sign-in"),
-					},
-				) {return}
-				continue
-			}
-			pending_auth = device
-			pending_auth_active = true
-			if !post_network_result(
-				{
-					kind = .Login_Code,
-					login_code = strings.clone(device.user_code),
-					login_url = strings.clone(device.verification_url),
-					login_interval = device.interval,
-				},
-			) {return}
-		case .Login_Poll:
-			if !pending_auth_active {
-				if !post_network_result(
-					{kind = .Login_Error, login_message = strings.clone("sign-in expired")},
-				) {return}
-				continue
-			}
-			token, status, message := poll_login(&network_client, pending_auth)
-			switch status {
-			case .Authorized:
-				free_device_auth(&pending_auth)
-				pending_auth_active = false
-				// Account selection owns profile and avatar loading in one place.
-				if !post_network_result({kind = .Login_Authorized, auth_token = token}) {return}
-			case .Pending, .Slow_Down:
-				if status == .Slow_Down {pending_auth.interval += 5}
-				if !post_network_result(
-					{kind = .Login_Waiting, login_interval = pending_auth.interval},
-				) {return}
-			case .Expired, .Failed:
-				free_device_auth(&pending_auth)
-				pending_auth_active = false
-				if !post_network_result({kind = .Login_Error, login_message = message}) {return}
-			}
-		case .Resolve:
-			// Bootstrap the same visitor context as normal browsing, without UI navigation.
-			if visitor_data == "" {
-				lookup, _, visitor := yt.search(&network_client, request.text)
-				model.catalog_destroy(&lookup)
-				visitor_data = visitor
-			}
-			stream, error := yt.resolve(
-				&network_client,
-				request.text,
-				visitor_data,
-				network_stopping,
-				limits = playback_limits[:],
-			)
-			// Deliver the skip plan with the sources, before any media read-ahead.
-			segments: [dynamic]sb.Segment
-			if error == .None &&
-			   !network_stopping() {segments = sb.fetch(&network_client, request.text)}
-			if !post_network_result(
-				{
-					kind = .Stream,
-					page = request.page,
-					playback = request.playback,
-					position_ms = request.position_ms,
-					start_paused = request.start_paused,
-					error = error,
-					stream = stream,
-					segments = segments,
-				},
-			) {return}
-		}
-	}
-}
 start_network :: proc() -> bool {
 	success := false
 	defer if !success {stop_network()}
@@ -594,125 +226,6 @@ queue_watch_history :: proc(
 	)
 }
 
-// Keep image slot IDs stable for replies that are still in flight.
-remove_catalog_card :: proc(cover: int) {
-	for &video, index in catalog.videos {
-		if video.cover_index != cover {continue}
-		model.video_destroy(&video)
-		ordered_remove(&catalog.videos, index)
-		if selected > index {selected -= 1}
-		selected = clamp(selected, 0, max(0, len(catalog.videos) - 1))
-		if cover < len(textures) {sdl.DestroyTexture(textures[cover]); textures[cover] = nil}
-		if cover <
-		   len(card_avatars) {sdl.DestroyTexture(card_avatars[cover]); card_avatars[cover] = nil}
-		if cover < len(card_labels) {
-			label := &card_labels[cover]
-			delete(label.title); delete(label.channel); delete(label.meta)
-			label^ = {}
-		}
-		catalog_revision += 1
-		dirty = true
-		return
-	}
-}
-
-clear_catalog :: proc(keep_channel: bool = false) {
-	labels_release()
-	clear_player_channel()
-	close_card_menu()
-	catalog_revision += 1
-	for &texture in textures {
-		if texture != nil {sdl.DestroyTexture(texture); texture = nil}
-	}
-	delete(textures); textures = nil
-	for texture in card_avatars {if texture != nil {sdl.DestroyTexture(texture)}}
-	delete(card_avatars); card_avatars = nil
-	channel: model.Channel
-	if keep_channel {channel = catalog.channel; catalog.channel = {}}
-	model.catalog_destroy(&catalog)
-	catalog.channel = channel
-	if !keep_channel &&
-	   channel_avatar != nil {sdl.DestroyTexture(channel_avatar); channel_avatar = nil}
-}
-// A new feed starts at its first card, with no stale focus or notice.
-begin_feed :: proc() {
-	channel_focus, rail_focus = false, false
-	restore_selected = -1
-	page += 1
-	selected = 0
-	library_focus_pending = true
-	if scroll := clay.GetScrollContainerData(clay.ID("library-scroll")); scroll.found {
-		scroll.scrollPosition^ = {}
-	}
-	notice = ""
-}
-
-request_feed :: proc(request: Network_Request) {
-	search_loading = true
-	dirty = true
-	if !submit_network(request) {
-		search_loading = false
-		show_notice("Network unavailable")
-	}
-}
-
-start_browse :: proc(id: string, params: string = "", filter: string = "", remember: bool = true) {
-	owned, owned_params, owned_filter :=
-		strings.clone(id), strings.clone(params), strings.clone(filter)
-	if remember && id != browse_id && (browse_id != "" || catalog.query != "") {remember_browse()}
-	keep_channel := id == browse_id && catalog.channel.id == id
-	delete(browse_id); delete(browse_params); delete(browse_filter)
-	browse_id, browse_params, browse_filter = owned, owned_params, owned_filter
-	clear_catalog(keep_channel)
-	begin_feed()
-	request_feed(
-		{
-			kind = .Browse,
-			page = page,
-			text = strings.clone(browse_id),
-			params = strings.clone(browse_params),
-			filter = strings.clone(browse_filter),
-		},
-	)
-}
-
-load_more :: proc() {
-	if search_loading ||
-	   catalog.continuation == "" ||
-	   (browse_id == "" && catalog.query == "") {return}
-	request_feed(
-		{
-			kind = browse_id == "" ? .Search : .Browse,
-			page = page,
-			text = strings.clone(browse_id == "" ? catalog.query : browse_id),
-			continuation = strings.clone(catalog.continuation),
-		},
-	)
-}
-
-open_selected :: proc() {
-	if selected < 0 || selected >= len(catalog.videos) {return}
-	card := catalog.videos[selected]
-	if card.browse_id != "" {
-		start_browse(card.browse_id)
-	} else {start_video()}
-}
-
-start_search :: proc(query: string = "Linus Tech Tips", keep_history: bool = false) {
-	clean_query := strings.trim_space(query)
-	if clean_query == "" || len(clean_query) > 512 {return}
-	// Clone before clearing the old page; query may point into its text.
-	owned := strings.clone(clean_query)
-	if !keep_history {clear_browse_history()}
-	delete(browse_id); browse_id = ""
-	delete(browse_params); browse_params = ""
-	delete(browse_filter); browse_filter = ""
-	clear_catalog()
-	catalog.query = strings.clone(owned)
-	rail_active = .Search
-	begin_feed()
-	request_feed({kind = .Search, page = page, text = owned})
-}
 resolve_selected :: proc(position_ms: f64 = 0, start_paused: bool = false) {
 	if selected < 0 || selected >= len(catalog.videos) {return}
 	clear_player_channel()
@@ -738,14 +251,43 @@ resolve_selected :: proc(position_ms: f64 = 0, start_paused: bool = false) {
 		resolving = false; browsing = true; show_notice("Network unavailable")
 	}
 }
-// Cover replies use the original feed position, not the sorted grid position.
-sort_subscriptions :: proc(preserve_selection: bool) {
-	if len(catalog.videos) == 0 {return}
-	selected_cover := preserve_selection ? catalog.videos[selected].cover_index : -1
-	model.sort_latest(catalog.videos[:])
-	for video, i in catalog.videos {
-		if video.cover_index == selected_cover {selected = i}
+
+apply_stream :: proc(renderer: ^sdl.Renderer, result: ^Network_Result) {
+	if browsing || return_to_grid || !resolving || result.playback != playback {return}
+	resolving = false
+	if result.error != .None {
+		browsing = true
+		show_notice(
+			result.error == .No_Direct_Stream ? "YouTube did not provide a supported direct stream" : "Could not load video",
+		)
+	} else {
+		stream_width, stream_height = result.stream.width, result.stream.height
+		delete(sponsor_segments)
+		sponsor_segments = result.segments
+		result.segments = nil
+		if result.stream.title != "" {
+			if result.stream.title != catalog.videos[selected].title {labels_release()}
+			delete(catalog.videos[selected].title)
+			catalog.videos[selected].title = result.stream.title
+			result.stream.title = ""
+		}
+		player_channel_id = result.stream.channel_id
+		result.stream.channel_id = ""
+		fmt.printf("{{\"event\":\"stream\",\"client\":\"%s\"}}\n", result.stream.client)
+		load_video(result.stream, renderer, result.position_ms, result.start_paused)
+		if player_channel_id != "" {
+			_ = submit_network(
+				{
+					kind = .Player_Channel,
+					page = page,
+					playback = playback,
+					text = strings.clone(player_channel_id),
+				},
+			)
+		}
+		show_player_controls()
 	}
+	dirty = true
 }
 
 poll_network :: proc(renderer: ^sdl.Renderer) {
@@ -755,215 +297,25 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 		if !ok {break}
 		defer free_network_result(&result)
 		#partial switch result.kind {
-		case .Account_Avatar:
-			set_account_avatar(renderer, result.surface, result.image_source)
-			dirty = true
-			continue
-		case .Account:
-			if result.account != account_revision {continue}
-			if token := current_auth(); token != nil {
-				free_auth_token(token)
-				token^ = result.auth_token
-				result.auth_token = {}
-				_ = save_auth()
-				set_account_avatar(renderer, result.surface, token.avatar_url)
-			}
-			dirty = true
-			continue
-		case .Login_Code:
-			if !login_screen {continue}
-			open_login_screen(result.login_code, result.login_url, result.login_interval)
-			continue
-		case .Login_Waiting:
-			if !login_screen {continue}
-			login_waiting = false
-			login_interval_ms = u64(max(result.login_interval, 1)) * 1000
-			login_next_poll = sdl.GetTicks() + login_interval_ms
-			dirty = true
-			continue
-		case .Login_Authorized:
-			if !login_screen {continue}
-			login_waiting = false
-			if len(auth_accounts) < MAX_ACCOUNTS {
-				append(&auth_accounts, result.auth_token)
-				result.auth_token = {}
-				auth_active = len(auth_accounts) - 1
-				_ = save_auth()
-			}
-			use_current_account()
-			login_add_account = false
-			close_login_screen()
-			rail_active = .Subscriptions
-			reload_feed()
-			dirty = true
-			continue
-		case .Login_Error:
-			if !login_screen {continue}
-			login_waiting = false
-			login_next_poll = 0
-			delete(login_code); login_code = ""
-			if login_qr != nil {sdl.DestroyTexture(login_qr); login_qr = nil}
-			if result.login_message != "" {
-				delete(login_message)
-				login_message = strings.clone(result.login_message)
-			}
-			dirty = true
-			continue
+		case .Account_Avatar,
+		     .Account,
+		     .Login_Code,
+		     .Login_Waiting,
+		     .Login_Authorized,
+		     .Login_Error:
+			apply_auth_result(renderer, &result)
 		case:
+			if result.page != page {continue}
+			#partial switch result.kind {
+			case .Card_Action, .Card_Membership:
+				apply_card_result(&result)
+			case .Catalog:
+				apply_catalog(&result)
+			case .Cover, .Channel_Avatar:
+				apply_image(renderer, &result)
+			case .Stream:
+				apply_stream(renderer, &result)
+			}
 		}
-		if result.page != page {continue}
-		#partial switch result.kind {
-		case .Card_Action, .Card_Membership:
-			if (!card_menu && !card_menu_waiting) || result.index != card_menu_revision {continue}
-			card_menu_waiting = false
-			if result.error != .None {
-				if card_menu {card_menu_error = "Action failed"} else {
-					close_card_menu()
-					show_notice("Could not update Watch later")
-				}
-			} else if result.kind == .Card_Membership {
-				if video := card_action_video(); video != nil {
-					video.watch_later = read_watch_later_membership(result.actions[:])
-					set_watch_later_menu_action(video)
-					if video.watch_later ==
-					   .Unknown {card_menu_error = "Could not load Watch later"}
-				}
-			} else if result.append {
-				panel := card_menu_actions[card_menu_selected].kind == .Menu
-				if !panel {
-					if video := card_action_video(); video != nil {
-						video.watch_later = read_watch_later_membership(result.actions[:])
-					}
-				}
-				model.card_actions_destroy(&card_menu_actions)
-				card_menu_actions = result.actions
-				result.actions = nil
-				card_menu_selected = 0
-				if panel {prepare_watch_later()}
-			} else {
-				action := card_menu_actions[card_menu_selected]
-				if action.kind == .Edit_Playlist && action.target == "WL" {
-					if video := card_action_video(); video != nil {
-						video.watch_later = action.remove ? .Absent : .Present
-					}
-				}
-				card_action_done_until = sdl.GetTicks() + 1000
-			}
-		case .Catalog:
-			first_cover := result.append ? len(textures) : 0
-			next_cover := first_cover
-			search_loading = false
-			if result.error != .None {show_notice("Could not load this page"); continue}
-			if browse_id == "VLWL" {
-				for &video in result.catalog.videos {video.watch_later = .Present}
-			}
-			if result.append {
-				seen := make(map[[2]string]bool, len(catalog.videos) + len(result.catalog.videos))
-				defer delete(seen)
-				for video in catalog.videos {seen[{video.id, video.browse_id}] = true}
-				for &video in result.catalog.videos {
-					key := [2]string{video.id, video.browse_id}
-					if key != ([2]string{}) && seen[key] {model.video_destroy(&video); continue}
-					seen[key] = true
-					video.cover_index = next_cover
-					next_cover += 1
-					append(&catalog.videos, video)
-				}
-				clear(&result.catalog.videos)
-				delete(catalog.continuation)
-				catalog.continuation = result.catalog.continuation
-				result.catalog.continuation = ""
-			} else {
-				next_cover = len(result.catalog.videos)
-				same_channel :=
-					result.catalog.channel.id != "" &&
-					result.catalog.channel.id == catalog.channel.id
-				if same_channel &&
-				   channel_avatar != nil &&
-				   result.catalog.channel.avatar_url != "" &&
-				   result.catalog.channel.avatar_url != catalog.channel.avatar_url {
-					sdl.DestroyTexture(channel_avatar)
-					channel_avatar = nil
-				}
-				if same_channel && result.catalog.channel.title == "" {
-					sorts := result.catalog.channel.sorts
-					result.catalog.channel.sorts = nil
-					model.channel_destroy(&result.catalog.channel)
-					result.catalog.channel = catalog.channel
-					catalog.channel = {}
-					if len(sorts) > 0 {
-						model.channel_options_destroy(&result.catalog.channel.sorts)
-						result.catalog.channel.sorts = sorts
-					}
-				}
-				clear_catalog(same_channel)
-				model.channel_destroy(&catalog.channel)
-				catalog = result.catalog; result.catalog = {}
-				if restore_selected >= 0 {
-					selected = clamp(restore_selected, 0, max(0, len(catalog.videos) - 1))
-					restore_selected = -1
-				}
-			}
-			resize(&textures, next_cover)
-			resize(&card_avatars, next_cover)
-			if browse_id == "FEsubscriptions" {sort_subscriptions(result.append)}
-			queue_catalog_images(first_cover)
-			catalog_revision += 1
-			notice = ""
-			if !result.append {library_focus_pending = true}
-		case .Cover, .Channel_Avatar:
-			slot := &channel_avatar
-			if result.kind == .Channel_Avatar && result.playback != 0 {
-				if browsing || result.playback != playback {continue}
-				slot = &player_channel_avatar
-			}
-			if result.kind == .Cover || result.index >= 0 {
-				index := result.index
-				if index < 0 || index >= len(textures) {continue}
-				slot = result.kind == .Cover ? &textures[index] : &card_avatars[index]
-			}
-			if result.surface == nil {continue}
-			texture := upload_surface(renderer, result.surface)
-			if texture == nil {continue}
-			if slot^ != nil {sdl.DestroyTexture(slot^)}
-			slot^ = texture
-		case .Stream:
-			if browsing || return_to_grid || !resolving || result.playback != playback {continue}
-			resolving = false
-			if result.error != .None {
-				browsing = true
-				show_notice(
-					result.error == .No_Direct_Stream ? "YouTube did not provide a supported direct stream" : "Could not load video",
-				)
-			} else {
-				stream_width, stream_height = result.stream.width, result.stream.height
-				delete(sponsor_segments)
-				sponsor_segments = result.segments
-				result.segments = nil
-				if result.stream.title != "" {
-					if result.stream.title != catalog.videos[selected].title {labels_release()}
-					delete(catalog.videos[selected].title)
-					catalog.videos[selected].title = result.stream.title
-					result.stream.title = ""
-				}
-				player_channel_id = result.stream.channel_id
-				result.stream.channel_id = ""
-				fmt.printf("{{\"event\":\"stream\",\"client\":\"%s\"}}\n", result.stream.client)
-				load_video(result.stream, renderer, result.position_ms, result.start_paused)
-				if player_channel_id != "" {
-					_ = submit_network(
-						{
-							kind = .Player_Channel,
-							page = page,
-							playback = playback,
-							text = strings.clone(player_channel_id),
-						},
-					)
-				}
-				show_player_controls()
-			}
-		case:
-		}
-		dirty = true
 	}
 }

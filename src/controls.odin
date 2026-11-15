@@ -367,3 +367,26 @@ player_layout :: proc(elapsed, total, speed, quality: string) {
 		}
 	}
 }
+
+// Playing controls fade out after a few quiet seconds and any input revives them.
+// A zero deadline means hidden.
+PLAYER_CONTROLS_MS :: 3000
+controls_until: u64
+
+show_player_controls :: proc() {controls_until = sdl.GetTicks() + PLAYER_CONTROLS_MS}
+
+player_controls_visible :: proc() -> bool {
+	return(
+		paused ||
+		!loaded ||
+		sdl.GetTicks() < controls_until ||
+		clay.PointerOver(clay.ID("controls")) ||
+		clay.PointerOver(clay.ID("player-header")) \
+	)
+}
+
+expire_player_controls :: proc() {
+	if browsing || controls_until == 0 || player_controls_visible() {return}
+	controls_until = 0
+	dirty = true
+}
