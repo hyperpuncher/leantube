@@ -109,7 +109,6 @@ navigation_layout :: proc() {
 			childGap = u16(gap),
 			childAlignment = {x = .Center},
 		},
-		backgroundColor = COLOR_BACKGROUND,
 	},
 	) {
 		for item in Navigation {

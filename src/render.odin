@@ -55,6 +55,16 @@ set_color :: proc(renderer: ^sdl.Renderer, color: clay.Color) -> bool {
 	return sdl.SetRenderDrawColor(renderer, u8(color[0]), u8(color[1]), u8(color[2]), u8(color[3]))
 }
 
+// Opaque fills skip the destination read. The software renderer otherwise
+// blends through a temporary surface for each rectangle.
+fill_rect :: proc(renderer: ^sdl.Renderer, rect: sdl.FRect, color: clay.Color) -> bool {
+	rect := rect
+	opaque := color[3] == 255
+	if opaque && !sdl.SetRenderDrawBlendMode(renderer, sdl.BLENDMODE_NONE) {return false}
+	defer if opaque {_ = sdl.SetRenderDrawBlendMode(renderer, sdl.BLENDMODE_BLEND)}
+	return set_color(renderer, color) && sdl.RenderFillRect(renderer, &rect)
+}
+
 // Render the fade at screen resolution. Subpixel alpha dithering must not
 // be stretched into visible stripes.
 PLAYER_FADE_ALPHA :: 216 // 85% opacity in SDL's 8-bit alpha.
@@ -249,10 +259,7 @@ render_commands :: proc(
 					data.cornerRadius,
 					data.backgroundColor,
 				) {return false}
-			} else {
-				if !set_color(renderer, data.backgroundColor) ||
-				   !sdl.RenderFillRect(renderer, &rect) {return false}
-			}
+			} else if !fill_rect(renderer, rect, data.backgroundColor) {return false}
 		case .Image:
 			data := command.renderData.image
 			texture := cast(^sdl.Texture)data.imageData

@@ -171,7 +171,6 @@ grid_layout :: proc() {
 			sizing = {width = clay.SizingGrow({}), height = clay.SizingGrow({})},
 			layoutDirection = .LeftToRight,
 		},
-		backgroundColor = COLOR_BACKGROUND,
 	},
 	) {
 		navigation_layout()

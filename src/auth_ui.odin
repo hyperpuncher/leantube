@@ -212,7 +212,6 @@ login_layout :: proc() {
 			childAlignment = {x = .Center, y = .Center},
 			padding = clay.PaddingAll(spacing(48)),
 		},
-		backgroundColor = COLOR_BACKGROUND,
 	},
 	) {
 		if clay.UI(clay.ID("login-content"))(
