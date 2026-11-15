@@ -23,8 +23,6 @@ Network_Request :: struct {
 		Search,
 		Browse,
 		Resolve,
-		Player_Channel,
-		Images,
 		Use_Account,
 		Account_Avatar,
 		Login_Start,
@@ -45,7 +43,6 @@ Network_Request :: struct {
 	account:        u32,
 	auth_token:     Auth_Token,
 	action:         model.Card_Action,
-	images:         [dynamic]Image_Request,
 }
 Network_Result :: struct {
 	kind:           enum {
@@ -107,8 +104,6 @@ free_network_request :: proc(request: ^Network_Request) {
 	delete(request.params); delete(request.filter)
 	model.card_action_destroy(&request.action)
 	free_auth_token(&request.auth_token)
-	for image in request.images {delete(image.source)}
-	delete(request.images)
 	request^ = {}
 }
 
@@ -164,6 +159,10 @@ start_network :: proc() -> bool {
 		return false
 	}
 	network_results = results
+	if !start_image_loader() {
+		fmt.eprintln("network: image worker creation failed")
+		return false
+	}
 	network_thread = thread.create(network_main)
 	if network_thread == nil {
 		fmt.eprintln("network: worker thread creation failed")
@@ -177,6 +176,7 @@ start_network :: proc() -> bool {
 stop_network :: proc() {
 	_ = chan.close(network_requests)
 	_ = chan.close(network_results)
+	stop_image_loader()
 	if network_thread != nil {thread.destroy(network_thread); network_thread = nil}
 	for {
 		request, ok := chan.try_recv(network_requests)
@@ -276,14 +276,16 @@ apply_stream :: proc(renderer: ^sdl.Renderer, result: ^Network_Result) {
 		fmt.printf("{{\"event\":\"stream\",\"client\":\"%s\"}}\n", result.stream.client)
 		load_video(result.stream, renderer, result.position_ms, result.start_paused)
 		if player_channel_id != "" {
-			_ = submit_network(
+			player_avatar := [1]Image_Request {
 				{
-					kind = .Player_Channel,
+					source = strings.clone(player_channel_id),
+					index = -1,
+					target = 2 * PLAYER_AVATAR_SIZE,
 					page = page,
 					playback = playback,
-					text = strings.clone(player_channel_id),
 				},
-			)
+			}
+			queue_images(player_avatar[:], false)
 		}
 		show_player_controls()
 	}

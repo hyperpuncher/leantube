@@ -101,12 +101,11 @@ continuation_appends_cards_and_rejects_stale_pages :: proc(t: ^testing.T) {
 	testing.expect_value(t, catalog.videos[1].title, "next")
 	testing.expect_value(t, catalog.videos[1].cover_index, 1)
 	testing.expect_value(t, catalog.continuation, "new-continuation")
-	images, images_requested := chan.try_recv(network_requests)
-	defer free_network_request(&images)
-	if testing.expect(t, images_requested && images.kind == .Images && len(images.images) == 1) {
-		testing.expect_value(t, images.images[0].index, 1)
-		testing.expect_value(t, images.images[0].source, "C5WDBA2i9nE")
+	if testing.expect_value(t, len(image_loader.pending), 1) {
+		testing.expect_value(t, image_loader.pending[0].index, 1)
+		testing.expect_value(t, image_loader.pending[0].source, "C5WDBA2i9nE")
 	}
+	clear_image_requests()
 	repeated := Network_Result {
 		kind = .Catalog,
 		page = page,
@@ -309,18 +308,19 @@ decoded_covers_upload_reuse_and_reject_stale_results :: proc(t: ^testing.T) {
 		poll_network(renderer)
 		if changed {
 			testing.expect(t, textures[0] == nil, "a changed image URL must be loaded again")
-			request, ready := chan.try_recv(network_requests)
-			defer free_network_request(&request)
-			testing.expect(t, ready && request.kind == .Images && len(request.images) == 1)
+			testing.expect_value(t, len(image_loader.pending), 1)
+			clear_image_requests()
 		} else {
 			testing.expect_value(t, textures[0], original)
 			testing.expect(
 				t,
 				sdl.RenderTexture(renderer, textures[0], nil, nil) && sdl.RenderPresent(renderer),
 			)
-			unexpected, requested := chan.try_recv(network_requests)
-			defer free_network_request(&unexpected)
-			testing.expect(t, !requested, "a retained image must not be decoded or uploaded again")
+			testing.expect(
+				t,
+				len(image_loader.pending) == 0,
+				"a retained image must not be decoded or uploaded again",
+			)
 		}
 	}
 }

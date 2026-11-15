@@ -5,10 +5,12 @@ import yt "./youtube"
 import "core:c"
 import "core:fmt"
 import "core:hash"
+import "core:math"
 import "core:os"
 import "core:slice"
 import "core:strings"
 import sdl "vendor:sdl3"
+import img "vendor:sdl3/image"
 
 // Used only by the network worker. Keep the original encoded image bytes.
 IMAGE_CACHE_MIB :: #config(IMAGE_CACHE_MIB, 64)
@@ -114,6 +116,23 @@ load_cached_image :: proc(
 		path := image_cache_path(cache, key)
 		defer delete(path)
 		if path != "" && os.write_entire_file(path, bytes[:]) != nil {_ = os.remove(path)}
+	}
+	return surface
+}
+
+// Decode and prefilter on the worker. The result owns its pixels, not bytes.
+decode_image :: proc(bytes: []u8, target: i32 = 0) -> ^sdl.Surface {
+	if len(bytes) == 0 {return nil}
+	io := sdl.IOFromConstMem(raw_data(bytes), uint(len(bytes)))
+	if io == nil {return nil}
+	surface := img.Load_IO(io, true)
+	for target > 0 && surface != nil && max(surface.w, surface.h) > target {
+		ratio := max(f32(0.5), f32(target) / f32(max(surface.w, surface.h)))
+		width := max(1, i32(math.round(f32(surface.w) * ratio)))
+		height := max(1, i32(math.round(f32(surface.h) * ratio)))
+		next := sdl.ScaleSurface(surface, width, height, .LINEAR)
+		sdl.DestroySurface(surface)
+		surface = next
 	}
 	return surface
 }

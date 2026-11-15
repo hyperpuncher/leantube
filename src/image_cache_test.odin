@@ -8,7 +8,6 @@ import "core:os"
 import "core:strings"
 import "core:sync/chan"
 import "core:testing"
-import "core:thread"
 import "core:time"
 import sdl "vendor:sdl3"
 
@@ -127,51 +126,48 @@ cached_card_images_keep_card_order_after_worker_restart_without_network :: proc(
 		sdl.DestroySurface(surface)
 	}
 	testing.expect_value(t, image_cache_fetch_calls, 3)
-	// Each worker starts with no URL mappings and no usable HTTP client.
+	// Each loader starts with no URL mappings. Disk hits must not need the network.
 	for _ in 0 ..< 2 {
-		network_requests, _ = chan.create(chan.Chan(Network_Request), 1, context.allocator)
-		network_results, _ = chan.create(chan.Chan(Network_Result), 1, context.allocator)
-		defer stop_network()
-		network_thread = thread.create(network_main)
-		if !testing.expect(t, network_thread != nil) {return}
-		thread.start(network_thread)
-		// The worker owns these values and uses the default heap allocator.
-		jobs := make([dynamic]Image_Request, 0, 4, runtime.heap_allocator())
+		network_results, _ = chan.create(chan.Chan(Network_Result), 4, context.allocator)
+		if !testing.expect(t, start_image_loader()) {return}
+		// The workers free these values with the default heap allocator.
+		jobs: [4]Image_Request
+		heap := runtime.heap_allocator()
 		for source, index in covers {
-			append(
-				&jobs,
-				{source = strings.clone(source, runtime.heap_allocator()), index = index},
-			)
-			append(
-				&jobs,
-				{
-					source = strings.clone(channel, runtime.heap_allocator()),
-					index = index,
-					target = 80,
-				},
-			)
-		}
-		chan.send(network_requests, Network_Request{kind = .Images, images = jobs})
-		for index in 0 ..< 2 {
-			for avatar in ([2]bool{false, true}) {
-				result: Network_Result
-				ready := false
-				started := time.tick_now()
-				for !ready && time.tick_since(started) < time.Second {
-					result, ready = chan.try_recv(network_results)
-					if !ready {time.sleep(time.Millisecond)}
-				}
-				defer free_network_result(&result)
-				if !testing.expect(
-					t,
-					ready && result.surface != nil,
-					"cached images must load without network access",
-				) {return}
-				testing.expect_value(t, result.index, index)
-				testing.expect_value(t, result.kind, avatar ? .Channel_Avatar : .Cover)
-				testing.expect_value(t, result.surface.w, i32(avatar ? 80 : 101))
+			jobs[index * 2] = {
+				source = strings.clone(source, heap),
+				index  = index,
+				cached = true,
+			}
+			jobs[index * 2 + 1] = {
+				source = strings.clone(channel, heap),
+				index  = index,
+				target = 80,
+				cached = true,
 			}
 		}
+		queue_images(jobs[:], true)
+		seen: [2][2]bool
+		for _ in 0 ..< 4 {
+			result: Network_Result
+			ready := false
+			started := time.tick_now()
+			for !ready && time.tick_since(started) < time.Second {
+				result, ready = chan.try_recv(network_results)
+				if !ready {time.sleep(time.Millisecond)}
+			}
+			defer free_network_result(&result)
+			if !testing.expect(
+				t,
+				ready && result.surface != nil,
+				"cached images must load without network access",
+			) {stop_network(); return}
+			avatar := result.kind == .Channel_Avatar
+			testing.expect_value(t, result.surface.w, i32(avatar ? 80 : 101))
+			seen[result.index][int(avatar)] = true
+		}
+		testing.expect_value(t, seen, [2][2]bool{{true, true}, {true, true}})
+		stop_network()
 	}
 }
 

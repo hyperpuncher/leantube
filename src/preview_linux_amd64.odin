@@ -436,10 +436,9 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 			}
 			chan.send(network_results, result)
 			poll_network(renderer)
-			images, queued := chan.try_recv(network_requests)
-			assert(queued && images.kind == .Images && len(images.images) == 18)
-			for image in images.images {assert(image.index >= first_cover)}
-			free_network_request(&images)
+			assert(len(image_loader.pending) == 18, "a new page must queue its covers")
+			for image in image_loader.pending {assert(image.index >= first_cover)}
+			clear_image_requests()
 			assert(render(renderer))
 			assert(
 				clay.GetScrollContainerData(clay.ID("library-scroll")).scrollPosition^[1] ==

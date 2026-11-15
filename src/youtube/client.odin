@@ -491,7 +491,8 @@ api_post :: proc(
 	// Odin defers run at block exit. Keep this string until the request returns.
 	authorization: string
 	defer delete(authorization)
-	if access_token != "" && (profile == .TV || profile == .History) {
+	// Image workers use the Web profile. Check it first, so they never read the token.
+	if (profile == .TV || profile == .History) && access_token != "" {
 		authorization = fmt.aprintf("Authorization: Bearer %s", access_token)
 		append(&request_headers, authorization)
 	}

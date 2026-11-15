@@ -93,6 +93,8 @@ preserve_catalog_images :: proc() {
 		},
 	)
 	first, last := visible_rows()
+	shown_first, shown_last := len(catalog.videos), 0
+	defer if shown_first < shown_last {set_visible_images(shown_first, shown_last)}
 	for i in first * grid_columns ..< min(last * grid_columns, len(catalog.videos)) {
 		video := catalog.videos[i]
 		card := clay.GetElementData(clay.ID("video", u32(i)))
@@ -105,6 +107,7 @@ preserve_catalog_images :: proc() {
 				   &visible,
 			   ) {continue}
 		index := video.cover_index
+		shown_first, shown_last = min(shown_first, index), max(shown_last, index + 1)
 		if index >= 0 && index < len(textures) {
 			retain_image_texture(image_key(card_image_source(video, false), 0), textures[index])
 		}
@@ -170,8 +173,10 @@ queue_catalog_images :: proc(first_cover: int) {
 		}
 	}
 	fmt.printf("images restored=%d queued=%d\n", restored, len(jobs))
-	if len(jobs) >
-	   0 {_ = submit_network({kind = .Images, page = page, images = jobs})} else {delete(jobs)}
+	// Serve disk hits before downloads and URL lookups.
+	for &job in jobs {job.cached = cached_image_exists(image_loader.cache, job.source)}
+	queue_images(jobs[:], first_cover == 0)
+	delete(jobs)
 }
 
 // Cover, card avatar, channel, and player avatar replies share one upload path.
