@@ -5,7 +5,10 @@
 - use `just` for project tasks
 - run `just fmt`, `just check`, and `just test` after changes
 - use native Wayland, Odin, Clay, and SDL3
-- use Odin target-specific file names for Linux x86-64 development and webOS ARM32 code
+- select platform code with `#+build` tags, not file name suffixes. suffixes ignore the subtarget, so webOS and Android ARM32 would match the same files
+    - webOS: `*_webos.odin` with `#+build linux:default arm32`
+    - Linux desktop and the host preview: `*_desktop.odin` with `#+build linux:default amd64, linux:default arm64`
+    - later: Android with `linux:android` and the web demo with `wasi`
 - use neutral UI colors; use the logo color only for accents
 - do not use semicolons in UI text
 - keep downloaded SDK and compiler inputs in the ignored toolchain cache; track their pins and build recipes

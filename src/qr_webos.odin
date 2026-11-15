@@ -1,3 +1,4 @@
+#+build linux:default arm32
 package main
 
 // The ARM32 build links qrcodegen.c with the Odin object.

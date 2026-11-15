@@ -119,11 +119,11 @@ const sources = [
 	"tests/playback/diagnostics/transport.odin",
 	...(decode
 		? [
-				"src/starfish_linux_arm32.odin",
-				"src/player_linux_arm32.odin",
-				"src/main_linux_arm32.odin",
-				"src/bench_decoder_linux_arm32.odin",
-				"src/display_linux_arm32.odin",
+				"src/starfish_webos.odin",
+				"src/player_webos.odin",
+				"src/main_webos.odin",
+				"src/bench_decoder_webos.odin",
+				"src/display_webos.odin",
 				"vendor/starfish/StarfishMediaAPIs_C.cpp",
 			]
 		: []),

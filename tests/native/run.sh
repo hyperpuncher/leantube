@@ -2,7 +2,8 @@
 set -euo pipefail
 mkdir -p build/native-display
 # Compile the actual display code on the host. Replace only the TV C APIs.
-cp src/display_linux_arm32.odin build/native-display/display.odin
+# Drop the webOS build tag, so the host compiles the copy.
+grep -v '^#+build' src/display_webos.odin >build/native-display/display.odin
 cp tests/native/display_test.odin build/native-display/display_test.odin
 cp tests/native/window_stub.odin build/native-display/window_stub.odin
 cc -shared -fPIC tests/native/fixture.c -std=c11 -Wall -Wextra -Werror -o build/native-display/libAcbAPI.so.1

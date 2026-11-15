@@ -1,3 +1,4 @@
+#+build linux:default arm32
 package main
 
 import reader "../tests/playback/diagnostics"

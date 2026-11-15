@@ -1,3 +1,4 @@
+#+build linux:default arm32
 package main
 
 // Keep emoji priority; use the installed text fonts only for missing glyphs.
