@@ -11,6 +11,8 @@ import "core:time"
 import curl "vendor:curl"
 
 BLOCK_BYTES :: 1024 * 1024
+// Tests shorten the transfer limit so a stalled range fails quickly.
+TRANSFER_TIMEOUT_MS :: #config(READER_TRANSFER_TIMEOUT_MS, 15000)
 Cancel :: struct {
 	state:      ^State,
 	generation: u32,
@@ -164,7 +166,7 @@ http_prepare :: proc(h: ^Http, at, end: i64) -> curl.code {
 	curl.easy_setopt(h.handle, .SOCKOPTFUNCTION, http_socket_options) or_return
 	curl.easy_setopt(h.handle, .SOCKOPTDATA, rawptr(h)) or_return
 	curl.easy_setopt(h.handle, .CONNECTTIMEOUT_MS, c.long(5000)) or_return
-	curl.easy_setopt(h.handle, .TIMEOUT_MS, c.long(15000)) or_return
+	curl.easy_setopt(h.handle, .TIMEOUT_MS, c.long(TRANSFER_TIMEOUT_MS)) or_return
 	curl.easy_setopt(h.handle, .ACCEPT_ENCODING, cstring("identity")) or_return
 	curl.easy_setopt(h.handle, .WRITEFUNCTION, http_write) or_return
 	curl.easy_setopt(h.handle, .WRITEDATA, rawptr(h)) or_return

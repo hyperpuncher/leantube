@@ -1,5 +1,8 @@
 import { $ } from "bun";
 
+// The stalled range must outlast the reader transfer limit set below.
+const timeoutMs = 1000;
+
 // Generate a small AAC fixture in host RAM. No media is copied to the TV.
 const encoder = Bun.spawn(
 	[
@@ -138,7 +141,7 @@ const server = Bun.serve({
 						payload.slice(offset, offset + (partial ? 8 : 16)),
 					),
 				);
-				await Bun.sleep(timeout ? 16000 : 10);
+				await Bun.sleep(timeout ? timeoutMs * 2 : 10);
 				if (partial) controller.error();
 				else controller.close();
 			},
@@ -158,7 +161,7 @@ const server = Bun.serve({
 });
 try {
 	await $`mkdir -p build/playback-bench`;
-	await $`odin test tests/playback/host -all-packages -vet -out:build/playback-bench/reader-test -define:READER_HTTP_TEST_SERVER=${server.url.origin} -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false`;
+	await $`odin test tests/playback/host -all-packages -vet -out:build/playback-bench/reader-test -define:READER_HTTP_TEST_SERVER=${server.url.origin} -define:READER_TRANSFER_TIMEOUT_MS=${timeoutMs} -define:ODIN_TEST_THREADS=1 -define:ODIN_TEST_FANCY=false`;
 	if (counts["/once"] !== 2 || counts["/always"] !== 2 || counts["/timeout"] !== 2)
 		throw Error("range recovery exceeded its retry limit");
 	if (counts["/redirect"] !== 2 || counts["/target"] !== 2)
