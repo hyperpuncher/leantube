@@ -173,8 +173,6 @@ queue_catalog_images :: proc(first_cover: int) {
 		}
 	}
 	fmt.printf("images restored=%d queued=%d\n", restored, len(jobs))
-	// Serve disk hits before downloads and URL lookups.
-	for &job in jobs {job.cached = cached_image_exists(image_loader.cache, job.source)}
 	queue_images(jobs[:], first_cover == 0)
 	delete(jobs)
 }

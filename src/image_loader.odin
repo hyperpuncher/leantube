@@ -1,3 +1,4 @@
+#+build !wasi
 package main
 
 import "./http"
@@ -76,6 +77,8 @@ clear_image_requests :: proc() {
 // A new feed replaces waiting work. Requests already downloading finish and
 // are dropped by their page number.
 queue_images :: proc(requests: []Image_Request, replace: bool) {
+	// Serve disk hits before downloads and URL lookups.
+	for &request in requests {request.cached = cached_image_exists(image_loader.cache, request.source)}
 	sync.guard(&image_loader.mutex)
 	if replace {clear_image_requests()}
 	append(&image_loader.pending, ..requests)

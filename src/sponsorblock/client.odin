@@ -14,6 +14,7 @@ Segment :: struct {
 // Use the existing OpenSSL library: core SHA-256 currently emits unsupported
 // ARM SHA instructions when compiled for the B9 Cortex-A9 target.
 foreign import crypto "system:crypto"
+@(default_calling_convention = "c")
 foreign crypto {
 	SHA256 :: proc(data: rawptr, count: uint, digest: ^u8) -> ^u8 ---
 }

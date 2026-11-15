@@ -1,13 +1,11 @@
 package main
 
-import "./http"
 import "./model"
 import sb "./sponsorblock"
 import yt "./youtube"
 import "core:fmt"
 import "core:strings"
 import "core:sync/chan"
-import "core:thread"
 import sdl "vendor:sdl3"
 
 Image_Request :: struct {
@@ -81,8 +79,6 @@ Network_Result :: struct {
 }
 network_requests: chan.Chan(Network_Request)
 network_results: chan.Chan(Network_Result)
-network_thread: ^thread.Thread
-network_client: http.Client
 network_event: sdl.EventType
 page, playback: u32
 search_loading: bool
@@ -94,8 +90,6 @@ playback_limits: [4]yt.Video_Limit
 catalog_revision: int
 
 sponsor_segments: [dynamic]sb.Segment
-pending_auth: Device_Auth
-pending_auth_active: bool
 account_revision: u32
 
 free_network_request :: proc(request: ^Network_Request) {
@@ -133,71 +127,6 @@ post_network_result :: proc(result: Network_Result) -> bool {
 }
 network_stopping :: proc() -> bool {return chan.is_closed(network_requests)}
 
-start_network :: proc() -> bool {
-	success := false
-	defer if !success {stop_network()}
-	error: http.Error
-	network_client, error = http.open()
-	if error != nil {
-		fmt.eprintln("network: HTTP client initialization failed:", error)
-		return false
-	}
-	network_event = sdl.EventType(sdl.RegisterEvents(1))
-	if u32(network_event) == 0 {
-		fmt.eprintln("network: event registration failed:", sdl.GetError())
-		return false
-	}
-	requests, req_error := chan.create(chan.Chan(Network_Request), 8, context.allocator)
-	if req_error != .None {
-		fmt.eprintln("network: request channel creation failed:", req_error)
-		return false
-	}
-	network_requests = requests
-	results, res_error := chan.create(chan.Chan(Network_Result), 8, context.allocator)
-	if res_error != .None {
-		fmt.eprintln("network: result channel creation failed:", res_error)
-		return false
-	}
-	network_results = results
-	if !start_image_loader() {
-		fmt.eprintln("network: image worker creation failed")
-		return false
-	}
-	network_thread = thread.create(network_main)
-	if network_thread == nil {
-		fmt.eprintln("network: worker thread creation failed")
-		return false
-	}
-	if load_auth() {use_current_account()}
-	thread.start(network_thread)
-	success = true
-	return true
-}
-stop_network :: proc() {
-	_ = chan.close(network_requests)
-	_ = chan.close(network_results)
-	stop_image_loader()
-	if network_thread != nil {thread.destroy(network_thread); network_thread = nil}
-	for {
-		request, ok := chan.try_recv(network_requests)
-		if !ok {break}
-		free_network_request(&request)
-	}
-	for {
-		result, ok := chan.try_recv(network_results)
-		if !ok {break}
-		free_network_result(&result)
-	}
-	chan.destroy(network_requests)
-	chan.destroy(network_results)
-	network_requests = {}
-	network_results = {}
-	free_device_auth(&pending_auth)
-	pending_auth_active = false
-	http.close(&network_client)
-	close_image_textures()
-	close_account_avatars()
-}
 submit_network :: proc(request: Network_Request) -> bool {
 	if chan.try_send(network_requests, request) {return true}
 	// Reject overload without reordering account-dependent commands.

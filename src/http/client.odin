@@ -1,3 +1,4 @@
+#+build !wasi
 package http
 
 import "base:runtime"

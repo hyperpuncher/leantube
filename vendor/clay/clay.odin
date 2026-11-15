@@ -7,8 +7,10 @@ when ODIN_OS == .Linux && ODIN_ARCH == .arm32 {
 	foreign import Clay "system:clay"
 } else when ODIN_OS == .Linux && ODIN_ARCH == .amd64 {
 	foreign import Clay "linux/clay.a"
+} else when ODIN_ARCH == .wasm32 {
+	foreign import Clay "wasm/clay.o"
 } else {
-	#panic("LeanTube targets Linux x86-64 development and B9 ARM32")
+	#panic("LeanTube targets Linux x86-64, ARM32, and wasm32")
 }
 
 String :: struct {
