@@ -191,7 +191,7 @@ run:
 
 # Check the process and media pipelines, not only the close reply.
 stop:
-	ares-launch --close {{app_id}}
+	-ares-launch --close {{app_id}}
 	ares-shell -r 'for i in 1 2 3 4 5; do if ! pidof leantube >/dev/null; then exit 0; fi; sleep 1; done; exit 1'
 	bash scripts/luna.sh com.webos.media/getActivePipelines | jq -e --arg id {{app_id}} '[.[] | select(.appId == $id)] | length == 0' >/dev/null
 
