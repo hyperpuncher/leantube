@@ -153,8 +153,16 @@ controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: boo
 	}
 }
 
+// Reserve the slot before the stream reports the channel, so the title
+// keeps its height and line breaks when the avatar appears.
 player_channel_button :: proc() {
-	if player_channel_id == "" {return}
+	if player_channel_id == "" {
+		size := scaled(PLAYER_AVATAR_SIZE + 2 * 8)
+		if clay.UI()(
+		{layout = {sizing = {width = clay.SizingFixed(size), height = clay.SizingFixed(size)}}},
+		) {}
+		return
+	}
 	avatar_button(
 		clay.ID("player-channel"),
 		player_channel_avatar,

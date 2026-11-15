@@ -511,7 +511,12 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	before_player := scroll.scrollPosition^[1]
 	key(sdl.K_RETURN)
 	assert(!browsing && loaded && paused)
+	// The avatar arrives with the stream. Its slot must not move the title.
+	assert(render(renderer))
+	header := clay.GetElementData(clay.ID("player-header")).boundingBox
 	player_channel_id = strings.clone("UC-example")
+	assert(render(renderer))
+	assert(header == clay.GetElementData(clay.ID("player-header")).boundingBox)
 	player_channel_avatar = load_texture(renderer, "tests/ui/cover.webp")
 	assert(player_channel_avatar != nil)
 	check_sponsor_timeline(renderer, surface)
