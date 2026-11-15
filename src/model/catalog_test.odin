@@ -21,7 +21,7 @@ quality_labels_use_the_standard_tier_not_the_raw_frame_size :: proc(t: ^testing.
 	for c in ([]struct {
 			width, height: int,
 			label:         string,
-		}{{1920, 804, "1080p"}, {2048, 858, "1080p"}, {3840, 1600, "2160p"}, {1280, 720, "720p"}, {854, 480, "480p"}, {1440, 1080, "1080p"}, {2560, 1080, "1080p"}, {1080, 1920, "1080p"}, {0, 0, ""}}) {
+		}{{1920, 804, "FHD"}, {2048, 858, "FHD"}, {3840, 1600, "4K"}, {1280, 720, "HD"}, {854, 480, "SD"}, {256, 144, "SD"}, {2560, 1440, "2K"}, {1440, 1080, "FHD"}, {2560, 1080, "FHD"}, {1080, 1920, "FHD"}, {0, 0, ""}}) {
 		testing.expect_value(t, quality_label(c.width, c.height), c.label)
 	}
 }

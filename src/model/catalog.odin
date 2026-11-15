@@ -45,16 +45,7 @@ Catalog :: struct {
 QUALITY_TIERS := [?]struct {
 	short_side: int,
 	label:      string,
-} {
-	{144, "144p"},
-	{240, "240p"},
-	{360, "360p"},
-	{480, "480p"},
-	{720, "720p"},
-	{1080, "1080p"},
-	{1440, "1440p"},
-	{2160, "2160p"},
-}
+}{{480, "SD"}, {720, "HD"}, {1080, "FHD"}, {1440, "2K"}, {2160, "4K"}}
 
 // The short side identifies the quality tier. Wide films such as 1920x804
 // are 1080p uploads, not 804p.
