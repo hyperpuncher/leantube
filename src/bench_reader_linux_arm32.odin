@@ -5,11 +5,16 @@ import "core:os"
 
 PLAYBACK_BENCH :: #config(PLAYBACK_BENCH, false)
 
+// A constant condition keeps the benchmark type-checked in every build.
+// Release builds compile it out.
 benchmark_reader_entry :: proc() {
-	when PLAYBACK_BENCH {
-		if len(os.args) < 2 {return}
-		if os.args[1] == "--transport-bench" {os.exit(reader.transport_entry(os.args[2:]))}
-		if os.args[1] == "--decoder-bench" {os.exit(decoder_entry(os.args[2:]))}
-		if os.args[1] == "--reader-bench" {os.exit(reader.entry(os.args[2:]))}
+	if !PLAYBACK_BENCH || len(os.args) < 2 {return}
+	switch os.args[1] {
+	case "--transport-bench":
+		os.exit(reader.transport_entry(os.args[2:]))
+	case "--decoder-bench":
+		os.exit(decoder_entry(os.args[2:]))
+	case "--reader-bench":
+		os.exit(reader.entry(os.args[2:]))
 	}
 }
