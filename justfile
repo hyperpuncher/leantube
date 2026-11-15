@@ -9,11 +9,13 @@ app_version := `jq -r .version app/appinfo.json`
 default:
 	@just --list
 
-# Type-check the local preview, UI tests, and shared code.
+# Type-check the local preview, UI tests, TV entry points, and shared code.
 check: host-qr
 	odin check src -vet
 	odin check src -vet -define:UI_TEST=true
 	odin check src/playback -no-entry-point -vet
+	odin check src -target:linux_arm32
+	odin check src -vet -target:linux_arm32 -define:PLAYBACK_BENCH=true
 	shopt -s globstar; shellcheck -x scripts/**/*.sh tests/**/*.sh
 	bun check
 

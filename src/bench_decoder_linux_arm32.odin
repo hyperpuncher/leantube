@@ -140,9 +140,7 @@ when PLAYBACK_BENCH {
 			if api != nil {
 				if sync.atomic_load(&status.error) != 0 {failure = true; break}
 				if sync.atomic_load(&status.loaded) != 0 && !bound {
-					task: c.long
-					AcbAPI_setSinkType(acb_id, 0)
-					AcbAPI_setState(acb_id, .Foreground, .Loaded, &task)
+					_ = display_started()
 					bound = true
 				}
 				if !buffering &&

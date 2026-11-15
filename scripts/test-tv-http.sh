@@ -6,7 +6,6 @@ libs=build/tv-http-libs
 if [[ -d "$libs" ]]; then trash -- "$libs"; fi
 mkdir -p "$libs"
 cp -L "$WEBOS_PLATFORM/runtime/"{libcurl.so.4,libssl.so.4,libcrypto.so.4,libz.so.1,libatomic.so.1,libnghttp3.so.9,libngtcp2.so.16,libngtcp2_crypto_ossl.so.0} "$libs/"
-"$WEBOS_SDK/bin/arm-webos-linux-gnueabi-strip" --strip-unneeded "$libs/"*
 "$WEBOS_ODIN" build tests/http -target:linux_arm32 -microarch:cortex-a9 \
 	-build-mode:obj -use-single-module -out:build/http-check.o -debug -o:minimal
 "$WEBOS_SDK/bin/arm-webos-linux-gnueabi-gcc" build/http-check.o \
