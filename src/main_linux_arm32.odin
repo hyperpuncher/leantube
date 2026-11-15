@@ -167,6 +167,7 @@ main :: proc() {
 		poll_player()
 		poll_card_press(sdl.GetTicks())
 		poll_login_tick()
+		apply_pending_seek(sdl.GetTicks())
 		auto_skip_sponsor()
 		write_control_state()
 		expire_player_controls()

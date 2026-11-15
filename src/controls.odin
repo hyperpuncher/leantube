@@ -10,10 +10,9 @@ Control_Button :: struct {
 	icon: Icon,
 	key:  sdl.Keycode,
 }
-PAUSE_BUTTON :: Control_Button{"pause", .Pause, sdl.K_RETURN}
 SLOWER_BUTTON :: Control_Button{"slower", .Slower, sdl.K_DOWN}
 FASTER_BUTTON :: Control_Button{"faster", .Faster, sdl.K_UP}
-control_buttons := [?]Control_Button{PAUSE_BUTTON, SLOWER_BUTTON, FASTER_BUTTON}
+control_buttons := [?]Control_Button{SLOWER_BUTTON, FASTER_BUTTON}
 
 control_button :: proc(button: Control_Button) {
 	color: clay.Color
@@ -31,11 +30,7 @@ control_button :: proc(button: Control_Button) {
 		backgroundColor = color,
 		cornerRadius = clay.CornerRadiusAll(scaled(32)),
 	},
-	) {
-		glyph := button.icon
-		if button.key == sdl.K_RETURN && paused {glyph = .Play}
-		icon(glyph)
-	}
+	) {icon(button.icon)}
 }
 
 controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: bool) {
@@ -175,41 +170,46 @@ timeline_hovered :: proc() -> bool {return(
 		clay.PointerOver(clay.ID("timeline-knob")) \
 	)}
 
+// The track width depends on the labels beside it, so spans are fractions of
+// the track. A floating row fills the track, and a spacer moves each span.
 timeline_span :: proc(
 	id: clay.ElementId,
 	start_ms, end_ms: f64,
-	width, height: f32,
+	height: f32,
 	color: clay.Color,
 	layer: i16,
 	rounded: bool = true,
 ) {
 	fill := color
 	fill[3] = TIMELINE_ALPHA
-	if clay.UI(id)(
+	if clay.UI()(
 	{
-		layout = {
-			sizing = {
-				width = clay.SizingFixed(f32((end_ms - start_ms) / duration_ms) * width),
-				height = clay.SizingFixed(height),
-			},
-		},
-		backgroundColor = fill,
-		cornerRadius = clay.CornerRadiusAll(rounded ? height / 2 : 0),
-		floating = {
-			attachTo = .Parent,
-			offset = {f32(start_ms / duration_ms) * width, 0},
-			zIndex = layer,
-			pointerCaptureMode = .Passthrough,
-		},
+		layout = {sizing = {width = clay.SizingGrow({}), height = clay.SizingGrow({})}},
+		floating = {attachTo = .Parent, zIndex = layer, pointerCaptureMode = .Passthrough},
 	},
-	) {}
+	) {
+		if clay.UI()(
+		{layout = {sizing = {width = clay.SizingPercent(f32(start_ms / duration_ms))}}},
+		) {}
+		if clay.UI(id)(
+		{
+			layout = {
+				sizing = {
+					width = clay.SizingPercent(f32((end_ms - start_ms) / duration_ms)),
+					height = clay.SizingFixed(height),
+				},
+			},
+			backgroundColor = fill,
+			cornerRadius = clay.CornerRadiusAll(rounded ? height / 2 : 0),
+		},
+		) {}
+	}
 }
 
 // The track is wide and the knob marks the position; a click seeks to it.
 timeline_bar :: proc() {
 	track_color := COLOR_TRACK
 	track_color[3] = TIMELINE_ALPHA
-	width := max(0, view_width - scaled(96))
 	hovered := timeline_hovered()
 	height := scaled(hovered ? TIMELINE_TRACK_HOVER : TIMELINE_TRACK)
 	knob := scaled(hovered ? TIMELINE_KNOB_HOVER : TIMELINE_KNOB)
@@ -235,14 +235,13 @@ timeline_bar :: proc() {
 				start := clamp(timeline.buffer_start_ms, 0, duration_ms)
 				end := clamp(timeline.buffer_end_ms, start, duration_ms)
 				if end >
-				   start {timeline_span(clay.ID("timeline-buffered"), start, end, width, height, COLOR_BUFFERED, 1)}
+				   start {timeline_span(clay.ID("timeline-buffered"), start, end, height, COLOR_BUFFERED, 1)}
 				for segment, i in sponsor_segments {
 					if sb.can_skip(segment, duration_ms) {
 						timeline_span(
 							clay.ID("sponsor-marker", u32(i)),
 							segment.start_ms,
 							segment.end_ms,
-							width,
 							height,
 							COLOR_SPONSOR,
 							2,
@@ -250,35 +249,45 @@ timeline_bar :: proc() {
 						)
 					}
 				}
-				position := clamp(model.display_position(timeline), 0, duration_ms)
+				position := clamp(shown_position(), 0, duration_ms)
 				// Progress stays above markers, including when paused inside a segment.
-				timeline_span(
-					clay.ID("timeline-progress"),
-					0,
-					position,
-					width,
-					height,
-					COLOR_ACCENT,
-					3,
-				)
-				if clay.UI(clay.ID("timeline-knob"))(
+				timeline_span(clay.ID("timeline-progress"), 0, position, height, COLOR_ACCENT, 3)
+				// The spacer ends at the position. Shift the row left by half a
+				// knob, so the knob centre marks the position.
+				if clay.UI()(
 				{
 					layout = {
-						sizing = {width = clay.SizingFixed(knob), height = clay.SizingFixed(knob)},
+						sizing = {width = clay.SizingGrow({}), height = clay.SizingGrow({})},
+						childAlignment = {y = .Center},
 					},
-					backgroundColor = COLOR_ACCENT,
-					cornerRadius = clay.CornerRadiusAll(knob / 2),
 					floating = {
 						attachTo = .Parent,
-						offset = {
-							f32(position / duration_ms) * width - knob / 2,
-							(height - knob) / 2,
-						},
+						offset = {-knob / 2, 0},
 						zIndex = 4,
 						pointerCaptureMode = .Passthrough,
 					},
 				},
-				) {}
+				) {
+					if clay.UI()(
+					{
+						layout = {
+							sizing = {width = clay.SizingPercent(f32(position / duration_ms))},
+						},
+					},
+					) {}
+					if clay.UI(clay.ID("timeline-knob"))(
+					{
+						layout = {
+							sizing = {
+								width = clay.SizingFixed(knob),
+								height = clay.SizingFixed(knob),
+							},
+						},
+						backgroundColor = COLOR_ACCENT,
+						cornerRadius = clay.CornerRadiusAll(knob / 2),
+					},
+					) {}
+				}
 			}
 		}
 	}
@@ -314,56 +323,42 @@ player_layout :: proc(elapsed, total, speed, quality: string) {
 			player_channel_button()
 		}
 		if clay.UI()({layout = {sizing = {height = clay.SizingGrow({})}}}) {}
+		// One row: time, timeline, duration, speed, and quality.
 		if clay.UI(clay.ID("controls"))(
 		{
 			layout = {
 				sizing = {width = clay.SizingGrow({})},
-				layoutDirection = .TopToBottom,
-				padding = padding(48, 48, 24, 24),
-				childGap = spacing(16),
+				padding = padding(48, 48, 24, 32),
+				childGap = spacing(24),
+				childAlignment = {y = .Center},
 			},
 		},
 		) {
+			label(elapsed, .Body)
 			timeline_bar()
-			if clay.UI()(
-			{
-				layout = {
-					sizing = {width = clay.SizingGrow({})},
-					childGap = spacing(20),
-					childAlignment = {y = .Center},
-				},
-			},
-			) {
-				control_button(PAUSE_BUTTON)
-				if clay.UI()({layout = {childGap = spacing(8), childAlignment = {y = .Center}}}) {
-					label(elapsed, .Body)
-					label("/", .Body, COLOR_MUTED)
-					label(total, .Body, COLOR_MUTED)
-				}
-				if clay.UI()({layout = {sizing = {width = clay.SizingGrow({})}}}) {}
-				// The buttons step the rate that sits between them.
-				if clay.UI()({layout = {childGap = spacing(12), childAlignment = {y = .Center}}}) {
-					control_button(SLOWER_BUTTON)
-					if clay.UI()(
-					{
-						layout = {
-							sizing = {width = clay.SizingFixed(scaled(112))},
-							childAlignment = {x = .Center, y = .Center},
-						},
-					},
-					) {label(speed, .Body, COLOR_MUTED)}
-					control_button(FASTER_BUTTON)
-				}
-				// Reserve the quality slot before the media service reports it.
+			label(total, .Body, COLOR_MUTED)
+			// The buttons step the rate that sits between them.
+			if clay.UI()({layout = {childGap = spacing(4), childAlignment = {y = .Center}}}) {
+				control_button(SLOWER_BUTTON)
 				if clay.UI()(
 				{
 					layout = {
-						sizing = {width = clay.SizingFixed(scaled(112))},
-						childAlignment = {x = .Right, y = .Center},
+						sizing = {width = clay.SizingFixed(scaled(80))},
+						childAlignment = {x = .Center, y = .Center},
 					},
 				},
-				) {if quality != "" {label(quality, .Body, COLOR_MUTED)}}
+				) {label(speed, .Body, COLOR_MUTED)}
+				control_button(FASTER_BUTTON)
 			}
+			// Reserve the quality slot before the media service reports it.
+			if clay.UI()(
+			{
+				layout = {
+					sizing = {width = clay.SizingFixed(scaled(64))},
+					childAlignment = {x = .Right, y = .Center},
+				},
+			},
+			) {if quality != "" {label(quality, .Body, COLOR_MUTED)}}
 		}
 	}
 }

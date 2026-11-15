@@ -202,6 +202,7 @@ stop_playback :: proc(from_recovery := false) {
 	player_api, player_status = nil, nil
 	reader.close(player_reader); player_reader = nil
 	player_pending_seek = -1
+	seek_pending = {}
 	loaded, paused, resolving = false, false, false
 	delete(sponsor_segments); sponsor_segments = nil
 	timeline = {

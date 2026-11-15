@@ -179,7 +179,7 @@ render :: proc(renderer: ^sdl.Renderer, wheel: f32 = 0, dt: f32 = 1.0 / 60) -> b
 	if browsing {
 		grid_layout()
 	} else if controls_visible {
-		elapsed = model.time_label(model.display_position(timeline))
+		elapsed = model.time_label(shown_position())
 		total = model.time_label(duration_ms, "--:--")
 		quality = model.quality_label(stream_width, stream_height)
 		speed = fmt.aprintf("%gx", rate)

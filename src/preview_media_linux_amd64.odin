@@ -38,6 +38,8 @@ start_video :: proc() {
 	loaded = true
 	paused = true
 	duration_ms = catalog.videos[selected].duration_ms
+	// The host has no stream. Show a typical label so the layout reserves it.
+	stream_width, stream_height = 3840, 2160
 	timeline = {
 		position_ms    = model.video_resume_position(catalog.videos[selected]),
 		seek_target_ms = -1,
@@ -51,6 +53,7 @@ stop_playback :: proc() {
 	resolving = false
 	delete(sponsor_segments); sponsor_segments = nil
 	return_to_grid = false
+	seek_pending = {}
 	library_focus_pending = true
 	dirty = true
 }
@@ -74,6 +77,7 @@ run_dev :: proc(renderer: ^sdl.Renderer) {
 		poll_network(renderer)
 		poll_card_press(sdl.GetTicks())
 		poll_login_tick()
+		apply_pending_seek(sdl.GetTicks())
 		expire_player_controls()
 		expire_toast(sdl.GetTicks())
 		if timeline.seek_target_ms >= 0 {

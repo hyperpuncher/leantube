@@ -77,9 +77,7 @@ key :: proc(code: sdl.Keycode, window: ^sdl.Window = nil, mods: sdl.Keymod = {})
 		case sdl.K_MEDIA_PAUSE:
 			_ = player_pause(true)
 		case sdl.K_LEFT, sdl.K_RIGHT:
-			offset: f64 = code == sdl.K_RIGHT ? 10000 : -10000
-			target := model.seek_target(timeline, offset, duration_ms)
-			seek_to(target)
+			queue_seek(code == sdl.K_RIGHT ? 10000 : -10000)
 		case sdl.K_UP, sdl.K_DOWN:
 			delta: f64 = code == sdl.K_DOWN ? -0.25 : 0.25
 			next := clamp(rate + delta, 0.5, 2)

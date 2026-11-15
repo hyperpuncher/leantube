@@ -526,8 +526,8 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	assert(timeline.position_ms == duration_ms / 2)
 	snapshot(renderer, surface, "player-paused")
 	// Sample the fill outside each icon or avatar, before and after hover.
-	hover_ids := [4]string{"pause", "slower", "faster", "player-channel"}
-	background: [4]u8
+	hover_ids := [3]string{"slower", "faster", "player-channel"}
+	background: [3]u8
 	for id, i in hover_ids {
 		box := clay.GetElementData(clay.ID(id)).boundingBox
 		assert(
@@ -570,12 +570,20 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	clay.SetPointerState({-1, -1}, false)
 	assert(render(renderer))
 	panel := clay.GetElementData(clay.ID("controls")).boundingBox
-	play_button := clay.GetElementData(clay.ID("pause")).boundingBox
+	track := clay.GetElementData(clay.ID("timeline-track")).boundingBox
 	key(sdl.K_RETURN)
 	assert(!paused)
 	snapshot(renderer, surface, "player")
-	assert(play_button == clay.GetElementData(clay.ID("pause")).boundingBox)
+	assert(track == clay.GetElementData(clay.ID("timeline-track")).boundingBox)
 	assert(panel.y + panel.height == view_height)
+	assert(track.width > view_width * 0.4, "the timeline must keep most of the row")
+	// Seek presses add up and move the knob at once. One seek follows them.
+	start := timeline.position_ms
+	for _ in 0 ..< 3 {key(sdl.K_RIGHT)}
+	assert(timeline.seek_target_ms < 0 && shown_position() == start + 30000)
+	apply_pending_seek(sdl.GetTicks() + SEEK_SETTLE_MS)
+	assert(!seek_pending.active && timeline.seek_target_ms == start + 30000)
+	model.seek_done(&timeline)
 	key(sdl.K_AC_BACK)
 	assert(return_to_grid)
 	stop_playback()
