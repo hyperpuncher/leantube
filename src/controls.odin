@@ -14,23 +14,29 @@ SLOWER_BUTTON :: Control_Button{"slower", .Slower, sdl.K_DOWN}
 FASTER_BUTTON :: Control_Button{"faster", .Faster, sdl.K_UP}
 control_buttons := [?]Control_Button{SLOWER_BUTTON, FASTER_BUTTON}
 
+// The rate stepper is one light pill. It is muted like the other labels,
+// and a button turns white under the pointer.
+STEPPER_FILL :: clay.Color{255, 255, 255, 24}
+STEPPER_HOVER :: clay.Color{255, 255, 255, 40}
+STEPPER_BUTTON :: 44
+STEPPER_INSET :: 6
+stepper_muted := COLOR_MUTED
+
 control_button :: proc(button: Control_Button) {
-	color: clay.Color
-	if clay.PointerOver(clay.ID(button.id)) {
-		color = COLOR_HOVER
-		color[3] = COLOR_BADGE[3]
-	}
+	hovered := clay.PointerOver(clay.ID(button.id))
 	if clay.UI(clay.ID(button.id))(
 	{
 		layout = {
-			sizing = {width = clay.SizingFixed(scaled(64)), height = clay.SizingFixed(scaled(64))},
-			padding = clay.PaddingAll(spacing(8)),
+			sizing = {
+				width = clay.SizingFixed(scaled(STEPPER_BUTTON)),
+				height = clay.SizingFixed(scaled(STEPPER_BUTTON)),
+			},
 			childAlignment = {x = .Center, y = .Center},
 		},
-		backgroundColor = color,
-		cornerRadius = clay.CornerRadiusAll(scaled(32)),
+		backgroundColor = hovered ? STEPPER_HOVER : {},
+		cornerRadius = clay.CornerRadiusAll(scaled(STEPPER_BUTTON / 2)),
 	},
-	) {icon(button.icon)}
+	) {icon(button.icon, 28, hovered ? nil : &stepper_muted)}
 }
 
 controls_pointer :: proc(renderer: ^sdl.Renderer, x, y: f32, down, activate: bool) {
@@ -293,6 +299,14 @@ timeline_bar :: proc() {
 	}
 }
 
+// Labels centre their line box, which puts digits below the row centre.
+// Lift the ink to the centre of the track and the icons.
+digits_label :: proc(text: string, color: clay.Color = COLOR_TEXT) {
+	if clay.UI()(
+	{layout = {padding = {bottom = u16(max(0, 2 * digit_ink_shift[.Body]))}}},
+	) {label(text, .Body, color)}
+}
+
 player_layout :: proc(elapsed, total, speed, quality: string) {
 	if clay.UI(clay.ID("root"))(
 	{
@@ -334,20 +348,30 @@ player_layout :: proc(elapsed, total, speed, quality: string) {
 			},
 		},
 		) {
-			label(elapsed, .Body)
+			digits_label(elapsed)
 			timeline_bar()
-			label(total, .Body, COLOR_MUTED)
+			digits_label(total, COLOR_MUTED)
 			// The buttons step the rate that sits between them.
-			if clay.UI()({layout = {childGap = spacing(4), childAlignment = {y = .Center}}}) {
+			if clay.UI(clay.ID("rate"))(
+			{
+				layout = {
+					padding = clay.PaddingAll(spacing(STEPPER_INSET)),
+					childGap = spacing(4),
+					childAlignment = {y = .Center},
+				},
+				backgroundColor = STEPPER_FILL,
+				cornerRadius = clay.CornerRadiusAll(scaled(STEPPER_BUTTON / 2 + STEPPER_INSET)),
+			},
+			) {
 				control_button(SLOWER_BUTTON)
 				if clay.UI()(
 				{
 					layout = {
-						sizing = {width = clay.SizingFixed(scaled(80))},
+						sizing = {width = clay.SizingFixed(scaled(104))},
 						childAlignment = {x = .Center, y = .Center},
 					},
 				},
-				) {label(speed, .Body, COLOR_MUTED)}
+				) {digits_label(speed, COLOR_MUTED)}
 				control_button(FASTER_BUTTON)
 			}
 			// Reserve the quality slot before the media service reports it.
@@ -358,7 +382,7 @@ player_layout :: proc(elapsed, total, speed, quality: string) {
 					childAlignment = {x = .Right, y = .Center},
 				},
 			},
-			) {if quality != "" {label(quality, .Body, COLOR_MUTED)}}
+			) {if quality != "" {digits_label(quality, COLOR_MUTED)}}
 		}
 	}
 }

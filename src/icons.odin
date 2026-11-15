@@ -102,7 +102,8 @@ centered_spinner :: proc() {
 	) {icon(.Spinner)}
 }
 
-icon :: proc(id: Icon, size: f32 = 48) {
+// Icons are white. A tint borrows a static color, so it outlives the layout.
+icon :: proc(id: Icon, size: f32 = 48, tint: ^clay.Color = nil) {
 	if clay.UI()(
 	{
 		layout = {
@@ -112,6 +113,7 @@ icon :: proc(id: Icon, size: f32 = 48) {
 			},
 		},
 		image = {imageData = rawptr(icons[id])},
+		userData = tint,
 	},
 	) {}
 }

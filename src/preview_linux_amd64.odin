@@ -559,8 +559,8 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 				nil,
 			),
 		)
-		color := id == "player-channel" ? COLOR_TRACK : COLOR_HOVER
-		alpha := COLOR_BADGE[3] / 255
+		color := id == "player-channel" ? COLOR_TRACK : STEPPER_HOVER
+		alpha := (id == "player-channel" ? COLOR_BADGE[3] : STEPPER_HOVER[3]) / 255
 		expected := color[0] * alpha + f32(background[i]) * (1 - alpha)
 		assert(
 			math.abs(f32(red) - expected) <= 2,

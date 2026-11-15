@@ -182,7 +182,7 @@ render :: proc(renderer: ^sdl.Renderer, wheel: f32 = 0, dt: f32 = 1.0 / 60) -> b
 		elapsed = model.time_label(shown_position())
 		total = model.time_label(duration_ms, "--:--")
 		quality = model.quality_label(stream_width, stream_height)
-		speed = fmt.aprintf("%gx", rate)
+		speed = fmt.aprintf("%g×", rate)
 		player_layout(elapsed, total, speed, quality)
 	}
 	toast_layout()
@@ -310,7 +310,19 @@ render_commands :: proc(
 					texture,
 					{source.x / width, source.y / height, source.w / width, source.h / height},
 				) {return false}
-			} else if !sdl.RenderTexture(renderer, texture, &source, &rect) {return false}
+			} else {
+				tint := cast(^clay.Color)command.userData
+				if tint != nil &&
+				   !sdl.SetTextureColorMod(
+						   texture,
+						   u8(tint[0]),
+						   u8(tint[1]),
+						   u8(tint[2]),
+					   ) {return false}
+				drawn := sdl.RenderTexture(renderer, texture, &source, &rect)
+				if tint != nil && !sdl.SetTextureColorMod(texture, 255, 255, 255) {return false}
+				if !drawn {return false}
+			}
 		case .Custom:
 			data := command.renderData.custom
 			if data.customData == &search_editor {
