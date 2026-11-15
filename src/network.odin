@@ -238,6 +238,12 @@ resolve_selected :: proc(position_ms: f64 = 0, start_paused: bool = false) {
 	notice = ""
 	dirty = true
 	delete(sponsor_segments); sponsor_segments = nil
+	video := catalog.videos[selected]
+	card_avatar: ^sdl.Texture
+	if video.cover_index >= 0 && video.cover_index < len(card_avatars) {
+		card_avatar = card_avatars[video.cover_index]
+	}
+	show_player_channel(model.video_channel_id(video), card_avatar)
 	if !submit_network(
 		{
 			kind = .Resolve,
@@ -271,25 +277,33 @@ apply_stream :: proc(renderer: ^sdl.Renderer, result: ^Network_Result) {
 			catalog.videos[selected].title = result.stream.title
 			result.stream.title = ""
 		}
-		player_channel_id = result.stream.channel_id
-		result.stream.channel_id = ""
+		if result.stream.channel_id != player_channel_id {
+			clear_player_channel()
+			show_player_channel(result.stream.channel_id)
+		}
 		fmt.printf("{{\"event\":\"stream\",\"client\":\"%s\"}}\n", result.stream.client)
 		load_video(result.stream, renderer, result.position_ms, result.start_paused)
-		if player_channel_id != "" {
-			player_avatar := [1]Image_Request {
-				{
-					source = strings.clone(player_channel_id),
-					index = -1,
-					target = 2 * PLAYER_AVATAR_SIZE,
-					page = page,
-					playback = playback,
-				},
-			}
-			queue_images(player_avatar[:], false)
-		}
 		show_player_controls()
 	}
 	dirty = true
+}
+
+// Show the card's small avatar at once, if there is one. The larger avatar
+// replaces it. Its disk cache uses the channel ID.
+show_player_channel :: proc(channel_id: string, placeholder: ^sdl.Texture = nil) {
+	if channel_id == "" {return}
+	player_channel_id = strings.clone(channel_id)
+	if placeholder != nil {placeholder.refcount += 1; player_channel_avatar = placeholder}
+	request := [1]Image_Request {
+		{
+			source = strings.clone(channel_id),
+			index = -1,
+			target = 2 * PLAYER_AVATAR_SIZE,
+			page = page,
+			playback = playback,
+		},
+	}
+	queue_images(request[:], false)
 }
 
 poll_network :: proc(renderer: ^sdl.Renderer) {
