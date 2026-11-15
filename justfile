@@ -136,14 +136,15 @@ build-release:
 test-tv-layout:
 	bash scripts/test-tv-layout.sh
 
-package: build-release
-	ares-package build/app -o build
-
-# Stage the release IPK without publishing or TV access.
-release: package
+# Build the release IPK in build/release/<version>/ without TV access.
+build-package: build-release
 	if [[ -d build/release/{{app_version}} ]]; then trash -- build/release/{{app_version}}; fi
 	mkdir -p build/release/{{app_version}}
-	cp build/{{app_id}}_{{app_version}}_arm.ipk build/release/{{app_version}}/
+	ares-package build/app -o build/release/{{app_version}}
+
+# Bump the version, then commit and tag it. Pushing the tag publishes it.
+release part:
+	bash scripts/release.sh {{quote(part)}}
 
 # Check live search, cover download, resolution, and CDN access locally.
 test-youtube:
@@ -182,8 +183,8 @@ resume:
 state:
 	ares-shell -r 'cat /tmp/leantube-state.json' | jq .
 
-install: package
-	ares-install build/{{app_id}}_{{app_version}}_arm.ipk
+install: build-package
+	ares-install build/release/{{app_version}}/{{app_id}}_{{app_version}}_arm.ipk
 
 run:
 	ares-launch {{app_id}}

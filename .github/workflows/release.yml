@@ -44,7 +44,7 @@ jobs:
               run: just setup
 
             - name: Build app package
-              run: just release
+              run: just build-package
 
             - uses: actions/upload-artifact@v7
               with:

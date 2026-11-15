@@ -22,16 +22,17 @@ package is not updated.
 run `just setup` to build the pinned SDK dependencies and the ARM32 soft-float
 Odin compiler. all build and package tasks below run without TV access.
 
-| task                 | result                            |
-| -------------------- | --------------------------------- |
-| `just build`         | development app in `build/app/`   |
-| `just build-release` | optimized app in `build/app/`     |
-| `just package`       | IPK in `build/`                   |
-| `just release`       | IPK in `build/release/<version>/` |
+| task                               | result                              |
+| ---------------------------------- | ----------------------------------- |
+| `just build`                       | development app in `build/app/`     |
+| `just build-release`               | optimized app in `build/app/`       |
+| `just build-package`               | IPK in `build/release/<version>/`   |
+| `just release patch\|minor\|major` | checked, committed, and tagged bump |
 
 [`app/appinfo.json`](app/appinfo.json) supplies the app id, version, and package
-metadata. `just release` creates a local package only. a manual workflow run
-saves a build artifact only. publication requires a pushed version tag.
+metadata. `just release` runs the checks and tests, bumps the version, commits,
+and tags. it does not push. a manual workflow run saves a build artifact only.
+publication requires a pushed version tag.
 
 the release workflow uploads the IPK to a draft GitHub release. it then uses
 GitHub's asset hash and size to create `repo.json`. feed links use the version
@@ -48,7 +49,7 @@ the disk cache removes the oldest-saved images when it needs space. cache hits
 do not update their age. failed cache writes do not prevent image display.
 
 use `IMAGE_CACHE_MIB=128 just build-release` to override the disk limit. the
-same override works with `just release`. accepted values are
+same override works with `just build-package`. accepted values are
 0 through 256. zero disables new disk image writes. startup trimming removes
 cached `.image` files only, not account data.
 
