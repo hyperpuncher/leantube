@@ -83,3 +83,40 @@ check_login_ui :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	poll_network(renderer)
 	assert(!login_screen && login_code == "")
 }
+
+check_account_ui :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
+	// Local fixtures only. Never load or modify a real account file here.
+	saved_accounts, saved_active := auth_accounts, auth_active
+	saved_signed_in, saved_avatars := signed_in, account_avatars
+	auth_accounts = make([dynamic]Auth_Token)
+	append(&auth_accounts, Auth_Token{name = "Alice"}, Auth_Token{name = "Bob"})
+	auth_active = 0
+	signed_in = true
+	account_avatars = {}
+	account_avatars[0] = load_texture(renderer, "tests/ui/cover.webp")
+	assert(account_avatars[0] != nil)
+	defer {
+		close_account_avatars()
+		delete(auth_accounts)
+		auth_accounts, auth_active = saved_accounts, saved_active
+		signed_in, account_avatars = saved_signed_in, saved_avatars
+		account_menu = false
+	}
+	snapshot(renderer, surface, "account-avatar")
+	avatar := clay.GetElementData(clay.ID("account-avatar"))
+	assert(avatar.found && avatar.boundingBox.width == avatar.boundingBox.height)
+	assert(!clay.GetElementData(clay.ID("sign-out")).found)
+	account_menu = true
+	snapshot(renderer, surface, "users")
+	assert(clay.GetElementData(clay.ID("account-row", 0)).found)
+	assert(clay.GetElementData(clay.ID("account-row", 1)).found)
+	assert(clay.GetElementData(clay.ID("add-account")).found)
+	assert(clay.GetElementData(clay.ID("sign-out")).found)
+	account_menu_selected = 0
+	key(sdl.K_DOWN)
+	assert(account_menu_selected == 1)
+	key(sdl.K_UP)
+	assert(account_menu_selected == 0)
+	key(sdl.K_AC_BACK)
+	assert(!account_menu && running)
+}
