@@ -1,3 +1,4 @@
+#+test
 package playback
 
 import "core:fmt"

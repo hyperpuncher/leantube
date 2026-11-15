@@ -1,3 +1,4 @@
+#+test
 package diagnostics
 
 import "core:testing"
