@@ -261,18 +261,7 @@ card_action_icon :: proc(action: model.Card_Action) -> (glyph: Icon) {
 }
 
 card_menu_layout :: proc() {
-	if clay.UI(clay.ID("card-menu-scrim"))(
-	{
-		layout = {
-			sizing = {
-				width = clay.SizingFixed(view_width),
-				height = clay.SizingFixed(view_height),
-			},
-		},
-		backgroundColor = {0, 0, 0, 160},
-		floating = {attachTo = .Root, zIndex = 10},
-	},
-	) {}
+	modal_scrim()
 	if clay.UI(clay.ID("card-menu"))(
 	{
 		layout = {

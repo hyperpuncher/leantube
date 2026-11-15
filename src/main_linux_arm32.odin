@@ -136,15 +136,7 @@ main :: proc() {
 		u32(size_of(clay.ElementDeclaration)),
 		u32(size_of(clay.ErrorData)),
 	) {fmt.eprintln("Clay ABI mismatch"); return}
-	clay.SetMaxElementCount(8192)
-	clay.SetMaxMeasureTextCacheWordCount(32768)
-	clay_memory = make([]u8, int(clay.MinMemorySize()))
-	clay.Initialize(
-		clay.CreateArenaWithCapacityAndMemory(uint(len(clay_memory)), raw_data(clay_memory)),
-		{},
-		{handler = clay_error},
-	)
-	clay.SetMeasureTextFunction(measure_text, nil)
+	clay_memory = open_clay()
 	if !sdl.SetRenderDrawBlendMode(renderer, sdl.BLENDMODE_BLEND) {return}
 	if !open_tv_cursor() {fmt.eprintln("cursor failed:", sdl.GetError())}
 	if !open_text(renderer) {fmt.eprintln("UI assets failed:", sdl.GetError()); return}

@@ -37,10 +37,8 @@ set_account_avatar :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface, url: 
 	// Match by URL, not the active account or an index saved before sign-out.
 	for token, i in auth_accounts {
 		if token.avatar_url != url {continue}
-		texture := sdl.CreateTextureFromSurface(renderer, surface)
+		texture := upload_surface(renderer, surface)
 		if texture == nil {continue}
-		_ = sdl.SetTextureBlendMode(texture, sdl.BLENDMODE_BLEND)
-		_ = sdl.SetTextureScaleMode(texture, .LINEAR)
 		if previous := account_avatars[i]; previous != nil {sdl.DestroyTexture(previous)}
 		account_avatars[i] = texture
 	}
@@ -419,18 +417,7 @@ account_button :: proc(compact: bool = false) {
 }
 
 account_menu_layout :: proc() {
-	if clay.UI(clay.ID("account-scrim"))(
-	{
-		layout = {
-			sizing = {
-				width = clay.SizingFixed(view_width),
-				height = clay.SizingFixed(view_height),
-			},
-		},
-		backgroundColor = {0, 0, 0, 160},
-		floating = {attachTo = .Root, zIndex = 10},
-	},
-	) {}
+	modal_scrim()
 	width := min(scaled(640), view_width - scaled(64))
 	if clay.UI(clay.ID("account-menu"))(
 	{

@@ -31,6 +31,20 @@ measure_text :: proc "c" (
 	) {running = false; return {}}
 	return {f32(width), f32(height)}
 }
+// The app and preview share one Clay context with the same limits.
+open_clay :: proc() -> []u8 {
+	clay.SetMaxElementCount(8192)
+	clay.SetMaxMeasureTextCacheWordCount(32768)
+	memory := make([]u8, int(clay.MinMemorySize()))
+	clay.Initialize(
+		clay.CreateArenaWithCapacityAndMemory(uint(len(memory)), raw_data(memory)),
+		{},
+		{handler = clay_error},
+	)
+	clay.SetMeasureTextFunction(measure_text, nil)
+	return memory
+}
+
 label :: proc(
 	text: string,
 	style: Text_Style = .Body,

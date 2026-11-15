@@ -16,3 +16,19 @@ COLOR_MUTED :: clay.Color{176, 176, 176, 255}
 POPUP_SHADOW := clay.Color{0, 0, 0, 96}
 // Use the warm accent only on focus outlines and progress.
 COLOR_ACCENT :: clay.Color{250, 88, 36, 255}
+
+// Darken the page behind a centered popup. Popups use zIndex 11.
+modal_scrim :: proc() {
+	if clay.UI()(
+	{
+		layout = {
+			sizing = {
+				width = clay.SizingFixed(view_width),
+				height = clay.SizingFixed(view_height),
+			},
+		},
+		backgroundColor = {0, 0, 0, 160},
+		floating = {attachTo = .Root, zIndex = 10},
+	},
+	) {}
+}

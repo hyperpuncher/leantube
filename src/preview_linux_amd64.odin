@@ -244,16 +244,8 @@ main :: proc() {
 			assert(sdl.SetTextureBlendMode(textures[i], sdl.BLENDMODE_BLEND))
 		}
 	}
-	clay.SetMaxElementCount(8192)
-	clay.SetMaxMeasureTextCacheWordCount(32768)
-	memory := make([]u8, int(clay.MinMemorySize()))
+	memory := open_clay()
 	defer delete(memory)
-	clay.Initialize(
-		clay.CreateArenaWithCapacityAndMemory(uint(len(memory)), raw_data(memory)),
-		{},
-		{handler = clay_error},
-	)
-	clay.SetMeasureTextFunction(measure_text, nil)
 	when UI_TEST {check_layout(renderer, surface)} else {
 		if start_network() {
 			activate_navigation(signed_in ? .Subscriptions : .Home)

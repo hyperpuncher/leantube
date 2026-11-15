@@ -581,18 +581,17 @@ queue_watch_history :: proc(
 	account, generation: u32,
 	finished: bool,
 ) -> bool {
-	request := Network_Request {
-		kind          = .Watch_History,
-		text          = strings.clone(id),
-		account       = account,
-		playback      = generation,
-		history_start = start,
-		position_ms   = position * 1000,
-		finished      = finished,
-	}
-	if chan.try_send(network_requests, request) {return true}
-	free_network_request(&request)
-	return false
+	return submit_network(
+		{
+			kind = .Watch_History,
+			text = strings.clone(id),
+			account = account,
+			playback = generation,
+			history_start = start,
+			position_ms = position * 1000,
+			finished = finished,
+		},
+	)
 }
 
 // Keep image slot IDs stable for replies that are still in flight.
@@ -635,6 +634,28 @@ clear_catalog :: proc(keep_channel: bool = false) {
 	if !keep_channel &&
 	   channel_avatar != nil {sdl.DestroyTexture(channel_avatar); channel_avatar = nil}
 }
+// A new feed starts at its first card, with no stale focus or notice.
+begin_feed :: proc() {
+	channel_focus, rail_focus = false, false
+	restore_selected = -1
+	page += 1
+	selected = 0
+	library_focus_pending = true
+	if scroll := clay.GetScrollContainerData(clay.ID("library-scroll")); scroll.found {
+		scroll.scrollPosition^ = {}
+	}
+	notice = ""
+}
+
+request_feed :: proc(request: Network_Request) {
+	search_loading = true
+	dirty = true
+	if !submit_network(request) {
+		search_loading = false
+		show_notice("Network unavailable")
+	}
+}
+
 start_browse :: proc(id: string, params: string = "", filter: string = "", remember: bool = true) {
 	owned, owned_params, owned_filter :=
 		strings.clone(id), strings.clone(params), strings.clone(filter)
@@ -643,19 +664,8 @@ start_browse :: proc(id: string, params: string = "", filter: string = "", remem
 	delete(browse_id); delete(browse_params); delete(browse_filter)
 	browse_id, browse_params, browse_filter = owned, owned_params, owned_filter
 	clear_catalog(keep_channel)
-	channel_focus = false
-	restore_selected = -1
-	page += 1
-	selected = 0
-	rail_focus = false
-	search_loading = true
-	library_focus_pending = true
-	if scroll := clay.GetScrollContainerData(clay.ID("library-scroll")); scroll.found {
-		scroll.scrollPosition^ = {}
-	}
-	notice = ""
-	dirty = true
-	if !submit_network(
+	begin_feed()
+	request_feed(
 		{
 			kind = .Browse,
 			page = page,
@@ -663,29 +673,21 @@ start_browse :: proc(id: string, params: string = "", filter: string = "", remem
 			params = strings.clone(browse_params),
 			filter = strings.clone(browse_filter),
 		},
-	) {
-		search_loading = false
-		show_notice("Network unavailable")
-	}
+	)
 }
 
 load_more :: proc() {
 	if search_loading ||
 	   catalog.continuation == "" ||
 	   (browse_id == "" && catalog.query == "") {return}
-	search_loading = true
-	dirty = true
-	if !submit_network(
+	request_feed(
 		{
 			kind = browse_id == "" ? .Search : .Browse,
 			page = page,
 			text = strings.clone(browse_id == "" ? catalog.query : browse_id),
 			continuation = strings.clone(catalog.continuation),
 		},
-	) {
-		search_loading = false
-		show_notice("Network unavailable")
-	}
+	)
 }
 
 open_selected :: proc() {
@@ -705,23 +707,11 @@ start_search :: proc(query: string = "Linus Tech Tips", keep_history: bool = fal
 	delete(browse_id); browse_id = ""
 	delete(browse_params); browse_params = ""
 	delete(browse_filter); browse_filter = ""
-	channel_focus = false
-	restore_selected = -1
 	clear_catalog()
 	catalog.query = strings.clone(owned)
-	page += 1
-	selected = 0
-	search_loading = true
 	rail_active = .Search
-	rail_focus = false
-	library_focus_pending = true
-	if scroll := clay.GetScrollContainerData(clay.ID("library-scroll"));
-	   scroll.found {scroll.scrollPosition^ = {}}
-	notice = ""
-	dirty = true
-	if !submit_network(
-		{kind = .Search, page = page, text = owned},
-	) {search_loading = false; show_notice("Network unavailable")}
+	begin_feed()
+	request_feed({kind = .Search, page = page, text = owned})
 }
 resolve_selected :: proc(position_ms: f64 = 0, start_paused: bool = false) {
 	if selected < 0 || selected >= len(catalog.videos) {return}
@@ -933,10 +923,8 @@ poll_network :: proc(renderer: ^sdl.Renderer) {
 				slot = result.kind == .Cover ? &textures[index] : &card_avatars[index]
 			}
 			if result.surface == nil {continue}
-			texture := sdl.CreateTextureFromSurface(renderer, result.surface)
+			texture := upload_surface(renderer, result.surface)
 			if texture == nil {continue}
-			_ = sdl.SetTextureBlendMode(texture, sdl.BLENDMODE_BLEND)
-			_ = sdl.SetTextureScaleMode(texture, .LINEAR)
 			if slot^ != nil {sdl.DestroyTexture(slot^)}
 			slot^ = texture
 		case .Stream:

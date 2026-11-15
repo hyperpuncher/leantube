@@ -46,16 +46,21 @@ ICON_FILES :: [Icon]string {
 icons: [Icon]^sdl.Texture
 icon_pixels: c.int
 
-load_texture :: proc(renderer: ^sdl.Renderer, path: cstring) -> ^sdl.Texture {
-	texture := img.LoadTexture(renderer, path)
-	if texture == nil {return nil}
-	// Opaque covers need blending for the rounded edge coverage.
-	if !sdl.SetTextureBlendMode(texture, sdl.BLENDMODE_BLEND) ||
-	   !sdl.SetTextureScaleMode(texture, .LINEAR) {
+// SDL textures scale linearly by default. Opaque covers still need blending
+// for the rounded edge coverage.
+upload_surface :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) -> ^sdl.Texture {
+	texture := sdl.CreateTextureFromSurface(renderer, surface)
+	if texture != nil && !sdl.SetTextureBlendMode(texture, sdl.BLENDMODE_BLEND) {
 		sdl.DestroyTexture(texture)
 		return nil
 	}
 	return texture
+}
+
+load_texture :: proc(renderer: ^sdl.Renderer, path: cstring) -> ^sdl.Texture {
+	surface := img.Load(path)
+	defer sdl.DestroySurface(surface)
+	return surface == nil ? nil : upload_surface(renderer, surface)
 }
 
 open_icons :: proc(renderer: ^sdl.Renderer) -> bool {
