@@ -203,6 +203,11 @@ logs:
 status:
 	bash scripts/luna.sh com.webos.media/getActivePipelines | jq --arg id {{app_id}} '[.[] | select(.appId == $id) | {id,mediaState,is_foreground,resource}]'
 
+# Turn only the panel off or on. This is not standby, so apps keep running.
+# A repeated request fails with the current state, so check the result state instead.
+screen state:
+	bash scripts/luna.sh com.webos.service.tvpower/power/{{ if state == "off" { "turnOffScreen" } else if state == "on" { "turnOnScreen" } else { error("use: just screen on|off") } }} | jq -er --arg want {{ quote(if state == "off" { "Screen Off" } else { "Active" }) }} 'if .state == $want then .state else error(.errorText // "unexpected screen state") end'
+
 # This capture API requires dimensions. Allow explicit size overrides.
 capture width="1920" height="1080":
 	bash scripts/capture.sh {{quote(width)}} {{quote(height)}}
