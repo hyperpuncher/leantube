@@ -72,3 +72,13 @@ poll_services :: proc() {
 	for g_main_context_iteration(nil, 0) != 0 {}
 	poll_display()
 }
+
+bus_call :: proc(uri, payload: cstring, reply: Callback = nil) -> bool {
+	if bus == nil {return false}
+	error: LS_Error
+	LSErrorInit(&error)
+	defer LSErrorFree(&error)
+	if LSCall(bus, uri, payload, reply, nil, nil, &error) {return true}
+	fmt.eprintln("bus call failed:", uri, error.error_code, error.message)
+	return false
+}

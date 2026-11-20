@@ -15,20 +15,23 @@ import "core:time"
 Starfish :: struct {}
 // Events handled by LeanTube. Other native events are ignored.
 Starfish_Event :: enum c.int {
-	Frame_Ready   = 0x00, // value is a presentation timestamp in nanoseconds.
-	Error         = 0x12,
-	Error_Text    = 0x13,
-	Loaded        = 0x16,
-	Unloaded      = 0x17,
-	Seek_Done     = 0x19,
-	Playing       = 0x1a,
-	Paused        = 0x1b,
-	End_Of_Stream = 0x1c,
-	Dropped_Frame = 0x30,
+	Frame_Ready       = 0x00, // value is a presentation timestamp in nanoseconds.
+	Error             = 0x12,
+	Error_Text        = 0x13,
+	Preload_Completed = 0x15,
+	Loaded            = 0x16,
+	Unloaded          = 0x17,
+	Seek_Done         = 0x19,
+	Playing           = 0x1a,
+	Paused            = 0x1b,
+	End_Of_Stream     = 0x1c,
+	Dropped_Frame     = 0x30,
 }
 Starfish_Callback :: #type proc "c" (kind: c.int, value: i64, text: cstring, user: rawptr)
 foreign import starfish "system:playerAPIs_C"
 foreign starfish {
+	@(link_name = "StarfishMediaAPIs_hasLoadWithData")
+	sf_has_load_with_data :: proc() -> bool ---
 	@(link_name = "StarfishMediaAPIs_create")
 	sf_create :: proc(_: cstring) -> ^Starfish ---
 	@(link_name = "StarfishMediaAPIs_destroy")
@@ -60,6 +63,7 @@ foreign starfish {
 	sf_unload :: proc(_: ^Starfish) -> bool ---
 }
 Decoder_Status :: struct {
+	legacy:                                             bool, // Fixed before Load starts native callbacks.
 	loaded, unloaded, error, playing, ended, resetting: i32,
 	presentation_updates, dropped, frame_ns:            i64,
 }
@@ -73,9 +77,12 @@ decoder_callback :: proc "c" (kind: c.int, value: i64, text: cstring, user: rawp
 	// Never log event strings, load requests, or packet pointers.
 	#partial switch event {
 	case .Frame_Ready:
+		if s.legacy {sync.atomic_store(&s.loaded, 1)}
 		sync.atomic_store(&s.frame_ns, value); sync.atomic_add(&s.presentation_updates, 1)
 	case .Error, .Error_Text:
 		sync.atomic_store(&s.error, i32(value == 0 ? -1 : value))
+	case .Preload_Completed:
+		if s.legacy {sync.atomic_store(&s.loaded, 1)}
 	case .Loaded:
 		sync.atomic_store(&s.loaded, 1)
 	case .Unloaded:
@@ -99,7 +106,7 @@ decoder_close :: proc(api: ^Starfish, status: ^Decoder_Status) -> bool {
 		poll_services()
 		time.sleep(5 * time.Millisecond)
 	}
-	complete := sync.atomic_load(&status.unloaded) != 0
+	complete := sync.atomic_load(&status.unloaded) != 0 || (status.legacy && accepted)
 	fmt.printf(
 		"{{\"event\":\"decoder_unload\",\"accepted\":%v,\"completed\":%v}}\n",
 		accepted,
@@ -145,6 +152,7 @@ decoder_open :: proc(
 		free(status)
 		return nil, nil
 	}
+	status.legacy = legacy_plane
 	request := starfish_load_request(
 		{
 			app_id = APP_ID,
@@ -172,6 +180,11 @@ decoder_open :: proc(
 	defer delete(body)
 	sf_foreground(api)
 	if !sf_load(api, body, decoder_callback, status) {decoder_close(api, status); return nil, nil}
+	if status.legacy {
+		// Early Starfish assigns the media ID during Load, not construction.
+		sync.atomic_store(&status.playing, 0)
+		legacy_media_id = strings.clone(string(sf_media_id(api)))
+	}
 	fmt.printf(
 		"{{\"event\":\"decoder_load\",\"codec\":\"%s\",\"width\":%d,\"height\":%d,\"fps\":%.6f,\"transfer\":%d,\"audio_rate\":%d,\"audio_channels\":%d}}\n",
 		v.codec,

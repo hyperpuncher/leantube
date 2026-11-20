@@ -22,7 +22,7 @@ Decoder_Status :: struct {
 	frame_ns:                                 i64,
 }
 playback_limits: [4]yt.Video_Limit
-running, paused, loaded, browsing, resolving, return_to_grid, dirty, library_focus_pending: bool
+running, paused, loaded, browsing, resolving, return_to_grid, dirty, library_focus_pending, legacy_plane: bool
 notice: string
 show_notice :: proc(message: string) {notice = message}
 stream_width, stream_height, selected: int
@@ -32,7 +32,7 @@ catalog: model.Catalog
 sponsor_segments: [dynamic]sb.Segment
 fake_api: Starfish
 fake_status: Decoder_Status
-fake_open, fake_close, fake_pause, fake_eos, fake_seeks: int
+fake_open, fake_close, fake_play, fake_pause, fake_eos, fake_seeks: int
 fake_async_seek: bool
 fake_full, fake_seek_failure, fake_rate_audio, fake_controls_visible: bool
 fake_target_ms: i64
@@ -45,11 +45,20 @@ queue_watch_history :: proc(_: string, _: f64, position: f64, _: u32, _: u32, _:
 	return true
 }
 
+sf_has_load_with_data :: proc() -> bool {return !legacy_plane}
 sf_video_limits :: proc(_: cstring, _: ^c.int, _: ^c.int, _: ^c.int) -> bool {return false}
 display_started :: proc() -> bool {return true}
-sf_play :: proc(_: ^Starfish) -> bool {sync.atomic_store(&fake_status.playing, 1); return true}
-sf_pause :: proc(_: ^Starfish) -> bool {fake_pause += 1; sync.atomic_store(&fake_status.playing, 0)
-	return true}
+sf_play :: proc(_: ^Starfish) -> bool {
+	fake_play += 1
+	sync.atomic_store(&fake_status.playing, 1)
+	return true
+}
+sf_pause :: proc(_: ^Starfish) -> bool {
+	fake_pause += 1
+	// Early Starfish does not always send Paused before a resume.
+	if !legacy_plane {sync.atomic_store(&fake_status.playing, 0)}
+	return true
+}
 sf_eos :: proc(_: ^Starfish) -> bool {fake_eos += 1; return true}
 sf_rate :: proc(_: ^Starfish, body: cstring) -> bool {
 	fake_rate_audio = strings.contains(string(body), `"audioOutput":true`)
@@ -132,7 +141,7 @@ initial_load_keeps_resume_or_explicit_time_and_applies_sponsorblock :: proc(t: ^
 player_controls_visible :: proc() -> bool {return paused || !loaded || fake_controls_visible}
 
 prepare_player :: proc(end: f64) {
-	fake_open, fake_close, fake_pause, fake_eos, fake_seeks = 0, 0, 0, 0, 0
+	fake_open, fake_close, fake_play, fake_pause, fake_eos, fake_seeks = 0, 0, 0, 0, 0, 0
 	fake_async_seek = false
 	resolved_calls, resolved_position = 0, 0
 	player_recoveries, player_recovery_at = 0, 0
@@ -279,6 +288,19 @@ controls_preserve_pause_audio_and_retarget_the_existing_decoder :: proc(t: ^test
 }
 
 @(test)
+legacy_resume_uses_the_existing_decoder :: proc(t: ^testing.T) {
+	prepare_player(16)
+	legacy_plane = true
+	defer {stop_playback(); legacy_plane = false}
+	poll_player()
+	testing.expect(t, player_pause(true))
+	plays := fake_play
+	testing.expect(t, player_pause(false))
+	testing.expect_value(t, fake_play, plays + 1)
+	testing.expect_value(t, fake_close, 0)
+}
+
+@(test)
 rapid_seeks_replace_the_pending_target_until_native_completion :: proc(t: ^testing.T) {
 	prepare_player(4)
 	defer stop_playback()
@@ -296,6 +318,43 @@ rapid_seeks_replace_the_pending_target_until_native_completion :: proc(t: ^testi
 	testing.expect_value(t, fake_seeks, 2)
 	testing.expect_value(t, fake_target_ms, i64(4000))
 	testing.expect(t, paused && !return_to_grid)
+}
+
+@(test)
+legacy_short_sponsor_skip_does_not_cut_off_decoder_input :: proc(t: ^testing.T) {
+	prepare_player(16)
+	duration_ms = 20_000
+	legacy_plane = true
+	defer {stop_playback(); legacy_plane = false}
+	append(&sponsor_segments, sb.Segment{start_ms = 4000, end_ms = 7000})
+	poll_player()
+	testing.expect_value(t, player_reader.state.skip_end, f64(0))
+}
+
+@(test)
+legacy_long_sponsor_skip_prefetches_but_preserves_decoder_tail :: proc(t: ^testing.T) {
+	prepare_player(7)
+	duration_ms = 30_000
+	legacy_plane = true
+	defer {stop_playback(); legacy_plane = false}
+	append(&sponsor_segments, sb.Segment{start_ms = 4000, end_ms = 18000})
+	poll_player()
+	testing.expect_value(t, player_reader.state.skip_start, f64(7))
+	for &track in player_reader.tracks {
+		track.end = 21
+		queue.push_back(
+			&track.packets,
+			{packet = reader.av_packet_alloc(), pts = 18, end = 21, generation = 1},
+		)
+	}
+
+	sync.atomic_store(&fake_status.frame_ns, 4_100_000_000)
+	poll_player()
+	auto_skip_sponsor()
+	testing.expect_value(t, player_clock, f64(18))
+	testing.expect_value(t, fake_close, 1)
+	testing.expect(t, player_transition.queue_kept && !return_to_grid)
+	for &track in player_reader.tracks {testing.expect(t, reader.current_packet(&track))}
 }
 
 @(test)

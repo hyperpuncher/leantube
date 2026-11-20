@@ -45,9 +45,10 @@ verifies the current load combination, not the independent effect of every
 field. inherited values such as `totalStreamSize:256` have no verified unit;
 do not change them based only on their names.
 
-seeks retain the decoder and display binding. paused seeks remain paused and
-keep the old picture until resume; a paused target-frame preview is not an
-implemented feature. stopping or changing the video unloads the pipeline.
+on newer firmware, seeks retain the decoder and display binding. the early
+Starfish video-plane path reopens the decoder to seek and plays at 1× because
+native seek and rate changes stall that pipeline. a paused target-frame preview
+is not implemented. stopping or changing the video unloads the pipeline.
 
 ## evidence and limits
 

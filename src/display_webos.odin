@@ -4,6 +4,7 @@ package main
 import "base:runtime"
 import "core:c"
 import "core:dynlib"
+import "core:encoding/json"
 import "core:fmt"
 import "core:strings"
 import "core:sync"
@@ -60,6 +61,8 @@ Acb_State :: enum {
 acb_state: Acb_State
 acb_id: c.long = -1
 foreign_window: bool
+legacy_plane: bool
+legacy_media_id: string
 display_ready: i32
 pending_video_data: cstring
 display_width, display_height: c.int
@@ -141,10 +144,12 @@ attach_display :: proc(
 	foreign_window = lt_export_window(window_display, window_surface)
 	if foreign_window {
 		fmt.eprintln("display: exported window ready")
-	} else {
-		fmt.eprintln("display: no video plane backend available")
+		return true
 	}
-	return foreign_window
+	// webOS 1.x has neither libAcbAPI nor wl_webos_foreign; Starfish drives the video plane directly.
+	legacy_plane = true
+	fmt.eprintln("display: using native Starfish video plane")
+	return true
 }
 
 // The native pipeline needs the window id while loading on webOS 5 and later.
@@ -152,8 +157,34 @@ display_window_id :: proc() -> string {
 	return foreign_window ? string(lt_window_id()) : ""
 }
 
-// Called once the decoder reports its first load, for either backend.
+legacy_sink_connected :: proc "c" (_: rawptr, message: rawptr, _: rawptr) -> bool {
+	context = runtime.default_context()
+	if legacy_media_id == "" {return true}
+	value, err := json.parse(string(LSMessageGetPayload(message)))
+	if err != .None {return true}
+	defer json.destroy_value(value)
+	reply, ok := value.(json.Object)
+	if !ok {return true}
+	accepted, _ := reply["returnValue"].(json.Boolean)
+	if !accepted {fmt.eprintln("display: video sink connection rejected"); return true}
+	window := fmt.caprintf(`{{"context":"%s","fullScreen":true}}`, legacy_media_id)
+	defer delete(window)
+	_ = bus_call("luna://com.webos.service.tv.display/setDisplayWindow", window)
+	return true
+}
+
+// Called once the decoder reports its first load.
 display_started :: proc() -> bool {
+	if legacy_plane {
+		if legacy_media_id == "" {return false}
+		connect := fmt.caprintf(`{{"context":"%s","sinkType":"MAIN"}}`, legacy_media_id)
+		defer delete(connect)
+		return bus_call(
+			"luna://com.webos.service.videosinkmanager/connect",
+			connect,
+			legacy_sink_connected,
+		)
+	}
 	if foreign_window {
 		return lt_set_window(display_width, display_height, destination_width, destination_height)
 	}
@@ -191,5 +222,8 @@ release_display :: proc() {
 		lt_unexport_window()
 		foreign_window = false
 	}
+	delete(legacy_media_id)
+	legacy_media_id = ""
+	legacy_plane = false
 	sync.atomic_store(&display_ready, 0)
 }

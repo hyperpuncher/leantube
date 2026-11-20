@@ -8,6 +8,7 @@ import yt "./youtube"
 import "core:c"
 import "core:fmt"
 import "core:math"
+import "core:os"
 import "core:strings"
 import "core:sync"
 import sdl "vendor:sdl3"
@@ -37,11 +38,15 @@ FALLBACK_LIMITS := [4]yt.Video_Limit {
 }
 
 init_player :: proc() {
+	has_acb := os.exists("/usr/lib/libAcbAPI.so.1")
 	for codec, i in ([]string{"h264", "hevc", "vp9", "av1"}) {
 		width, height, fps: c.int
 		playback_limits[i] = FALLBACK_LIMITS[i]
 		if sf_video_limits(native_video_codec(codec), &width, &height, &fps) {
 			playback_limits[i] = {codec, int(width), int(height), int(fps)}
+		} else if codec == "vp9" && !has_acb {
+			// webOS 1.x/2.x lacks both libAcbAPI and VP9 hardware decoding.
+			playback_limits[i] = {codec, 0, 0, 0}
 		}
 		fmt.printf(
 			"native codec=%s width=%d height=%d fps=%d\n",
@@ -129,8 +134,19 @@ recover_playback :: proc(stage: string) -> bool {
 	return true
 }
 
+player_next_read_skip :: proc(position_ms: f64) -> (from, to: f64) {
+	from, to = sb.next_skip(sponsor_segments[:], position_ms, duration_ms)
+	if from >= 0 && !sf_has_load_with_data() {
+		// Early Starfish needs packets past the on-screen skip point
+		// before it reports reaching it. Keep a short tail for the old decoder.
+		from += 3000
+		if from >= to {return -1, -1}
+	}
+	return
+}
+
 player_read_end :: proc(position_ms: f64) -> f64 {
-	from, _ := sb.next_skip(sponsor_segments[:], position_ms, duration_ms)
+	from, _ := player_next_read_skip(position_ms)
 	return from >= 0 ? max(from, position_ms) / 1000 : 0
 }
 
@@ -216,14 +232,25 @@ stop_playback :: proc(from_recovery := false) {
 player_pause :: proc(value: bool) -> bool {
 	if player_reader == nil {return false}
 	if player_api != nil && value && !sf_pause(player_api) {return false}
-	if value {report_player_history()}
+	now := sdl.GetTicks()
+	if value {
+		report_player_history()
+	} else if paused && player_api != nil && legacy_plane && !player_buffering {
+		// Do not rely on the old pipeline sending Paused before the next Play.
+		sync.atomic_store(&player_status.playing, 0)
+		if sf_play(player_api) {player_last_play = now}
+	}
 	paused = value
-	player_progress_at = sdl.GetTicks()
+	player_progress_at = now
 	return true
 }
 
+// Old BUFFERSTREAM rate changes flush the input and stall playback.
+player_rate_supported :: proc() -> bool {return !legacy_plane}
+
 player_rate :: proc(value: f64) -> bool {
-	if player_api == nil ||
+	if !player_rate_supported() ||
+	   player_api == nil ||
 	   math.is_nan(value) ||
 	   math.is_inf(value) ||
 	   value < 0.5 ||
@@ -261,7 +288,11 @@ player_seek :: proc(target: f64) -> bool {
 	player_transition = {
 		started_ms = sdl.GetTicks(),
 	}
-	if player_api != nil {
+	if player_api != nil && legacy_plane {
+		if !decoder_close(player_api, player_status) {return false}
+		player_api, player_status = nil, nil
+		player_bound = false
+	} else if player_api != nil {
 		// Keep the decoder, display window, last picture, and playback rate.
 		status := player_status
 		sync.atomic_store(&status.resetting, 1)
@@ -323,7 +354,7 @@ poll_player :: proc() {
 		if !seek_to(player_pending_seek) {return}
 	}
 	if s.state.skip_end == 0 {
-		from, to := sb.next_skip(sponsor_segments[:], player_clock * 1000, duration_ms)
+		from, to := player_next_read_skip(player_clock * 1000)
 		if from >= 0 && to < duration_ms {
 			_ = reader.prepare_skip(s, from / 1000, to / 1000, player_read_end(to))
 		}
@@ -381,8 +412,9 @@ poll_player :: proc() {
 	if player_buffering && ready {player_buffering = false; dirty = true}
 	// Feed initial pre-roll while paused too, without an unsolicited Play.
 	if !player_buffering {
-		if !decoder_feed(player_api, a, player_clock + 1) ||
-		   !decoder_feed(player_api, v, player_clock + 1) {player_failed("feed"); return}
+		feed_limit := legacy_plane ? player_clock + 10 : player_clock + 1
+		if !decoder_feed(player_api, a, feed_limit) ||
+		   !decoder_feed(player_api, v, feed_limit) {player_failed("feed"); return}
 	}
 	if player_bound &&
 	   rate != player_applied_rate &&
