@@ -345,7 +345,7 @@ player_layout :: proc(elapsed, total, speed, quality: string) {
 			player_channel_button()
 		}
 		if clay.UI()({layout = {sizing = {height = clay.SizingGrow({})}}}) {}
-		// One row: time, timeline, duration, speed, and quality.
+		// One row: time, timeline, duration, optional speed, and quality.
 		if clay.UI(clay.ID("controls"))(
 		{
 			layout = {
@@ -360,27 +360,31 @@ player_layout :: proc(elapsed, total, speed, quality: string) {
 			timeline_bar()
 			digits_label(total, COLOR_MUTED)
 			// The buttons step the rate that sits between them.
-			if clay.UI(clay.ID("rate"))(
-			{
-				layout = {
-					padding = clay.PaddingAll(spacing(STEPPER_INSET)),
-					childGap = spacing(4),
-					childAlignment = {y = .Center},
-				},
-				backgroundColor = STEPPER_FILL,
-				cornerRadius = clay.CornerRadiusAll(scaled(STEPPER_BUTTON / 2 + STEPPER_INSET)),
-			},
-			) {
-				control_button(SLOWER_BUTTON)
-				if clay.UI()(
+			if speed != "" {
+				if clay.UI(clay.ID("rate"))(
 				{
 					layout = {
-						sizing = {width = clay.SizingFixed(scaled(104))},
-						childAlignment = {x = .Center, y = .Center},
+						padding = clay.PaddingAll(spacing(STEPPER_INSET)),
+						childGap = spacing(4),
+						childAlignment = {y = .Center},
 					},
+					backgroundColor = STEPPER_FILL,
+					cornerRadius = clay.CornerRadiusAll(
+						scaled(STEPPER_BUTTON / 2 + STEPPER_INSET),
+					),
 				},
-				) {digits_label(speed, COLOR_MUTED)}
-				control_button(FASTER_BUTTON)
+				) {
+					control_button(SLOWER_BUTTON)
+					if clay.UI()(
+					{
+						layout = {
+							sizing = {width = clay.SizingFixed(scaled(104))},
+							childAlignment = {x = .Center, y = .Center},
+						},
+					},
+					) {digits_label(speed, COLOR_MUTED)}
+					control_button(FASTER_BUTTON)
+				}
 			}
 			// Reserve the quality slot before the media service reports it.
 			if clay.UI()(

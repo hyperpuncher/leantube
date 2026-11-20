@@ -530,7 +530,19 @@ check_layout :: proc(renderer: ^sdl.Renderer, surface: ^sdl.Surface) {
 	assert(knob_target.x > knob_before.x + scaled(10), "the knob must follow a pending seek")
 	model.seek_done(&timeline)
 	assert(timeline.position_ms == duration_ms / 2)
+	// The legacy overlay has no speed stepper and gives its space to the timeline.
+	clay.BeginLayout()
+	player_layout("1:23", "2:46", "", "4K")
+	_ = clay.EndLayout(0)
+	assert(!clay.GetElementData(clay.ID("rate")).found)
+	legacy_track := clay.GetElementData(clay.ID("timeline-track"))
+	assert(legacy_track.found)
 	snapshot(renderer, surface, "player-paused")
+	assert(clay.GetElementData(clay.ID("rate")).found)
+	assert(
+		clay.GetElementData(clay.ID("timeline-track")).boundingBox.width <
+		legacy_track.boundingBox.width,
+	)
 	// Sample the fill outside each icon or avatar, before and after hover.
 	hover_ids := [3]string{"slower", "faster", "player-channel"}
 	background: [3]u8

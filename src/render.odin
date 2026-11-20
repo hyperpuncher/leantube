@@ -182,7 +182,7 @@ render :: proc(renderer: ^sdl.Renderer, wheel: f32 = 0, dt: f32 = 1.0 / 60) -> b
 		elapsed = model.time_label(shown_position())
 		total = model.time_label(duration_ms, "--:--")
 		quality = model.quality_label(stream_width, stream_height)
-		speed = fmt.aprintf("%g×", rate)
+		if player_rate_supported() {speed = fmt.aprintf("%g×", rate)}
 		player_layout(elapsed, total, speed, quality)
 	}
 	toast_layout()

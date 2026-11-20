@@ -18,6 +18,7 @@ update_text_input :: proc() {}
 // The host has no LG media service. These are UI-only responses; no stream
 // request is read and no audio or video playback is started.
 player_pause :: proc(value: bool) -> bool {paused = value; return true}
+player_rate_supported :: proc() -> bool {return true}
 player_rate :: proc(_: f64) -> bool {return true}
 player_seek :: proc(_: f64) -> bool {return true}
 
