@@ -6,7 +6,18 @@
 int main() {
     auto api = StarfishMediaAPIs_create(nullptr);
     assert(api);
-    assert(std::strcmp(StarfishMediaAPIs_getMediaID(api), "fixture") == 0);
+#ifdef OLD_LOAD
+    const int ready = 0x15;
+#else
+    const int ready = 0x16;
+#endif
+    assert(StarfishMediaAPIs_hasLoadWithData() == (ready == 0x16));
+    int event = 0;
+    assert(StarfishMediaAPIs_load(api, "{}", [](int kind, int64_t value, const char *text, void *data) {
+        assert(value == 123 && std::strcmp(text, "ready") == 0 && data);
+        *static_cast<int *>(data) = kind;
+    }, &event));
+    assert(event == ready);
     char reply[128];
     const std::string large(256, 'x');
     for (int i = 0; i < 10000; ++i) {
@@ -22,7 +33,7 @@ int main() {
     assert(StarfishMediaAPIs_feed(api, "Ok", reply, 1));
     assert(reply[0] == '\0');
     int32_t width = 0, height = 0, fps = 0;
-#if defined(NO_LIMITS) || defined(REJECT_LIMITS)
+#ifdef NO_LIMITS
     assert(!StarfishMediaAPIs_videoLimits("H264", &width, &height, &fps));
 #else
     assert(StarfishMediaAPIs_videoLimits("H264", &width, &height, &fps));

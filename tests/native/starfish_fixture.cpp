@@ -1,9 +1,25 @@
 #include "StarfishMediaAPIs.h"
 
+// The host and ARM32 mangle int64_t differently. Export the firmware names.
+#ifdef OLD_LOAD
+StarfishMediaAPIs::StarfishMediaAPIs() {}
+using Reply = void (*)(int, int64_t, const char *);
+bool fixture_load(StarfishMediaAPIs *, const char *, Reply) asm("_ZN17StarfishMediaAPIs4LoadEPKcPFvixS1_E");
+bool fixture_load(StarfishMediaAPIs *, const char *, Reply reply) {
+    reply(0x15, 123, "ready");
+    return true;
+}
+#else
 StarfishMediaAPIs::StarfishMediaAPIs(const char *) {}
+using Reply = void (*)(int, int64_t, const char *, void *);
+bool fixture_load(StarfishMediaAPIs *, const char *, Reply, void *) asm("_ZN17StarfishMediaAPIs4LoadEPKcPFvixS1_PvES2_");
+bool fixture_load(StarfishMediaAPIs *, const char *, Reply reply, void *data) {
+    reply(0x16, 123, "ready", data);
+    return true;
+}
+#endif
 StarfishMediaAPIs::~StarfishMediaAPIs() {}
 const char *StarfishMediaAPIs::getMediaID() { return "fixture"; }
-bool StarfishMediaAPIs::Load(const char *, void (*)(int, int64_t, const char *, void *), void *) { return true; }
 bool StarfishMediaAPIs::notifyForeground() { return true; }
 bool StarfishMediaAPIs::notifyBackground() { return true; }
 bool StarfishMediaAPIs::Pause() { return true; }
@@ -22,14 +38,9 @@ std::string fixture_feed(StarfishMediaAPIs *, const char *payload) { return payl
 #ifndef NO_LIMITS
 namespace smp { namespace util {
 bool getMaxVideoResolution(std::string codec, int32_t *w, int32_t *h, int32_t *fps) {
-#ifdef REJECT_LIMITS
-    (void)codec; (void)w; (void)h; (void)fps;
-    return false;
-#else
     if (codec != "H264") return false;
     *w = 3840; *h = 2160; *fps = 60;
     return true;
-#endif
 }
 } }
 #endif

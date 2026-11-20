@@ -69,6 +69,7 @@ bool StarfishMediaAPIs_pause(StarfishMediaAPIs_C *api);
 bool StarfishMediaAPIs_play(StarfishMediaAPIs_C *api);
 
 // LeanTube additions. Missing optional LG APIs return false.
+bool StarfishMediaAPIs_hasLoadWithData(void);
 bool StarfishMediaAPIs_setPlayRate(StarfishMediaAPIs_C *api, const char *message);
 bool StarfishMediaAPIs_seek(StarfishMediaAPIs_C *api, const char *message);
 bool StarfishMediaAPIs_videoLimits(const char *codec, int32_t *width, int32_t *height, int32_t *fps);
