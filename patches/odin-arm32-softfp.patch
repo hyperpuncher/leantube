@@ -26,3 +26,63 @@ index fd60d54..eede9a3 100644
  		if (is_calling_convention_odin(calling_convention)) {
  			// Both sides are Odin, so the existing lowering is self-consistent; leave it alone.
  			return false;
+diff --git a/base/runtime/os_specific_linux.odin b/base/runtime/os_specific_linux.odin
+--- a/base/runtime/os_specific_linux.odin
++++ b/base/runtime/os_specific_linux.odin
+@@ -59,9 +59,13 @@
+ 			// request.
+ 			continue
+ 		case -ERR_ENOSYS:
+-			// The kernel is apparently prehistoric (< 3.17 circa 2014)
+-			// and does not support getrandom.
+-			panic_contextless("base/runtime: getrandom not available in kernel")
++			when ODIN_ARCH == .arm32 {
++				// Early webOS kernels predate getrandom.
++				_urandom_bytes(dst)
++				return
++			} else {
++				panic_contextless("base/runtime: getrandom failed")
++			}
+ 		case:
+ 			if ret < 0 {
+ 				// All other failures are things that should NEVER happen
+@@ -75,6 +79,39 @@
+ 	}
+ }
+ 
++when ODIN_ARCH == .arm32 {
++	_urandom_bytes :: proc "contextless" (dst: []byte) {
++		SYS_openat :: uintptr(322)
++		SYS_read   :: uintptr(3)
++		SYS_close  :: uintptr(6)
++		AT_FDCWD   :: ~uintptr(99) // -100
++		O_CLOEXEC  :: uintptr(0o2000000)
++		ERR_EINTR  :: 4
++
++		path := cstring("/dev/urandom")
++		fd := int(intrinsics.syscall(SYS_openat, AT_FDCWD, uintptr(rawptr(path)), O_CLOEXEC))
++		for fd == -ERR_EINTR {
++			fd = int(intrinsics.syscall(SYS_openat, AT_FDCWD, uintptr(rawptr(path)), O_CLOEXEC))
++		}
++		if fd < 0 {
++			panic_contextless("base/runtime: /dev/urandom unavailable")
++		}
++		defer _ = intrinsics.syscall(SYS_close, uintptr(fd))
++
++		dst := dst
++		for len(dst) > 0 {
++			n := int(intrinsics.syscall(SYS_read, uintptr(fd), uintptr(raw_data(dst)), uintptr(len(dst))))
++			if n == -ERR_EINTR {
++				continue
++			}
++			if n <= 0 {
++				panic_contextless("base/runtime: /dev/urandom read failed")
++			}
++			dst = dst[n:]
++		}
++	}
++}
++
+ _exit :: proc "contextless" (code: int) -> ! {
+ 	SYS_exit_group ::
+ 		231 when ODIN_ARCH == .amd64 else
