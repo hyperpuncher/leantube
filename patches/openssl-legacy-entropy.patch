@@ -1,0 +1,60 @@
+diff --git a/providers/implementations/rands/seeding/rand_unix.c b/providers/implementations/rands/seeding/rand_unix.c
+--- a/providers/implementations/rands/seeding/rand_unix.c
++++ b/providers/implementations/rands/seeding/rand_unix.c
+@@ -422,6 +422,19 @@
+     && defined(OPENSSL_RAND_SEED_GETRANDOM)
+ static void *shm_addr;
+ 
++static int read_entropy_counter(const char *path)
++{
++    int value = -1;
++    FILE *file = fopen(path, "r");
++
++    if (file != NULL) {
++        if (fscanf(file, "%d", &value) != 1)
++            value = -1;
++        fclose(file);
++    }
++    return value;
++}
++
+ /*
+  * Ensure that the system randomness source has been adequately seeded.
+  * This is done by having the first start of libcrypto, wait until the device
+@@ -432,7 +445,7 @@
+ {
+     static int seeded = OPENSSL_RAND_SEED_DEVRANDOM_SHM_ID < 0;
+     static const int kernel_version[] = { DEVRANDOM_SAFE_KERNEL };
+-    int kernel[2];
++    int kernel[2] = { 0, 0 };
+     int shm_id, fd, r;
+     char c, *p;
+     struct utsname un;
+@@ -483,12 +496,21 @@
+                         ;
+                 }
+                 close(fd);
+-                if (r == 1) {
+-                    seeded = 1;
+-                    /* Create the shared memory indicator */
+-                    shm_id = shmget(OPENSSL_RAND_SEED_DEVRANDOM_SHM_ID, 1,
+-                        IPC_CREAT | S_IRUSR | S_IRGRP | S_IROTH);
+-                }
++                seeded = r == 1;
++            } else if (errno == ENOENT && DEVRANDM_WAIT_USE_SELECT
++                && kernel[0] == 3 && kernel[1] >= 10 && kernel[1] < 17) {
++                /*
++                 * Early webOS jails expose urandom but not random. The
++                 * Linux 3.x random_poll() check uses these same counters.
++                 */
++                int threshold = read_entropy_counter("/proc/sys/kernel/random/read_wakeup_threshold");
++                seeded = threshold > 0
++                    && read_entropy_counter("/proc/sys/kernel/random/entropy_avail") >= threshold;
++            }
++            if (seeded) {
++                /* Create the shared memory indicator */
++                shm_id = shmget(OPENSSL_RAND_SEED_DEVRANDOM_SHM_ID, 1,
++                    IPC_CREAT | S_IRUSR | S_IRGRP | S_IROTH);
+             }
+         }
+         if (shm_id != -1) {

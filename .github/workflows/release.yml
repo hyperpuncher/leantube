@@ -37,7 +37,7 @@ jobs:
               uses: actions/cache@v6
               with:
                   path: .cache/toolchain
-                  key: ubuntu-26.04-arm-llvm21-${{ hashFiles('scripts/toolchain.sources', 'scripts/setup-*.sh', 'scripts/env.sh', 'scripts/platform/**', 'patches/odin-arm32-softfp.patch', 'patches/sdl3-b9.patch') }}
+                  key: ubuntu-26.04-arm-llvm21-${{ hashFiles('scripts/toolchain.sources', 'scripts/setup-*.sh', 'scripts/env.sh', 'scripts/platform/**', 'patches/*.patch') }}
 
             - name: Build toolchain
               if: steps.toolchain.outputs.cache-hit != 'true'

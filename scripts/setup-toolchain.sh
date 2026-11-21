@@ -27,7 +27,7 @@ while read -r destination checksum url; do
 	tar -xf "$archive" --strip-components=1 -C "$root/$destination"
 done < scripts/toolchain.sources
 "$WEBOS_SDK/relocate-sdk.sh"
-for spec in 'odin odin-arm32-softfp.patch' 'src/SDL sdl3-b9.patch'; do
+for spec in 'odin odin-arm32-softfp.patch' 'src/SDL sdl3-b9.patch' 'src/openssl openssl-legacy-entropy.patch'; do
 	read -r destination patch <<< "$spec"
 	patch -d "$root/$destination" -p1 --forward --batch < "patches/$patch"
 done
